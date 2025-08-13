@@ -1,4 +1,4 @@
-su#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 I2C Setup Script for Raspberry Pi
 Installs and configures I2C kernel modules and dependencies
