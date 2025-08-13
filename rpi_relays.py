@@ -7,9 +7,9 @@ Simple replacement for Arduino Mega relay functionality
 import logging
 
 try:
-    import RPi.GPIO as GPIO
+    import lgpio
 except ImportError:
-    print("RPi.GPIO not installed. Install with: pip install RPi.GPIO")
+    print("lgpio not installed. Install with: pip install lgpio")
     exit(1)
 
 logger = logging.getLogger(__name__)
@@ -20,10 +20,10 @@ class RelayController:
         
         # Relay pin mappings (GPIO BCM numbering) - adjust these as needed
         self.relay_pins = {
-            1: 4,   2: 17,  3: 27,  4: 22,   # Relays 1-4
-            5: 5,   6: 6,   7: 13,  8: 19,   # Relays 5-8
-            9: 26,  10: 14, 11: 15, 12: 18,  # Relays 9-12
-            13: 23, 14: 24, 15: 25, 16: 8    # Relays 13-16
+            1: 23,   2: 21,  3: 18,  4: 26,   # Relays 1-4
+            5: 15,   6: 19,  7: 14,  8: 13,   # Relays 5-8
+            9: 22,  10: 6,  11: 27, 12: 0,   # Relays 9-12
+            13: 4, 14: 16, 15: 5, 16: 14    # Relays 13-16
         }
         
         # Track relay states
@@ -35,14 +35,14 @@ class RelayController:
     def setup_gpio(self):
         """Setup GPIO pins for relays"""
         try:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setwarnings(False)
+            # Create an lgpio handle
+            self.h = lgpio.gpiochip_open(0)
             
             # Setup each relay pin
             for relay_id, pin in self.relay_pins.items():
-                GPIO.setup(pin, GPIO.OUT)
+                lgpio.gpio_claim_output(self.h, pin)
                 # Start with relay OFF (active LOW, so HIGH = OFF)
-                GPIO.output(pin, GPIO.HIGH)
+                lgpio.gpio_write(self.h, pin, 1)  # 1 = HIGH = OFF
                 self.relay_states[relay_id] = False
                 
             logger.info(f"Initialized {len(self.relay_pins)} relay pins")
@@ -61,8 +61,8 @@ class RelayController:
             pin = self.relay_pins[relay_id]
             
             # Relays are active LOW (LOW = ON, HIGH = OFF)
-            gpio_state = GPIO.LOW if state else GPIO.HIGH
-            GPIO.output(pin, gpio_state)
+            gpio_state = 0 if state else 1  # 0 = LOW = ON, 1 = HIGH = OFF
+            lgpio.gpio_write(self.h, pin, gpio_state)
             
             # Update state tracking
             self.relay_states[relay_id] = state
@@ -113,7 +113,16 @@ class RelayController:
         try:
             # Turn off all relays before cleanup
             self.emergency_stop()
-            GPIO.cleanup()
+            
+            # Release GPIO pins
+            for pin in self.relay_pins.values():
+                try:
+                    lgpio.gpio_free(self.h, pin)
+                except:
+                    pass
+            
+            # Close the GPIO chip
+            lgpio.gpiochip_close(self.h)
             logger.info("GPIO cleanup completed")
         except Exception as e:
             logger.error(f"Error during GPIO cleanup: {e}")

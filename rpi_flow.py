@@ -8,9 +8,9 @@ import time
 import logging
 
 try:
-    import RPi.GPIO as GPIO
+    import lgpio
 except ImportError:
-    print("RPi.GPIO not installed. Install with: pip install RPi.GPIO")
+    print("lgpio not installed. Install with: pip install lgpio")
     exit(1)
 
 logger = logging.getLogger(__name__)
@@ -18,12 +18,14 @@ logger = logging.getLogger(__name__)
 class FlowMeterController:
     def __init__(self):
         """Initialize flow meter control"""
-        
         # Flow meter pin mappings (GPIO BCM numbering)
-        self.flow_pins = {
+        self.flow_pins_map = {
             1: 3,  # Flow meter 1 on GPIO 3
             2: 2   # Flow meter 2 on GPIO 2
         }
+        
+        # Will store flow pins with callback info
+        self.flow_pins = {}
         
         # Flow meter data
         self.flow_meters = {}
@@ -44,22 +46,21 @@ class FlowMeterController:
     def setup_gpio(self):
         """Setup GPIO pins for flow meters"""
         try:
-            # GPIO should already be set to BCM mode by relay controller
-            # But set it here too in case this runs standalone
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setwarnings(False)
+            # Create an lgpio handle
+            self.h = lgpio.gpiochip_open(0)
             
             # Setup flow meter pins with pull-up resistors
-            for meter_id, pin in self.flow_pins.items():
-                GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            for meter_id, pin in self.flow_pins_map.items():
+                # Configure as input with pull-up
+                lgpio.gpio_claim_input(self.h, pin, lgpio.SET_PULL_UP)
                 
-                # Add interrupt detection for falling edge
-                GPIO.add_event_detect(
-                    pin, 
-                    GPIO.FALLING, 
-                    callback=lambda channel, mid=meter_id: self.pulse_interrupt(mid),
-                    bouncetime=2  # 2ms debounce
-                )
+                # Add callback for falling edge
+                # Store the callback ID for later cleanup
+                self.flow_pins[meter_id] = {
+                    'pin': pin,
+                    'cb_id': lgpio.callback(self.h, pin, lgpio.FALLING_EDGE,
+                                          lambda chip, gpio, level, tick, mid=meter_id: self.pulse_interrupt(mid))
+                }
                 
                 logger.debug(f"Flow meter {meter_id} setup on GPIO {pin}")
                 
@@ -194,12 +195,18 @@ class FlowMeterController:
         try:
             self.emergency_stop()
             
-            # Remove GPIO event detection
-            for pin in self.flow_pins.values():
+            # Cancel callbacks and free GPIO pins
+            for meter_info in self.flow_pins.values():
                 try:
-                    GPIO.remove_event_detect(pin)
+                    # Cancel the callback
+                    lgpio.callback_cancel(meter_info['cb_id'])
+                    # Free the GPIO pin
+                    lgpio.gpio_free(self.h, meter_info['pin'])
                 except:
-                    pass  # Pin might not have event detection
+                    pass  # Callback or pin might not exist
+            
+            # Close the GPIO chip
+            lgpio.gpiochip_close(self.h)
             
             logger.info("Flow meter cleanup completed")
             
@@ -219,9 +226,10 @@ class MockFlowMeterController(FlowMeterController):
     """Mock version for testing without actual hardware"""
     
     def __init__(self):
-        self.flow_pins = {1: 3, 2: 2}
+        self.flow_pins_map = {1: 3, 2: 2}
+        self.flow_pins = {}
         self.flow_meters = {}
-        for meter_id in self.flow_pins:
+        for meter_id in self.flow_pins_map:
             self.flow_meters[meter_id] = {
                 'pulse_count': 0,
                 'last_count': 0,
@@ -230,6 +238,11 @@ class MockFlowMeterController(FlowMeterController):
                 'current_gallons': 0,
                 'pulses_per_gallon': 220,
                 'last_update': 0
+            }
+            # Mock the flow_pins structure used by the real controller
+            self.flow_pins[meter_id] = {
+                'pin': self.flow_pins_map[meter_id],
+                'cb_id': None
             }
         
         self.last_mock_time = time.time()

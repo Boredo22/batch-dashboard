@@ -1,4 +1,4 @@
-RPi.GPIO
+lgpio
 smbus2
 pyserial
 flask

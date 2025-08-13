@@ -25,11 +25,11 @@ class FeedControlGUI:
         # Create GUI elements
         self.create_widgets()
         
-        # Start system in background
-        self.start_system()
+        # Schedule system start after main loop begins
+        self.root.after(100, self.start_system)
         
-        # Update loop
-        self.update_status()
+        # Schedule status updates after main loop begins
+        self.root.after(500, self.update_status)
     
     def create_widgets(self):
         """Create all GUI widgets"""
@@ -299,18 +299,25 @@ class FeedControlGUI:
     
     def start_system(self):
         """Start the feed control system in background thread"""
+        # First add a log entry in the main thread
+        self.add_log("Initializing feed control system...")
+        
         def init_system():
             try:
-                self.add_log("Initializing feed control system...")
                 self.system = FeedControlSystem(use_mock_flow=True)  # Use mock for testing
                 self.system.set_message_callback(self.system_message_callback)
                 self.system.start()
                 self.system_running = True
-                self.add_log("✓ System started successfully")
+                # Use after() to update GUI from the main thread
+                self.root.after(0, lambda: self.add_log("✓ System started successfully"))
             except Exception as e:
-                self.add_log(f"✗ System startup failed: {e}")
-                messagebox.showerror("System Error", f"Failed to start system:\n{e}")
+                error_msg = f"✗ System startup failed: {e}"
+                error_details = f"Failed to start system:\n{e}"
+                # Use after() to update GUI from the main thread
+                self.root.after(0, lambda: self.add_log(error_msg))
+                self.root.after(0, lambda msg=error_details: messagebox.showerror("System Error", msg))
         
+        # Now start the thread after we're in the main loop
         thread = threading.Thread(target=init_system, daemon=True)
         thread.start()
     
@@ -320,9 +327,21 @@ class FeedControlGUI:
     
     def add_log(self, message):
         """Add message to log"""
+        # Check if we're in the main thread
+        if threading.current_thread() is threading.main_thread():
+            # Direct update if we're in the main thread
+            timestamp = datetime.now().strftime('%H:%M:%S')
+            formatted_message = f"[{timestamp}] {message}"
+            self.log_text.insert(tk.END, formatted_message + "\n")
+            self.log_text.see(tk.END)
+        else:
+            # Schedule update on the main thread if we're in a background thread
+            self.root.after(0, lambda msg=message: self.add_log_main_thread(msg))
+    
+    def add_log_main_thread(self, message):
+        """Add log message from the main thread"""
         timestamp = datetime.now().strftime('%H:%M:%S')
         formatted_message = f"[{timestamp}] {message}"
-        
         self.log_text.insert(tk.END, formatted_message + "\n")
         self.log_text.see(tk.END)
     

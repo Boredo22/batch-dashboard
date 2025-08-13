@@ -59,9 +59,11 @@ class EZOPumpController:
                 
             except Exception as e:
                 retry_count += 1
-                logger.warning(f"I2C retry {retry_count} for pump {pump_addr}: {e}")
-                time.sleep(0.1 * retry_count)
+                logger.warning(f"I2C retry {retry_count}/{max_retries} for pump {pump_addr}: {e}")
+                # Space out retries by a few seconds
+                time.sleep(2.0 * retry_count)  # Increasing delay with each retry
                 
+        logger.error(f"I2C communication failed after {max_retries} retries for pump {pump_addr}")
         return "ERROR"
     
     def parse_volume(self, response):
