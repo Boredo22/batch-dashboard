@@ -1,59 +1,72 @@
 #!/bin/bash
-# Simple script to load I2C kernel modules
+# Raspberry Pi 5 I2C Fix Script
 
-echo "===== Loading I2C Kernel Modules ====="
+echo "=== Raspberry Pi 5 I2C Troubleshooting ==="
 
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then
-  echo "This script must be run as root (sudo). Try: sudo bash load_i2c_modules.sh"
-  exit 1
-fi
+# 1. Check all available I2C devices
+echo "1. Available I2C devices:"
+ls -la /dev/i2c* 2>/dev/null || echo "No I2C devices found"
 
-# Install i2c-tools if not already installed
-echo "Checking for i2c-tools..."
-if ! command -v i2cdetect &> /dev/null; then
-    echo "Installing i2c-tools..."
-    apt-get update && apt-get install -y i2c-tools python3-smbus
-fi
-
-# Load the necessary modules
-echo "Loading I2C kernel modules..."
-modprobe i2c-dev
-modprobe i2c-bcm2708
-modprobe i2c-bcm2835
-
-# Check if modules were loaded
-echo "Checking if modules are loaded:"
-lsmod | grep i2c
-
-# Enable I2C in config if it's not already enabled
-if ! grep -q "^dtparam=i2c_arm=on" /boot/config.txt && ! grep -q "^dtparam=i2c_arm=on" /boot/firmware/config.txt; then
-    echo "Enabling I2C in boot config..."
-    if [ -f "/boot/config.txt" ]; then
-        echo "dtparam=i2c_arm=on" >> /boot/config.txt
-        echo "dtparam=i2c_baudrate=10000" >> /boot/config.txt
-    elif [ -f "/boot/firmware/config.txt" ]; then
-        echo "dtparam=i2c_arm=on" >> /boot/firmware/config.txt
-        echo "dtparam=i2c_baudrate=10000" >> /boot/firmware/config.txt
+# 2. Check which I2C buses exist in sysfs
+echo -e "\n2. I2C buses in system:"
+for i in {0..10}; do
+    if [ -d "/sys/bus/i2c/devices/i2c-$i" ]; then
+        echo "  i2c-$i exists"
+        if [ -f "/sys/bus/i2c/devices/i2c-$i/name" ]; then
+            name=$(cat /sys/bus/i2c/devices/i2c-$i/name)
+            echo "    Name: $name"
+        fi
     fi
-    echo "I2C enabled in config. A reboot is required for this to take effect."
+done
+
+# 3. Reset I2C modules
+echo -e "\n3. Resetting I2C modules..."
+sudo rmmod i2c_bcm2835 2>/dev/null
+sudo rmmod i2c_dev 2>/dev/null
+sleep 1
+sudo modprobe i2c_dev
+sudo modprobe i2c_bcm2835
+echo "Modules reloaded"
+
+# 4. Try scanning each available bus with timeout
+echo -e "\n4. Scanning each I2C bus (with timeout):"
+for i in {0..5}; do
+    if [ -c "/dev/i2c-$i" ]; then
+        echo "  Scanning bus $i:"
+        timeout 5 sudo i2cdetect -y $i 2>/dev/null
+        if [ $? -eq 124 ]; then
+            echo "    Bus $i timed out"
+        elif [ $? -eq 0 ]; then
+            echo "    Bus $i scan completed"
+        else
+            echo "    Bus $i scan failed"
+        fi
+    fi
+done
+
+# 5. Check GPIO pin assignments
+echo -e "\n5. Checking GPIO pin assignments:"
+if [ -f "/sys/kernel/debug/pinctrl/pinctrl-rp1/pinmux-pins" ]; then
+    echo "  GPIO 2 (SDA):"
+    sudo cat /sys/kernel/debug/pinctrl/pinctrl-rp1/pinmux-pins | grep "pin 2 " || echo "    No info"
+    echo "  GPIO 3 (SCL):"
+    sudo cat /sys/kernel/debug/pinctrl/pinctrl-rp1/pinmux-pins | grep "pin 3 " || echo "    No info"
 fi
 
-# Check I2C device file
-if [ -e "/dev/i2c-1" ]; then
-    echo "I2C device file exists: /dev/i2c-1"
-else
-    echo "I2C device file not found. A reboot may be required."
+# 6. Check device tree overlays
+echo -e "\n6. Active device tree overlays:"
+if [ -d "/proc/device-tree/chosen/overlays" ]; then
+    ls /proc/device-tree/chosen/overlays/ | grep i2c || echo "  No I2C overlays found"
 fi
 
-# Try to run i2cdetect
-echo "Running i2cdetect to scan for devices:"
-i2cdetect -y 1
+# 7. Show current I2C configuration
+echo -e "\n7. Current I2C configuration in /boot/config.txt:"
+grep -E "i2c|I2C" /boot/config.txt | grep -v "^#" || echo "  No I2C config found"
 
-echo ""
-echo "If you don't see any errors above and modules are loaded, I2C should be working."
-echo "If i2cdetect shows a grid with no devices, your I2C modules are loaded but no devices are detected."
-echo "This could be due to wiring issues or device power problems."
-echo ""
-echo "For a complete setup, run: sudo python3 setup_i2c.py"
-echo "You may need to reboot after running that script: sudo reboot"
+echo -e "\n=== Recommendations ==="
+echo "If all buses timeout or fail:"
+echo "  1. Check physical wiring (SDA=Pin3, SCL=Pin5)"
+echo "  2. Try lower speed: dtparam=i2c_baudrate=1000"
+echo "  3. Add external pull-up resistors (4.7kΩ)"
+echo "  4. Check if devices are in UART mode instead of I2C"
+echo "  5. Try different I2C overlay: dtoverlay=i2c1,pins_2_3"

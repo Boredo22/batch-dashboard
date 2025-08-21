@@ -1,244 +1,176 @@
 #!/usr/bin/env python3
 """
-EZO Pump I2C Control for Raspberry Pi
-Simple replacement for Arduino Mega pump functionality
+Raspberry Pi 5 I2C Bus Scanner
+Pi 5 has multiple I2C buses - scan them all
 """
 
+import subprocess
 import time
-import logging
+import os
 
-try:
-    import smbus2 as smbus
-except ImportError:
-    print("smbus2 not installed. Install with: pip install smbus2")
-    exit(1)
+def run_cmd(cmd, timeout=10):
+    """Run command with timeout"""
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=True, 
+                              text=True, timeout=timeout)
+        return result.stdout, result.stderr, result.returncode
+    except subprocess.TimeoutExpired:
+        return "", "TIMEOUT", -1
+    except Exception as e:
+        return "", str(e), -1
 
-logger = logging.getLogger(__name__)
-
-class EZOPumpController:
-    def __init__(self, i2c_bus=1):
-        """Initialize I2C bus for EZO pumps"""
-        self.i2c_bus = smbus.SMBus(i2c_bus)
-        self.pumps = {}
-        
-        # Initialize pump tracking
-        for addr in range(1, 9):  # Pumps 1-8
-            self.pumps[addr] = {
-                'name': f'Pump {addr}',
-                'status': 0,  # 0=idle, 1=active
-                'current_volume': 0.0,
-                'target_volume': 0.0,
-                'is_dispensing': False,
-                'voltage': 0.0,
-                'calibrated': False,
-                'last_check': 0
-            }
+def scan_all_i2c_buses():
+    """Scan all available I2C buses"""
+    print("=" * 60)
+    print("RASPBERRY PI 5 I2C BUS SCANNER")
+    print("=" * 60)
     
-    def send_command(self, pump_addr, command):
-        """Send command to EZO pump via I2C"""
-        max_retries = 3
-        retry_count = 0
+    # Find all I2C device files
+    i2c_devices = []
+    for i in range(10):  # Check i2c-0 through i2c-9
+        device = f"/dev/i2c-{i}"
+        if os.path.exists(device):
+            i2c_devices.append(i)
+            print(f"Found I2C device: {device}")
+    
+    if not i2c_devices:
+        print("❌ No I2C device files found!")
+        return
+    
+    print(f"\nScanning {len(i2c_devices)} I2C bus(es)...")
+    
+    for bus_num in i2c_devices:
+        print(f"\n🔍 Scanning I2C bus {bus_num} (/dev/i2c-{bus_num}):")
         
-        while retry_count < max_retries:
-            try:
-                # Send command
-                command_bytes = command.encode('utf-8')
-                self.i2c_bus.write_i2c_block_data(pump_addr, 0, list(command_bytes))
+        # Try with timeout
+        stdout, stderr, code = run_cmd(f"timeout 5 i2cdetect -y {bus_num}")
+        
+        if code == 0 and stdout:
+            print(f"✅ Bus {bus_num} scan completed:")
+            
+            # Check if any devices found
+            lines = stdout.strip().split('\n')
+            found_devices = False
+            devices = []
+            
+            for line in lines[1:]:  # Skip header
+                for char in line.split()[1:]:  # Skip address column
+                    if char not in ['--', 'UU'] and len(char) == 2:
+                        try:
+                            addr = int(char, 16)
+                            devices.append(addr)
+                            found_devices = True
+                        except:
+                            pass
+            
+            if found_devices:
+                print(f"🎉 DEVICES FOUND on bus {bus_num}:")
+                for addr in devices:
+                    print(f"   Device at address: 0x{addr:02X} ({addr})")
+                print("\nBus scan output:")
+                print(stdout)
                 
-                # Wait for processing
+                # Try to identify EZO devices
+                print(f"\n🔬 Testing devices on bus {bus_num} for EZO compatibility:")
+                test_ezo_devices(bus_num, devices)
+            else:
+                print(f"   No devices found on bus {bus_num}")
+                
+        elif "TIMEOUT" in stderr:
+            print(f"⏰ Bus {bus_num} scan timed out (possible hardware issue)")
+        else:
+            print(f"❌ Bus {bus_num} scan failed: {stderr}")
+
+def test_ezo_devices(bus_num, addresses):
+    """Test if devices respond to EZO commands"""
+    try:
+        import smbus2 as smbus
+        
+        bus = smbus.SMBus(bus_num)
+        
+        for addr in addresses:
+            try:
+                print(f"   Testing 0x{addr:02X}...")
+                
+                # Send "I" command to get device info
+                bus.write_i2c_block_data(addr, 0, list("I".encode()))
                 time.sleep(0.3)
                 
                 # Read response
-                response_bytes = self.i2c_bus.read_i2c_block_data(pump_addr, 0, 32)
+                response_bytes = bus.read_i2c_block_data(addr, 0, 32)
+                response = ''.join([chr(b) for b in response_bytes if 32 <= b <= 126]).strip()
                 
-                # Convert to string and clean up
-                response = ''.join([chr(b) for b in response_bytes if b > 0 and b != 255]).strip()
-                
-                logger.debug(f"Pump {pump_addr} response: {response}")
-                return response
-                
+                if response:
+                    print(f"     ✅ EZO Response: {response}")
+                else:
+                    print(f"     ❓ Device responds but not EZO-compatible")
+                    
             except Exception as e:
-                retry_count += 1
-                logger.warning(f"I2C retry {retry_count}/{max_retries} for pump {pump_addr}: {e}")
-                # Space out retries by a few seconds
-                time.sleep(2.0 * retry_count)  # Increasing delay with each retry
-                
-        logger.error(f"I2C communication failed after {max_retries} retries for pump {pump_addr}")
-        return "ERROR"
-    
-    def parse_volume(self, response):
-        """Parse volume from EZO pump response"""
-        # Clean up the response - remove non-numeric chars except decimal and minus
-        cleaned = ''.join(c for c in response.strip() if c.isdigit() or c in '.-')
+                print(f"     ❌ Error: {e}")
         
-        try:
-            return float(cleaned) if cleaned else 0.0
-        except ValueError:
-            return 0.0
-    
-    def start_dispense(self, pump_addr, amount):
-        """Start dispensing from pump"""
-        if pump_addr not in self.pumps or amount <= 0:
-            return False
-            
-        pump = self.pumps[pump_addr]
+        bus.close()
         
-        # Check if already dispensing
-        if pump['is_dispensing']:
-            logger.warning(f"Pump {pump_addr} already dispensing")
-            return False
-        
-        # Send dispense command
-        command = f"D,{amount}"
-        response = self.send_command(pump_addr, command)
-        
-        if response != "ERROR":
-            pump['status'] = 1
-            pump['is_dispensing'] = True
-            pump['target_volume'] = amount
-            pump['current_volume'] = 0.0
-            pump['last_check'] = time.time()
-            
-            logger.info(f"Started dispensing {amount}ml from pump {pump_addr}")
-            return True
-        
-        return False
-    
-    def stop_pump(self, pump_addr):
-        """Stop pump operation"""
-        if pump_addr not in self.pumps:
-            return False
-            
-        response = self.send_command(pump_addr, "X")
-        
-        if response != "ERROR":
-            pump = self.pumps[pump_addr]
-            pump['status'] = 0
-            pump['is_dispensing'] = False
-            pump['target_volume'] = 0
-            pump['current_volume'] = 0
-            
-            logger.info(f"Stopped pump {pump_addr}")
-            return True
-        
-        return False
-    
-    def get_volume(self, pump_addr):
-        """Get current dispensed volume"""
-        if pump_addr not in self.pumps:
-            return 0.0
-            
-        response = self.send_command(pump_addr, "R")
-        if response != "ERROR":
-            return self.parse_volume(response)
-        
-        return 0.0
-    
-    def check_pump_status(self, pump_addr):
-        """Check if pump has finished dispensing"""
-        if pump_addr not in self.pumps:
-            return False
-            
-        pump = self.pumps[pump_addr]
-        
-        if not pump['is_dispensing']:
-            return False
-            
-        # Get current volume
-        current_volume = self.get_volume(pump_addr)
-        pump['current_volume'] = current_volume
-        
-        # Check if finished (within tolerance)
-        tolerance = 0.1
-        finished = (current_volume + tolerance) >= pump['target_volume']
-        
-        if finished:
-            self.stop_pump(pump_addr)
-            logger.info(f"Pump {pump_addr} finished: {current_volume}/{pump['target_volume']} ml")
-            
-        return not finished  # Return True if still dispensing
-    
-    def calibrate_pump(self, pump_addr, amount):
-        """Calibrate pump"""
-        if pump_addr not in self.pumps:
-            return False
-            
-        command = f"Cal,{amount}"
-        response = self.send_command(pump_addr, command)
-        
-        if response != "ERROR":
-            self.pumps[pump_addr]['calibrated'] = True
-            logger.info(f"Calibrated pump {pump_addr} with {amount}ml")
-            return True
-        
-        return False
-    
-    def get_pump_info(self, pump_addr):
-        """Get pump information"""
-        if pump_addr not in self.pumps:
-            return None
-            
-        pump = self.pumps[pump_addr]
-        
-        # Get voltage if pump is idle
-        if not pump['is_dispensing']:
-            response = self.send_command(pump_addr, "PV,?")
-            if response != "ERROR" and "," in response:
-                try:
-                    pump['voltage'] = float(response.split(",")[1])
-                except:
-                    pass
-        
-        return pump.copy()
-    
-    def get_all_pumps_status(self):
-        """Get status of all pumps"""
-        return {addr: self.get_pump_info(addr) for addr in self.pumps}
-    
-    def emergency_stop(self):
-        """Stop all pumps immediately"""
-        for pump_addr in self.pumps:
-            self.stop_pump(pump_addr)
-        logger.warning("Emergency stop - all pumps stopped")
-    
-    def close(self):
-        """Close I2C bus"""
-        try:
-            self.emergency_stop()
-            self.i2c_bus.close()
-        except:
-            pass
+    except ImportError:
+        print("   ⚠️  smbus2 not available for detailed testing")
+    except Exception as e:
+        print(f"   ❌ Bus {bus_num} test error: {e}")
 
-
-# Test code
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+def check_pi5_specific():
+    """Check Pi 5 specific I2C configuration"""
+    print(f"\n" + "=" * 60)
+    print("RASPBERRY PI 5 SPECIFIC CHECKS")
+    print("=" * 60)
     
-    controller = EZOPumpController()
-    
-    print("EZO Pump Controller Test")
-    print("1. Testing pump communication...")
-    
-    for pump_addr in range(1, 9):
-        info = controller.get_pump_info(pump_addr)
-        print(f"Pump {pump_addr}: {info}")
-    
-    print("\n2. Test dispense (pump 1, 5ml)...")
-    if controller.start_dispense(1, 5.0):
-        print("Dispense started")
-        
-        # Monitor progress
-        for i in range(10):
-            still_running = controller.check_pump_status(1)
-            info = controller.get_pump_info(1)
-            print(f"  Progress: {info['current_volume']:.2f}/{info['target_volume']:.2f} ml")
-            
-            if not still_running:
-                print("  Dispense completed!")
-                break
-                
-            time.sleep(1)
+    # Check what's actually in the device tree
+    print("1. Checking device tree I2C configuration:")
+    stdout, stderr, code = run_cmd("dtparam -l | grep i2c")
+    if stdout:
+        print("   I2C parameters:")
+        for line in stdout.strip().split('\n'):
+            print(f"     {line}")
     else:
-        print("Failed to start dispense")
+        print("   No I2C parameters found in device tree")
     
-    controller.close()
+    # Check which I2C buses are enabled
+    print("\n2. Checking enabled I2C interfaces:")
+    for i in range(10):
+        if os.path.exists(f"/sys/bus/i2c/devices/i2c-{i}"):
+            print(f"   ✅ I2C bus {i} is enabled")
+            
+            # Try to get more info about this bus
+            try:
+                with open(f"/sys/bus/i2c/devices/i2c-{i}/name", 'r') as f:
+                    name = f.read().strip()
+                    print(f"      Name: {name}")
+            except:
+                pass
+    
+    # Check GPIO alternative functions
+    print("\n3. Checking GPIO pin functions:")
+    stdout, stderr, code = run_cmd("raspi-gpio get 2-3")
+    if stdout:
+        print("   GPIO 2-3 status:")
+        print(f"     {stdout.strip()}")
+    
+    # Check for additional I2C configs
+    print("\n4. Checking additional I2C overlays:")
+    stdout, stderr, code = run_cmd("grep -i i2c /boot/config.txt")
+    if stdout:
+        print("   I2C config lines:")
+        for line in stdout.strip().split('\n'):
+            print(f"     {line}")
+
+def main():
+    print("Scanning all I2C buses on Raspberry Pi 5...")
+    
+    # Install i2c-tools if needed
+    if subprocess.run(["which", "i2cdetect"], capture_output=True).returncode != 0:
+        print("Installing i2c-tools...")
+        run_cmd("sudo apt-get update && sudo apt-get install -y i2c-tools")
+    
+    scan_all_i2c_buses()
+    check_pi5_specific()
+    
+    print(f"\n" + "=" * 60)
+    print("RASPBERRY PI 5 I2C TROUBLESHOOTING GUIDE")
+    print("=" * 60)

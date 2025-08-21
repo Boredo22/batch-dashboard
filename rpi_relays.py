@@ -20,15 +20,15 @@ class RelayController:
         
         # Relay pin mappings (GPIO BCM numbering) - adjust these as needed
         self.relay_pins = {
-            1: 23,   2: 21,  3: 18,  4: 26,   # Relays 1-4
-            5: 15,   6: 19,  7: 14,  8: 13,   # Relays 5-8
-            9: 22,  10: 6,  11: 27, 12: 0,   # Relays 9-12
-            13: 4, 14: 16, 15: 5, 16: 14    # Relays 13-16
+            1: 11,   2: 8,  3: 0,  4: 25,   # Relays 1-4
+            5: 5,   6: 7,  7: 6,  8: 1,   # Relays 5-8
+            9: 13,  10: 12,  11: 19, 12: 16,   # Relays 9-12
+            13: 26, 14: 20    # Relays 13-16
         }
         
         # Track relay states
-        self.relay_states = {i: False for i in range(1, 17)}
-        
+        self.relay_states = {i: False for i in range(1, 15)}
+
         # Setup GPIO
         self.setup_gpio()
     
