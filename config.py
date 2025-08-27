@@ -11,14 +11,18 @@ Centralized configuration for all hardware mappings, constants, and settings
 # GPIO pin mappings for relays (from relay_mapping.json)
 # Format: {relay_id: gpio_pin}
 RELAY_GPIO_PINS = {
+    1: 22,   # Relay 1 on GPIO 22,
     2: 26,   # Tank 2 Fill
     3: 20,   # Tank 3 Fill
     4: 21,   # Tank 1 Nute Dispense
-    6: 19,   # Tank 2 Nute Dispense
+    5: 16,   # Tank 2 Nute Dispense
+    6: 19,   # Tank 3 Nute Dispense
     7: 12,   # Tank 1 Dispense Send
     8: 13,   # Tank 2 Dispense Send
     9: 10,   # Tank 3 Dispense Send
     10: 9,   # Room 1
+    12: 0,
+    13: 5
 }
 
 # Descriptive names for each relay
