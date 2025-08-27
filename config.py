@@ -11,7 +11,7 @@ Centralized configuration for all hardware mappings, constants, and settings
 # GPIO pin mappings for relays (from relay_mapping.json)
 # Format: {relay_id: gpio_pin}
 RELAY_GPIO_PINS = {
-    1: 22,   # Relay 1 on GPIO 22,
+    1: 22,   # Tank 1 Fill,
     2: 26,   # Tank 2 Fill
     3: 20,   # Tank 3 Fill
     4: 21,   # Tank 1 Nute Dispense
@@ -21,8 +21,8 @@ RELAY_GPIO_PINS = {
     8: 13,   # Tank 2 Dispense Send
     9: 10,   # Tank 3 Dispense Send
     10: 9,   # Room 1
-    12: 0,
-    13: 5
+    12: 0,   # Nursery
+    13: 5    # Drain
 }
 
 # Descriptive names for each relay
@@ -35,6 +35,15 @@ RELAY_NAMES = {
     8: "Tank 2 Dispense Send",
     9: "Tank 3 Dispense Send",
     10: "Room 1",
+}
+
+RELAY_COMBOS = {
+    "Mix Tank 1": [4, 7],
+    "Send Tank 1": [4, 10],
+    "Mix Tank 2": [5, 8],
+    "Send Tank 2": [5, 11],
+    "Mix Tank 3": [6, 9],
+    "Send Tank 3": [6, 12],
 }
 
 # Relay logic settings (for ULN2803A)
