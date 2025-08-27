@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Arduino Uno Communication for EC/pH Sensors
-Handles serial communication with Arduino Uno running EC/pH monitoring
+Updated to use centralized configuration from config.py
 """
 
 import serial
@@ -10,14 +10,24 @@ import threading
 import logging
 import re
 from queue import Queue, Empty
+from config import (
+    ARDUINO_UNO_PORTS,
+    ARDUINO_UNO_BAUDRATE,
+    ARDUINO_UNO_TIMEOUT,
+    EC_CALIBRATION_SOLUTIONS,
+    PH_CALIBRATION_SOLUTIONS,
+    SERIAL_READ_TIMEOUT
+)
 
 logger = logging.getLogger(__name__)
 
 class ArduinoUnoController:
-    def __init__(self, port="/dev/ttyACM1", baudrate=115200):
+    def __init__(self, port=None, baudrate=None):
         """Initialize Arduino Uno serial communication"""
-        self.port = port
-        self.baudrate = baudrate
+        self.port = port or self._find_arduino_port()
+        self.baudrate = baudrate or ARDUINO_UNO_BAUDRATE
+        self.timeout = ARDUINO_UNO_TIMEOUT
+        
         self.serial_conn = None
         self.running = False
         self.reader_thread = None
@@ -33,16 +43,36 @@ class ArduinoUnoController:
         self.message_queue = Queue()
         self.message_callback = None
         
-        # Connect to Arduino
-        self.connect()
+        # Connect to Arduino if port found
+        if self.port:
+            self.connect()
+    
+    def _find_arduino_port(self):
+        """Find Arduino Uno port from configuration"""
+        for port in ARDUINO_UNO_PORTS:
+            try:
+                # Try to open the port briefly
+                test_serial = serial.Serial(port, self.baudrate, timeout=0.5)
+                test_serial.close()
+                logger.debug(f"Found potential Arduino port: {port}")
+                return port
+            except:
+                continue
+        
+        logger.warning("No Arduino Uno port found in configured ports")
+        return None
     
     def connect(self):
         """Connect to Arduino Uno"""
+        if not self.port:
+            logger.error("No Arduino Uno port specified")
+            return False
+            
         try:
             self.serial_conn = serial.Serial(
                 port=self.port,
                 baudrate=self.baudrate,
-                timeout=1
+                timeout=self.timeout
             )
             
             # Wait for connection to stabilize
@@ -81,7 +111,7 @@ class ArduinoUnoController:
                     logger.error(f"Error reading from Arduino Uno: {e}")
                 time.sleep(1)
             
-            time.sleep(0.05)  # Small delay to prevent CPU hogging
+            time.sleep(SERIAL_READ_TIMEOUT)
     
     def _parse_message(self, message):
         """Parse messages from Arduino Uno"""
@@ -137,29 +167,48 @@ class ArduinoUnoController:
         return self.send_command("Start;EcPh;OFF;end")
     
     def calibrate_ph(self, cal_type, value=None):
-        """Calibrate pH sensor"""
-        if cal_type in ['mid', 'low', 'high'] and value:
+        """Calibrate pH sensor using configured calibration points"""
+        if cal_type == 'clear':
+            command = "Start;PhCal;clear;;end"
+        elif cal_type in ['low', 'mid', 'high']:
+            if value is None:
+                # Use configured calibration value
+                value = PH_CALIBRATION_SOLUTIONS.get(cal_type)
+                if value is None:
+                    logger.error(f"No configured pH calibration value for {cal_type}")
+                    return False
             command = f"Start;PhCal;{cal_type};{value};end"
-        elif cal_type == 'clear':
-            command = f"Start;PhCal;clear;;end"
         else:
             logger.error(f"Invalid pH calibration type: {cal_type}")
             return False
         
+        logger.info(f"pH calibration: {cal_type} = {value if value else 'clear'}")
         return self.send_command(command)
     
     def calibrate_ec(self, cal_type, value=None):
-        """Calibrate EC sensor"""
+        """Calibrate EC sensor using configured calibration points"""
         if cal_type == 'dry':
             command = "Start;EcCal;dry;;end"
-        elif cal_type in ['low', 'one', 'single'] and value:
-            command = f"Start;EcCal;{cal_type};{value};end"
         elif cal_type == 'clear':
             command = "Start;EcCal;clear;;end"
+        elif cal_type in ['low', 'single', 'high']:
+            if value is None:
+                # Use configured calibration value
+                if cal_type == 'single':
+                    value = EC_CALIBRATION_SOLUTIONS.get('single')
+                else:
+                    value = EC_CALIBRATION_SOLUTIONS.get(cal_type)
+                    
+                if value is None:
+                    logger.error(f"No configured EC calibration value for {cal_type}")
+                    return False
+                    
+            command = f"Start;EcCal;{cal_type};{value};end"
         else:
             logger.error(f"Invalid EC calibration type: {cal_type}")
             return False
         
+        logger.info(f"EC calibration: {cal_type} = {value if value else 'clear'}")
         return self.send_command(command)
     
     def get_latest_readings(self):
@@ -197,8 +246,16 @@ class ArduinoUnoController:
         return {
             "connected": self.is_connected(),
             "port": self.port,
+            "baudrate": self.baudrate,
             "running": self.running,
             "latest_readings": self.latest_readings
+        }
+    
+    def get_calibration_info(self):
+        """Get available calibration solutions from config"""
+        return {
+            "ec_solutions": EC_CALIBRATION_SOLUTIONS.copy(),
+            "ph_solutions": PH_CALIBRATION_SOLUTIONS.copy()
         }
     
     def close(self):
@@ -235,10 +292,19 @@ class ArduinoUnoController:
 
 # Auto-detect Arduino Uno port
 def find_arduino_uno_port():
-    """Try to automatically find Arduino Uno port"""
+    """Try to automatically find Arduino Uno port using configured ports"""
     import serial.tools.list_ports
     
-    # Look for common Arduino patterns
+    # First try the configured ports
+    for port in ARDUINO_UNO_PORTS:
+        try:
+            test_serial = serial.Serial(port, ARDUINO_UNO_BAUDRATE, timeout=0.5)
+            test_serial.close()
+            return port
+        except:
+            continue
+    
+    # Look for Arduino patterns in available ports
     for port in serial.tools.list_ports.comports():
         port_desc = str(port.description).lower()
         port_hwid = getattr(port, 'hwid', '')
@@ -246,17 +312,6 @@ def find_arduino_uno_port():
         # Look for Arduino Uno patterns
         if ('arduino' in port_desc and 'uno' in port_desc) or 'VID:PID=2341:0043' in port_hwid:
             return port.device
-    
-    # Fallback to common ports
-    common_ports = ['/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyUSB0', '/dev/ttyUSB1']
-    for port in common_ports:
-        try:
-            # Try to open the port briefly
-            test_serial = serial.Serial(port, 115200, timeout=0.5)
-            test_serial.close()
-            return port
-        except:
-            continue
     
     return None
 
@@ -268,16 +323,24 @@ if __name__ == "__main__":
     # Try to find Arduino Uno port automatically
     uno_port = find_arduino_uno_port()
     if not uno_port:
-        print("Arduino Uno not found. Using default port /dev/ttyACM1")
-        uno_port = "/dev/ttyACM1"
+        print("Arduino Uno not found. Checking configured ports...")
+        print(f"Configured ports: {ARDUINO_UNO_PORTS}")
+        uno_port = ARDUINO_UNO_PORTS[0]  # Use first configured port
     
-    print(f"Arduino Uno EC/pH Controller Test")
+    print(f"Arduino Uno EC/pH Controller Test (Using config.py)")
     print(f"Attempting to connect to: {uno_port}")
+    print(f"Baudrate: {ARDUINO_UNO_BAUDRATE}")
     
     controller = ArduinoUnoController(port=uno_port)
     
     if controller.is_connected():
         print("✓ Connected to Arduino Uno")
+        
+        # Show calibration info
+        cal_info = controller.get_calibration_info()
+        print(f"\nConfigured calibration solutions:")
+        print(f"  EC: {cal_info['ec_solutions']}")
+        print(f"  pH: {cal_info['ph_solutions']}")
         
         # Set up message callback
         def message_handler(message):
@@ -321,7 +384,7 @@ if __name__ == "__main__":
         print("✗ Failed to connect to Arduino Uno")
         print("Check:")
         print("  - Arduino Uno is connected")
-        print("  - Correct port in code")
+        print("  - Correct port in config.py")
         print("  - User has permission to access serial port")
         print(f"  - Try: sudo usermod -a -G dialout $USER")
     

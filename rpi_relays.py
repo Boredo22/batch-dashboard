@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """
-GPIO Relay Control for Raspberry Pi
-Simple replacement for Arduino Mega relay functionality
+GPIO Relay Control for Raspberry Pi with ULN2803A Darlington Array
+Uses centralized configuration from config.py
 """
 
 import logging
+from config import (
+    RELAY_GPIO_PINS, 
+    RELAY_NAMES, 
+    RELAY_ACTIVE_HIGH,
+    get_relay_name,
+    get_available_relays,
+    validate_relay_id
+)
 
 try:
     import lgpio
@@ -16,24 +24,22 @@ logger = logging.getLogger(__name__)
 
 class RelayController:
     def __init__(self):
-        """Initialize GPIO for relay control"""
+        """Initialize GPIO for relay control with ULN2803A"""
         
-        # Relay pin mappings (GPIO BCM numbering) - adjust these as needed
-        self.relay_pins = {
-            1: 11,   2: 8,  3: 0,  4: 25,   # Relays 1-4
-            5: 5,   6: 7,  7: 6,  8: 1,   # Relays 5-8
-            9: 13,  10: 12,  11: 19, 12: 16,   # Relays 9-12
-            13: 26, 14: 20    # Relays 13-16
-        }
+        # Use relay mappings from config
+        self.relay_pins = RELAY_GPIO_PINS.copy()
         
-        # Track relay states
-        self.relay_states = {i: False for i in range(1, 15)}
+        # Track relay states (True = ON, False = OFF)
+        self.relay_states = {relay_id: False for relay_id in self.relay_pins.keys()}
+
+        # GPIO handle
+        self.h = None
 
         # Setup GPIO
         self.setup_gpio()
     
     def setup_gpio(self):
-        """Setup GPIO pins for relays"""
+        """Setup GPIO pins for relays with ULN2803A"""
         try:
             # Create an lgpio handle
             self.h = lgpio.gpiochip_open(0)
@@ -41,34 +47,49 @@ class RelayController:
             # Setup each relay pin
             for relay_id, pin in self.relay_pins.items():
                 lgpio.gpio_claim_output(self.h, pin)
-                # Start with relay OFF (active LOW, so HIGH = OFF)
-                lgpio.gpio_write(self.h, pin, 1)  # 1 = HIGH = OFF
+                
+                # Start with all relays OFF
+                initial_state = 0 if not RELAY_ACTIVE_HIGH else 0  # Always start OFF
+                lgpio.gpio_write(self.h, pin, initial_state)
                 self.relay_states[relay_id] = False
                 
-            logger.info(f"Initialized {len(self.relay_pins)} relay pins")
+                logger.debug(f"Relay {relay_id} setup on GPIO {pin} ({get_relay_name(relay_id)})")
+                
+            logger.info(f"Initialized {len(self.relay_pins)} relay pins with ULN2803A")
             
         except Exception as e:
             logger.error(f"Failed to setup GPIO: {e}")
             raise
     
     def set_relay(self, relay_id, state):
-        """Set individual relay state"""
-        if relay_id not in self.relay_pins:
-            logger.error(f"Invalid relay ID: {relay_id}")
+        """Set individual relay state
+        
+        Args:
+            relay_id (int): Relay number
+            state (bool): True = ON, False = OFF
+        """
+        if not validate_relay_id(relay_id):
+            available = get_available_relays()
+            logger.error(f"Invalid relay ID: {relay_id} (available: {available})")
             return False
         
         try:
             pin = self.relay_pins[relay_id]
             
-            # Relays are active LOW (LOW = ON, HIGH = OFF)
-            gpio_state = 0 if state else 1  # 0 = LOW = ON, 1 = HIGH = OFF
+            # Apply relay logic based on configuration
+            if RELAY_ACTIVE_HIGH:
+                gpio_state = 1 if state else 0  # HIGH = ON, LOW = OFF
+            else:
+                gpio_state = 0 if state else 1  # LOW = ON, HIGH = OFF
+            
             lgpio.gpio_write(self.h, pin, gpio_state)
             
             # Update state tracking
             self.relay_states[relay_id] = state
             
             state_str = "ON" if state else "OFF"
-            logger.debug(f"Relay {relay_id} set to {state_str}")
+            relay_name = get_relay_name(relay_id)
+            logger.debug(f"Relay {relay_id} ({relay_name}) set to {state_str}")
             return True
             
         except Exception as e:
@@ -98,6 +119,9 @@ class RelayController:
     
     def toggle_relay(self, relay_id):
         """Toggle relay state"""
+        if not validate_relay_id(relay_id):
+            return False
+            
         current_state = self.get_relay_state(relay_id)
         if current_state is not None:
             return self.set_relay(relay_id, not current_state)
@@ -107,6 +131,23 @@ class RelayController:
         """Emergency stop - turn off all relays"""
         logger.warning("Emergency stop - turning off all relays")
         return self.set_all_relays(False)
+    
+    def get_available_relays(self):
+        """Get list of available relay IDs"""
+        return get_available_relays()
+    
+    def get_relay_info(self, relay_id):
+        """Get relay information"""
+        if not validate_relay_id(relay_id):
+            return None
+            
+        return {
+            "id": relay_id,
+            "name": get_relay_name(relay_id),
+            "gpio_pin": self.relay_pins[relay_id],
+            "state": self.relay_states[relay_id],
+            "active_high": RELAY_ACTIVE_HIGH
+        }
     
     def cleanup(self):
         """Clean up GPIO resources"""
@@ -122,8 +163,12 @@ class RelayController:
                     pass
             
             # Close the GPIO chip
-            lgpio.gpiochip_close(self.h)
+            if self.h is not None:
+                lgpio.gpiochip_close(self.h)
+                self.h = None
+            
             logger.info("GPIO cleanup completed")
+            
         except Exception as e:
             logger.error(f"Error during GPIO cleanup: {e}")
     
@@ -135,57 +180,42 @@ class RelayController:
             pass
 
 
-# Relay name mappings for easier identification
-RELAY_NAMES = {
-    1: "Tank 1 Fill",
-    2: "Tank 2 Fill", 
-    3: "Tank 3 Fill",
-    4: "Tank 1 Nute Dispense",
-    5: "Tank 2 Nute Dispense",
-    6: "Tank 3 Nute Dispense",
-    7: "Tank 1 Dispense Send",
-    8: "Tank 2 Dispense Send",
-    9: "Tank 3 Dispense Send",
-    10: "Room 1",
-    11: "Room 2",
-    12: "Room 3",
-    13: "Tank Drain",
-    14: "Spare 1",
-    15: "Spare 2",
-    16: "Spare 3"
-}
-
-def get_relay_name(relay_id):
-    """Get descriptive name for relay"""
-    return RELAY_NAMES.get(relay_id, f"Relay {relay_id}")
-
-
 # Test code
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     
     controller = RelayController()
     
-    print("Relay Controller Test")
-    print("Current relay states:")
+    print("Relay Controller Test (Using config.py)")
+    print("=" * 45)
+    print("Available relays and their current states:")
     
-    for relay_id in range(1, 17):
-        state = controller.get_relay_state(relay_id)
-        name = get_relay_name(relay_id)
-        print(f"  {relay_id:2d}. {name}: {'ON' if state else 'OFF'}")
+    for relay_id in controller.get_available_relays():
+        info = controller.get_relay_info(relay_id)
+        if info:
+            print(f"  {info['id']:2d}. {info['name']:25s} (GPIO {info['gpio_pin']:2d}): {'ON' if info['state'] else 'OFF'}")
     
-    print("\nTesting relay 1...")
-    print("Turning ON...")
-    controller.set_relay(1, True)
+    print(f"\nTesting first available relay...")
+    available_relays = controller.get_available_relays()
+    if available_relays:
+        test_relay = available_relays[0]
+        print(f"🔊 Listen for relay {test_relay} clicking sounds...")
+        
+        import time
+        
+        print("Turning ON...")
+        controller.set_relay(test_relay, True)
+        time.sleep(2)
+        
+        print("Turning OFF...")
+        controller.set_relay(test_relay, False)
+        
+        print("\nTesting all relays OFF...")
+        controller.set_all_relays(False)
+        
+        print(f"\nRelay Logic: {'Active HIGH' if RELAY_ACTIVE_HIGH else 'Active LOW'}")
+        print("Test completed")
+    else:
+        print("No relays available for testing")
     
-    import time
-    time.sleep(2)
-    
-    print("Turning OFF...")
-    controller.set_relay(1, False)
-    
-    print("\nTesting all relays OFF...")
-    controller.set_all_relays(False)
-    
-    print("Test completed")
     controller.cleanup()

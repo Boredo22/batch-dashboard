@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
 """
 Flow Meter Control for Raspberry Pi
-Simple replacement for Arduino Mega flow meter functionality
+Updated to use centralized configuration from config.py
 """
 
 import time
 import logging
+from config import (
+    FLOW_METER_GPIO_PINS,
+    FLOW_METER_NAMES,
+    FLOW_METER_CALIBRATION,
+    FLOW_METER_INTERRUPT_EDGE,
+    MOCK_FLOW_PULSE_INTERVAL,
+    MOCK_PULSES_PER_INTERVAL,
+    get_flow_meter_name,
+    get_available_flow_meters,
+    validate_flow_meter_id
+)
 
 try:
     import lgpio
@@ -18,27 +29,27 @@ logger = logging.getLogger(__name__)
 class FlowMeterController:
     def __init__(self):
         """Initialize flow meter control"""
-        # Flow meter pin mappings (GPIO BCM numbering)
-        self.flow_pins_map = {
-            1: 3,  # Flow meter 1 on GPIO 3
-            2: 2   # Flow meter 2 on GPIO 2
-        }
+        # Use flow meter mappings from config
+        self.flow_pins_map = FLOW_METER_GPIO_PINS.copy()
         
         # Will store flow pins with callback info
         self.flow_pins = {}
         
         # Flow meter data
         self.flow_meters = {}
-        for meter_id in self.flow_pins:
+        for meter_id in self.flow_pins_map.keys():
             self.flow_meters[meter_id] = {
                 'pulse_count': 0,
                 'last_count': 0,
                 'status': 0,  # 0=inactive, 1=active
                 'target_gallons': 0,
                 'current_gallons': 0,
-                'pulses_per_gallon': 220,  # Default calibration
+                'pulses_per_gallon': FLOW_METER_CALIBRATION.get(meter_id, 220),
                 'last_update': 0
             }
+        
+        # GPIO handle
+        self.h = None
         
         # Setup GPIO
         self.setup_gpio()
@@ -54,15 +65,21 @@ class FlowMeterController:
                 # Configure as input with pull-up
                 lgpio.gpio_claim_input(self.h, pin, lgpio.SET_PULL_UP)
                 
-                # Add callback for falling edge
-                # Store the callback ID for later cleanup
+                # Determine interrupt edge
+                edge = lgpio.FALLING_EDGE if FLOW_METER_INTERRUPT_EDGE == "FALLING" else lgpio.RISING_EDGE
+                
+                # Add callback for interrupt
+                callback_id = lgpio.callback(self.h, pin, edge,
+                                           lambda chip, gpio, level, tick, mid=meter_id: self.pulse_interrupt(mid))
+                
+                # Store the callback info
                 self.flow_pins[meter_id] = {
                     'pin': pin,
-                    'cb_id': lgpio.callback(self.h, pin, lgpio.FALLING_EDGE,
-                                          lambda chip, gpio, level, tick, mid=meter_id: self.pulse_interrupt(mid))
+                    'cb_id': callback_id,
+                    'name': get_flow_meter_name(meter_id)
                 }
                 
-                logger.debug(f"Flow meter {meter_id} setup on GPIO {pin}")
+                logger.debug(f"Flow meter {meter_id} ({get_flow_meter_name(meter_id)}) setup on GPIO {pin}")
                 
             logger.info(f"Initialized {len(self.flow_pins)} flow meters")
             
@@ -74,12 +91,13 @@ class FlowMeterController:
         """Handle pulse interrupt from flow meter"""
         if meter_id in self.flow_meters:
             self.flow_meters[meter_id]['pulse_count'] += 1
-            logger.debug(f"Pulse on flow meter {meter_id}: {self.flow_meters[meter_id]['pulse_count']}")
+            logger.debug(f"Pulse on {get_flow_meter_name(meter_id)}: {self.flow_meters[meter_id]['pulse_count']}")
     
     def start_flow(self, meter_id, target_gallons, pulses_per_gallon=None):
         """Start flow monitoring"""
-        if meter_id not in self.flow_meters:
-            logger.error(f"Invalid flow meter ID: {meter_id}")
+        if not validate_flow_meter_id(meter_id):
+            available = get_available_flow_meters()
+            logger.error(f"Invalid flow meter ID: {meter_id} (available: {available})")
             return False
         
         if target_gallons <= 0:
@@ -95,29 +113,32 @@ class FlowMeterController:
         meter['target_gallons'] = target_gallons
         meter['status'] = 1  # Active
         
+        # Update calibration if provided
         if pulses_per_gallon is not None:
             meter['pulses_per_gallon'] = pulses_per_gallon
         
         meter['last_update'] = time.time()
         
-        logger.info(f"Started flow meter {meter_id}: target {target_gallons} gallons, "
+        meter_name = get_flow_meter_name(meter_id)
+        logger.info(f"Started {meter_name}: target {target_gallons} gallons, "
                    f"{meter['pulses_per_gallon']} pulses/gallon")
         return True
     
     def stop_flow(self, meter_id):
         """Stop flow monitoring"""
-        if meter_id not in self.flow_meters:
+        if not validate_flow_meter_id(meter_id):
             return False
         
         meter = self.flow_meters[meter_id]
         meter['status'] = 0  # Inactive
         
-        logger.info(f"Stopped flow meter {meter_id}")
+        meter_name = get_flow_meter_name(meter_id)
+        logger.info(f"Stopped {meter_name}")
         return True
     
     def update_flow_status(self, meter_id):
         """Update flow meter status and check for completion"""
-        if meter_id not in self.flow_meters:
+        if not validate_flow_meter_id(meter_id):
             return False
         
         meter = self.flow_meters[meter_id]
@@ -136,42 +157,49 @@ class FlowMeterController:
                 meter['current_gallons'] = new_gallons
                 meter['last_update'] = time.time()
                 
-                logger.debug(f"Flow meter {meter_id}: {meter['current_gallons']}/{meter['target_gallons']} gallons")
+                meter_name = get_flow_meter_name(meter_id)
+                logger.debug(f"{meter_name}: {meter['current_gallons']}/{meter['target_gallons']} gallons")
                 
                 # Check if target reached
                 if meter['target_gallons'] <= meter['current_gallons']:
                     meter['status'] = 0  # Stop
-                    logger.info(f"Flow meter {meter_id} completed: {meter['current_gallons']} gallons")
+                    logger.info(f"{meter_name} completed: {meter['current_gallons']} gallons")
                     return False  # Completed
         
         return meter['status'] == 1  # Still active
     
     def get_flow_status(self, meter_id):
         """Get flow meter status"""
-        if meter_id not in self.flow_meters:
+        if not validate_flow_meter_id(meter_id):
             return None
         
-        return self.flow_meters[meter_id].copy()
+        status = self.flow_meters[meter_id].copy()
+        status['name'] = get_flow_meter_name(meter_id)
+        return status
     
     def get_all_flow_status(self):
         """Get status of all flow meters"""
-        return {meter_id: meter.copy() for meter_id, meter in self.flow_meters.items()}
+        status = {}
+        for meter_id in self.flow_meters.keys():
+            status[meter_id] = self.get_flow_status(meter_id)
+        return status
     
     def calibrate_flow_meter(self, meter_id, pulses_per_gallon):
         """Set calibration for flow meter"""
-        if meter_id not in self.flow_meters:
+        if not validate_flow_meter_id(meter_id):
             return False
         
         if pulses_per_gallon <= 0:
             return False
         
         self.flow_meters[meter_id]['pulses_per_gallon'] = pulses_per_gallon
-        logger.info(f"Calibrated flow meter {meter_id}: {pulses_per_gallon} pulses/gallon")
+        meter_name = get_flow_meter_name(meter_id)
+        logger.info(f"Calibrated {meter_name}: {pulses_per_gallon} pulses/gallon")
         return True
     
     def reset_flow_meter(self, meter_id):
         """Reset flow meter counters"""
-        if meter_id not in self.flow_meters:
+        if not validate_flow_meter_id(meter_id):
             return False
         
         meter = self.flow_meters[meter_id]
@@ -181,7 +209,8 @@ class FlowMeterController:
         meter['target_gallons'] = 0
         meter['status'] = 0
         
-        logger.info(f"Reset flow meter {meter_id}")
+        meter_name = get_flow_meter_name(meter_id)
+        logger.info(f"Reset {meter_name}")
         return True
     
     def emergency_stop(self):
@@ -206,7 +235,9 @@ class FlowMeterController:
                     pass  # Callback or pin might not exist
             
             # Close the GPIO chip
-            lgpio.gpiochip_close(self.h)
+            if self.h is not None:
+                lgpio.gpiochip_close(self.h)
+                self.h = None
             
             logger.info("Flow meter cleanup completed")
             
@@ -221,28 +252,31 @@ class FlowMeterController:
             pass
 
 
-# Test code with mock pulses for testing
+# Mock version for testing without actual hardware
 class MockFlowMeterController(FlowMeterController):
     """Mock version for testing without actual hardware"""
     
     def __init__(self):
-        self.flow_pins_map = {1: 3, 2: 2}
+        # Use flow meter mappings from config
+        self.flow_pins_map = FLOW_METER_GPIO_PINS.copy()
         self.flow_pins = {}
         self.flow_meters = {}
-        for meter_id in self.flow_pins_map:
+        
+        for meter_id in self.flow_pins_map.keys():
             self.flow_meters[meter_id] = {
                 'pulse_count': 0,
                 'last_count': 0,
                 'status': 0,
                 'target_gallons': 0,
                 'current_gallons': 0,
-                'pulses_per_gallon': 220,
+                'pulses_per_gallon': FLOW_METER_CALIBRATION.get(meter_id, 220),
                 'last_update': 0
             }
             # Mock the flow_pins structure used by the real controller
             self.flow_pins[meter_id] = {
                 'pin': self.flow_pins_map[meter_id],
-                'cb_id': None
+                'cb_id': None,
+                'name': get_flow_meter_name(meter_id)
             }
         
         self.last_mock_time = time.time()
@@ -260,16 +294,14 @@ class MockFlowMeterController(FlowMeterController):
         """Generate mock pulses for testing"""
         current_time = time.time()
         
-        # Generate pulses every 50ms for smooth simulation
-        if current_time - self.last_mock_time >= 0.05:
+        # Generate pulses at configured interval
+        if current_time - self.last_mock_time >= MOCK_FLOW_PULSE_INTERVAL:
             self.last_mock_time = current_time
             
             # Add pulses to active flow meters
             for meter_id, meter in self.flow_meters.items():
                 if meter['status'] == 1:
-                    # Simulate ~10 gallons/minute = 2200 pulses/minute at 220 pulses/gallon
-                    # That's ~37 pulses/second, so add ~2 pulses every 50ms
-                    meter['pulse_count'] += 2
+                    meter['pulse_count'] += MOCK_PULSES_PER_INTERVAL
     
     def update_flow_status(self, meter_id):
         """Update with mock pulse generation"""
@@ -284,30 +316,41 @@ if __name__ == "__main__":
     # Use mock controller for testing without hardware
     controller = MockFlowMeterController()
     
-    print("Flow Meter Controller Test")
-    print("1. Testing flow meter setup...")
+    print("Flow Meter Controller Test (Using config.py)")
+    print("=" * 50)
+    print("Available flow meters:")
     
-    for meter_id in [1, 2]:
+    for meter_id in get_available_flow_meters():
         status = controller.get_flow_status(meter_id)
-        print(f"Flow meter {meter_id}: {status}")
+        if status:
+            gpio_pin = FLOW_METER_GPIO_PINS[meter_id]
+            print(f"  {meter_id}. {status['name']:20s} (GPIO {gpio_pin}): {status['pulses_per_gallon']} PPG")
     
-    print("\n2. Test flow monitoring (meter 1, 5 gallons)...")
-    if controller.start_flow(1, 5, 220):
-        print("Flow monitoring started")
+    print("\nTesting flow monitoring...")
+    test_meter = get_available_flow_meters()[0] if get_available_flow_meters() else None
+    
+    if test_meter:
+        meter_name = get_flow_meter_name(test_meter)
+        print(f"Starting {meter_name} for 5 gallons...")
         
-        # Monitor progress
-        for i in range(30):  # 30 iterations
-            still_running = controller.update_flow_status(1)
-            status = controller.get_flow_status(1)
-            print(f"  Progress: {status['current_gallons']}/{status['target_gallons']} gallons "
-                  f"({status['pulse_count']} pulses)")
+        if controller.start_flow(test_meter, 5):
+            print("Flow monitoring started")
             
-            if not still_running:
-                print("  Flow completed!")
-                break
-            
-            time.sleep(0.5)
+            # Monitor progress
+            for i in range(30):  # 30 iterations
+                still_running = controller.update_flow_status(test_meter)
+                status = controller.get_flow_status(test_meter)
+                print(f"  Progress: {status['current_gallons']}/{status['target_gallons']} gallons "
+                      f"({status['pulse_count']} pulses)")
+                
+                if not still_running:
+                    print("  Flow completed!")
+                    break
+                
+                time.sleep(0.5)
+        else:
+            print("Failed to start flow monitoring")
     else:
-        print("Failed to start flow monitoring")
+        print("No flow meters available for testing")
     
     controller.cleanup()
