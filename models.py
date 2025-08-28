@@ -6,14 +6,20 @@ SQLite models for tank state management, job tracking, and logging
 
 import sqlite3
 import logging
-import queue
 import threading
+import time
+from queue import Queue, Empty
+from contextlib import contextmanager
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Dict, Any
 import json
 
 logger = logging.getLogger(__name__)
+
+# Global database manager instance (singleton)
+_global_db_manager = None
+_db_lock = threading.Lock()
 
 class TankState(Enum):
     """Tank state enumeration"""
@@ -36,80 +42,163 @@ class JobType(Enum):
     MIX = "mix"
     SEND = "send"
 
-class DatabasePool:
-    """Database connection pool for improved performance"""
+class DatabaseConnectionPool:
+    """Thread-safe database connection pool with proper resource management"""
     
-    def __init__(self, db_path: str = "database.db", max_connections: int = 5):
+    def __init__(self, db_path: str = "database.db", max_connections: int = 20):
         self.db_path = db_path
         self.max_connections = max_connections
-        self.pool = queue.Queue(maxsize=max_connections)
-        self.lock = threading.Lock()
+        self._pool = Queue(maxsize=max_connections)
+        self._lock = threading.Lock()
+        self._created_connections = 0
+        self._closed = False
         
-        # Initialize connection pool
-        for _ in range(max_connections):
-            conn = sqlite3.connect(db_path, check_same_thread=False)
-            conn.row_factory = sqlite3.Row
-            self.pool.put(conn)
-        
-        logger.info(f"Database pool initialized with {max_connections} connections")
+        # Pre-create initial connections
+        self._initialize_pool()
+        logger.info(f"Database pool initialized with {self._created_connections}/{max_connections} connections")
     
-    def get_connection(self):
-        """Get connection from pool"""
+    def _initialize_pool(self):
+        """Initialize the connection pool with starting connections"""
+        initial_connections = min(5, self.max_connections)
+        for _ in range(initial_connections):
+            conn = self._create_connection()
+            if conn:
+                self._pool.put(conn)
+                self._created_connections += 1
+    
+    def _create_connection(self):
+        """Create a new database connection with proper settings"""
         try:
-            return self.pool.get(timeout=5.0)
-        except queue.Empty:
-            logger.warning("Database pool exhausted, creating temporary connection")
-            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn = sqlite3.connect(
+                self.db_path,
+                check_same_thread=False,
+                timeout=30.0  # 30 second timeout
+            )
             conn.row_factory = sqlite3.Row
+            
+            # Enable WAL mode for better concurrency
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=10000")  # 10 second busy timeout
+            conn.execute("PRAGMA synchronous=NORMAL")  # Faster writes
+            
             return conn
+        except Exception as e:
+            logger.error(f"Failed to create database connection: {e}")
+            return None
+    
+    def get_connection(self, timeout=10.0):
+        """Get a connection from the pool"""
+        if self._closed:
+            raise RuntimeError("Connection pool is closed")
+        
+        # Try to get existing connection from pool
+        try:
+            conn = self._pool.get(timeout=timeout)
+            # Test if connection is still valid
+            try:
+                conn.execute("SELECT 1").fetchone()
+                return conn
+            except sqlite3.Error:
+                # Connection is bad, close it and create new one
+                conn.close()
+                with self._lock:
+                    self._created_connections -= 1
+                # Fall through to create new connection
+        except Empty:
+            pass  # Pool is empty, create new connection
+        
+        # Create new connection if under limit
+        with self._lock:
+            if self._created_connections < self.max_connections:
+                conn = self._create_connection()
+                if conn:
+                    self._created_connections += 1
+                    return conn
+        
+        # Pool is full and at max connections
+        logger.warning(f"Database pool at maximum capacity ({self.max_connections}), waiting for available connection...")
+        try:
+            conn = self._pool.get(timeout=timeout)
+            conn.execute("SELECT 1").fetchone()  # Validate connection
+            return conn
+        except (Empty, sqlite3.Error) as e:
+            logger.error(f"Failed to get database connection: {e}")
+            return None
     
     def return_connection(self, conn):
-        """Return connection to pool"""
+        """Return a connection to the pool"""
+        if not conn or self._closed:
+            if conn:
+                conn.close()
+            return
+        
         try:
-            self.pool.put_nowait(conn)
-        except queue.Full:
-            # Pool is full, close the connection
+            # Test if connection is still good
+            conn.execute("SELECT 1").fetchone()
+            
+            # Try to put back in pool (non-blocking)
+            try:
+                self._pool.put_nowait(conn)
+            except:
+                # Pool is full, close the excess connection
+                conn.close()
+                with self._lock:
+                    self._created_connections -= 1
+                    
+        except sqlite3.Error:
+            # Connection is bad, close it
             conn.close()
+            with self._lock:
+                self._created_connections -= 1
+    
+    @contextmanager
+    def get_connection_context(self):
+        """Context manager for automatic connection management"""
+        conn = self.get_connection()
+        if not conn:
+            raise RuntimeError("Could not obtain database connection")
+        
+        try:
+            yield conn
+        except Exception:
+            # Rollback on exception
+            try:
+                conn.rollback()
+            except:
+                pass
+            raise
+        finally:
+            self.return_connection(conn)
     
     def close_all(self):
-        """Close all connections in pool"""
-        while not self.pool.empty():
+        """Close all connections in the pool"""
+        self._closed = True
+        
+        # Close all pooled connections
+        while True:
             try:
-                conn = self.pool.get_nowait()
+                conn = self._pool.get_nowait()
                 conn.close()
-            except queue.Empty:
+            except Empty:
                 break
-        logger.info("Database pool closed")
+        
+        with self._lock:
+            self._created_connections = 0
+        
+        logger.info("Database connection pool closed")
+
 
 class DatabaseManager:
-    """Database manager for SQLite operations with connection pooling"""
+    """Improved Database manager using singleton pattern and connection pooling"""
     
-    def __init__(self, db_path: str = "database.db", use_pool: bool = True):
+    def __init__(self, db_path: str = "database.db"):
         self.db_path = db_path
-        self.use_pool = use_pool
-        
-        if use_pool:
-            self.pool = DatabasePool(db_path)
-        else:
-            self.pool = None
-        
+        self.pool = DatabaseConnectionPool(db_path, max_connections=20)
         self.init_database()
     
     def get_connection(self):
-        """Get database connection (pooled or direct)"""
-        if self.pool:
-            return self.pool.get_connection()
-        else:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row  # Enable dict-like access
-            return conn
-    
-    def return_connection(self, conn):
-        """Return connection to pool or close if not using pool"""
-        if self.pool:
-            self.pool.return_connection(conn)
-        else:
-            conn.close()
+        """Get database connection context manager"""
+        return self.pool.get_connection_context()
     
     def init_database(self):
         """Initialize database tables"""
@@ -133,7 +222,7 @@ class DatabaseManager:
                     job_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     job_type TEXT NOT NULL,
                     tank_id INTEGER NOT NULL,
-                    parameters TEXT,  -- JSON string
+                    parameters TEXT,
                     status TEXT DEFAULT 'pending',
                     progress REAL DEFAULT 0.0,
                     error_message TEXT,
@@ -171,7 +260,7 @@ class DatabaseManager:
                 )
             """)
             
-            # Create indexes for better performance
+            # Create indexes for performance
             conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_tank_id ON jobs(tank_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sensor_logs_timestamp ON sensor_logs(timestamp)")
@@ -179,6 +268,10 @@ class DatabaseManager:
             
             conn.commit()
             logger.info("Database initialized successfully")
+    
+    def close(self):
+        """Close the database manager and all connections"""
+        self.pool.close_all()
 
 class Tank:
     """Tank model"""
@@ -479,10 +572,24 @@ class HardwareLog:
             logger.error(f"Failed to get hardware logs: {e}")
             return []
 
+def get_database_manager(db_path: str = "database.db") -> DatabaseManager:
+    """Get the global database manager instance (singleton pattern)"""
+    global _global_db_manager
+    
+    if _global_db_manager is None:
+        with _db_lock:
+            if _global_db_manager is None:
+                _global_db_manager = DatabaseManager(db_path)
+                logger.info("Global database manager created")
+    
+    return _global_db_manager
+
+
 # Initialize database and models
 def init_models(db_path: str = "database.db"):
-    """Initialize database models"""
-    db_manager = DatabaseManager(db_path)
+    """Initialize database models using singleton database manager"""
+    # Use singleton database manager instead of creating new instance
+    db_manager = get_database_manager(db_path)
     
     # Initialize tanks from config
     from config import TANKS

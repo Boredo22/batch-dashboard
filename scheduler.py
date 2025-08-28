@@ -12,8 +12,7 @@ from queue import Queue, PriorityQueue
 from dataclasses import dataclass, field
 
 from models import (
-    DatabaseManager, Tank, Job, TankState, JobStatus, JobType, 
-    init_models
+    get_database_manager, Tank, Job, TankState, JobStatus, JobType
 )
 from hardware_manager import HardwareManager
 from jobs import BaseJob, create_job, JobPriority
@@ -37,10 +36,10 @@ class JobScheduler:
         """Initialize job scheduler"""
         self.hardware = hardware_manager
         
-        # Initialize database models
-        self.models = init_models(db_path)
-        self.tank_model = self.models['tank']
-        self.job_model = self.models['job']
+        # Use singleton database manager
+        self.db_manager = get_database_manager(db_path)
+        self.tank_model = Tank(self.db_manager)
+        self.job_model = Job(self.db_manager)
         
         # Job management
         self.job_queue = PriorityQueue()

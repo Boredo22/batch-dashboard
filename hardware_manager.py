@@ -23,7 +23,7 @@ from config import (
 )
 
 # Import models for logging
-from models import HardwareLog, DatabaseManager
+from models import get_database_manager, HardwareLog
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +41,8 @@ class HardwareManager:
         """Initialize hardware manager with all controllers"""
         self.use_mock = use_mock_hardware if use_mock_hardware is not None else MOCK_SETTINGS
         
-        # Initialize database logging
-        self.db_manager = DatabaseManager()
+        # Use singleton database manager instead of creating new one
+        self.db_manager = get_database_manager()
         self.hardware_log = HardwareLog(self.db_manager)
         
         # Initialize hardware controllers

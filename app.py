@@ -14,7 +14,7 @@ from typing import Dict, Any
 # Import our system components
 from hardware_manager import HardwareManager
 from scheduler import JobScheduler
-from models import JobType, JobStatus, init_models
+from models import JobType, JobStatus, get_database_manager, init_models
 from config import (
     TANKS, VEG_FORMULA, BLOOM_FORMULA, FORMULA_TARGETS, PUMP_NAME_TO_ID,
     JOB_SETTINGS, get_tank_info, get_pump_name, get_available_pumps,
@@ -40,9 +40,17 @@ def initialize_system():
     global hardware_manager, job_scheduler, models
     
     try:
-        # Initialize database models
+        # Initialize models ONCE at startup
+        logger.info("🔧 Initializing database models...")
         models = init_models()
-        logger.info("✓ Database models initialized")
+        db_manager = models['db_manager']
+        logger.info("✅ Database models initialized")
+        
+        # Use the same models throughout the app
+        tank_model = models['tank']
+        job_model = models['job']
+        sensor_log_model = models['sensor_log']
+        hardware_log_model = models['hardware_log']
         
         # Initialize hardware manager with mock settings for development
         hardware_manager = HardwareManager(use_mock_hardware=MOCK_SETTINGS)
