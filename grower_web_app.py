@@ -33,9 +33,9 @@ def get_system():
             try:
                 system = FeedControlSystem(use_mock_flow=True)  # Use mock for reliability
                 system.start()
-                print("✓ Feed control system started")
+                print(" Feed control system started")
             except Exception as e:
-                print(f"✗ Failed to start system: {e}")
+                print(f" Failed to start system: {e}")
                 return None
         return system
 
@@ -273,9 +273,9 @@ def stop_pump(pump_id):
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    print("🌱 Grower Web Control Starting...")
-    print("📱 Access from your phone/tablet at: http://[raspberry-pi-ip]:5000")
-    print("🔧 Emergency stop available on all pages")
+    print(" Grower Web Control Starting...")
+    print(" Access from your phone/tablet at: http://[raspberry-pi-ip]:5000")
+    print(" Emergency stop available on all pages")
     
     # Create templates directory if it doesn't exist
     import os

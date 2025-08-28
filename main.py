@@ -11,10 +11,10 @@ import queue
 from datetime import datetime
 
 # Import updated controllers
-from rpi_pumps import EZOPumpController
-from rpi_relays import RelayController
-from rpi_flow import FlowMeterController, MockFlowMeterController
-from rpi_unoComm import ArduinoUnoController, find_arduino_uno_port
+from hardware.rpi_pumps import EZOPumpController
+from hardware.rpi_relays import RelayController
+from hardware.rpi_flow import FlowMeterController, MockFlowMeterController
+from hardware.rpi_unoComm import ArduinoUnoController, find_arduino_uno_port
 
 # Import configuration
 from config import (
