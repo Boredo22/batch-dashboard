@@ -59,7 +59,8 @@ class RelayController:
             
         except Exception as e:
             logger.error(f"Failed to setup GPIO: {e}")
-            raise
+            self.h = None
+            # Don't re-raise the exception to allow graceful degradation
     
     def set_relay(self, relay_id, state):
         """Set individual relay state
@@ -71,6 +72,10 @@ class RelayController:
         if not validate_relay_id(relay_id):
             available = get_available_relays()
             logger.error(f"Invalid relay ID: {relay_id} (available: {available})")
+            return False
+        
+        if self.h is None:
+            logger.error(f"GPIO not initialized - cannot set relay {relay_id}")
             return False
         
         try:
@@ -130,6 +135,9 @@ class RelayController:
     def emergency_stop(self):
         """Emergency stop - turn off all relays"""
         logger.warning("Emergency stop - turning off all relays")
+        if self.h is None:
+            logger.error("GPIO not initialized - cannot perform emergency stop")
+            return False
         return self.set_all_relays(False)
     
     def get_available_relays(self):

@@ -305,11 +305,19 @@ class EZOPumpController:
         """Emergency stop all pumps"""
         logger.warning("Emergency stop - stopping all pumps")
         
+        success = True
         for pump_id in PUMP_ADDRESSES.keys():
             if self.pump_info[pump_id]['is_dispensing']:
-                self.stop_dispense(pump_id)
+                try:
+                    result = self.stop_dispense(pump_id)
+                    if result is None:
+                        success = False
+                except Exception as e:
+                    logger.error(f"Pump {pump_id} error: {e}")
+                    success = False
         
         logger.info("All pumps stopped")
+        return success
     
     def close(self):
         """Close I2C bus connection"""

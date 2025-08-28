@@ -458,13 +458,19 @@ class HardwareManager:
             # Stop all relays
             if self.relay_controller:
                 relay_success = self.relay_controller.set_all_relays(False)
-                success &= relay_success
+                if relay_success is not None:
+                    success &= relay_success
+                else:
+                    success = False
                 self._log_hardware_action("relay", 0, "emergency_stop_all", "success" if relay_success else "failed")
             
             # Stop all pumps
             if self.pump_controller:
                 pump_success = self.pump_controller.emergency_stop()
-                success &= pump_success
+                if pump_success is not None:
+                    success &= pump_success
+                else:
+                    success = False
                 self._log_hardware_action("pump", 0, "emergency_stop_all", "success" if pump_success else "failed")
             
             # Stop all flow meters
