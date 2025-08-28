@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Nutrient Mixing System{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌱</text></svg>">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <h1 class="header-title">
+                <span class="header-icon">🌱</span>
+                {% block header_title %}Nutrient Mixing System{% endblock %}
+            </h1>
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="status-label">Status:</span>
+                    <span id="system-status" class="status-value">Loading...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Time:</span>
+                    <span id="current-time" class="status-value">--:--:--</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="navigation">
+        <div class="nav-container">
+            <a href="{{ url_for('home') }}" class="nav-item {% if request.endpoint == 'home' %}active{% endif %}">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">Operations</span>
+            </a>
+            <a href="{{ url_for('settings') }}" class="nav-item {% if request.endpoint == 'settings' %}active{% endif %}">
+                <span class="nav-icon">⚙️</span>
+                <span class="nav-label">Settings</span>
+            </a>
+            <a href="{{ url_for('testing') }}" class="nav-item {% if request.endpoint == 'testing' %}active{% endif %}">
+                <span class="nav-icon">🔧</span>
+                <span class="nav-label">Testing</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Emergency Stop Button -->
+    <div class="emergency-section">
+        <button id="emergency-btn" class="emergency-btn" onclick="emergencyStop()">
+            🚨 EMERGENCY STOP 🚨
+        </button>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Message Toast -->
+    <div id="message-toast" class="message-toast">
+        <span id="message-text"></span>
+        <button id="message-close" class="message-close">&times;</button>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <div class="loading-text">Processing...</div>
+        </div>
+    </div>
+
+    <!-- Base JavaScript -->
+    <script>
+        // Global variables
+        let currentStatus = {};
+        let statusUpdateInterval;
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeApp();
+        });
+
+        function initializeApp() {
+            // Start status updates
+            updateStatus();
+            statusUpdateInterval = setInterval(updateStatus, 2000);
+
+            // Initialize message toast
+            initializeMessageToast();
+
+            // Page-specific initialization
+            if (typeof initializePage === 'function') {
+                initializePage();
+            }
+        }
+
+        // Status updates
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                if (!response.ok) throw new Error('Failed to get status');
+                
+                currentStatus = await response.json();
+                updateStatusDisplay();
+                
+                // Call page-specific status update
+                if (typeof updatePageStatus === 'function') {
+                    updatePageStatus(currentStatus);
+                }
+            } catch (error) {
+                console.error('Status update failed:', error);
+                showMessage('Connection error', 'error');
+            }
+        }
+
+        function updateStatusDisplay() {
+            // Update system status
+            const statusElement = document.getElementById('system-status');
+            if (statusElement) {
+                statusElement.textContent = currentStatus.system_running ? 'Online ✓' : 'Offline ✗';
+                statusElement.className = 'status-value ' + (currentStatus.system_running ? 'status-online' : 'status-offline');
+            }
+            
+            // Update time
+            const timeElement = document.getElementById('current-time');
+            if (timeElement) {
+                timeElement.textContent = currentStatus.timestamp || '--:--:--';
+            }
+        }
+
+        // Message system
+        function initializeMessageToast() {
+            const closeBtn = document.getElementById('message-close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', hideMessage);
+            }
+        }
+
+        function showMessage(message, type = 'info', duration = 5000) {
+            const toast = document.getElementById('message-toast');
+            const text = document.getElementById('message-text');
+            
+            if (toast && text) {
+                text.textContent = message;
+                toast.className = `message-toast show ${type}`;
+                
+                // Auto-hide after duration
+                setTimeout(hideMessage, duration);
+            }
+        }
+
+        function hideMessage() {
+            const toast = document.getElementById('message-toast');
+            if (toast) {
+                toast.className = 'message-toast';
+            }
+        }
+
+        // Loading overlay
+        function showLoading(text = 'Processing...') {
+            const overlay = document.getElementById('loading-overlay');
+            const loadingText = document.querySelector('.loading-text');
+            
+            if (overlay) {
+                if (loadingText) loadingText.textContent = text;
+                overlay.classList.add('show');
+            }
+        }
+
+        function hideLoading() {
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.classList.remove('show');
+            }
+        }
+
+        // Emergency stop
+        async function emergencyStop() {
+            if (!confirm('Are you sure you want to EMERGENCY STOP all operations?')) {
+                return;
+            }
+
+            try {
+                showLoading('Emergency stopping...');
+                
+                const response = await fetch('/api/emergency_stop', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showMessage('🚨 EMERGENCY STOP ACTIVATED 🚨', 'error', 10000);
+                    updateStatus(); // Immediate update
+                } else {
+                    showMessage(result.error || 'Emergency stop failed', 'error');
+                }
+            } catch (error) {
+                showMessage('Network error during emergency stop', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Utility functions
+        function formatDuration(seconds) {
+            if (seconds < 60) return `${Math.round(seconds)}s`;
+            if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+            return `${Math.round(seconds / 3600)}h`;
+        }
+
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return '--:--:--';
+            return new Date(timestamp * 1000).toLocaleTimeString();
+        }
+
+        // API helper functions
+        async function apiCall(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+                
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(result.error || 'API call failed');
+                }
+                
+                return result;
+            } catch (error) {
+                console.error('API call failed:', error);
+                throw error;
+            }
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (statusUpdateInterval) {
+                clearInterval(statusUpdateInterval);
+            }
+        });
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

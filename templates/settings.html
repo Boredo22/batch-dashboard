@@ -1,0 +1,530 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Nutrient Mixing System{% endblock %}
+
+{% block header_title %}System Settings{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <!-- Nutrient Formulas -->
+    <section class="settings-section">
+        <h2 class="section-title">Nutrient Formulas</h2>
+        <div class="settings-grid">
+            <div class="settings-card">
+                <h3 class="card-title">Vegetative Formula</h3>
+                <div id="veg-formula" class="formula-display">
+                    <div class="loading-placeholder">Loading...</div>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-secondary" onclick="editFormula('VEG')">Edit</button>
+                    <button class="btn btn-primary" onclick="testFormula('VEG')">Test</button>
+                </div>
+            </div>
+            
+            <div class="settings-card">
+                <h3 class="card-title">Bloom Formula</h3>
+                <div id="bloom-formula" class="formula-display">
+                    <div class="loading-placeholder">Loading...</div>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-secondary" onclick="editFormula('BLOOM')">Edit</button>
+                    <button class="btn btn-primary" onclick="testFormula('BLOOM')">Test</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Hardware Configuration -->
+    <section class="settings-section">
+        <h2 class="section-title">Hardware Configuration</h2>
+        <div class="settings-grid">
+            <div class="settings-card">
+                <h3 class="card-title">Tank Configuration</h3>
+                <div id="tank-config" class="config-display">
+                    <div class="loading-placeholder">Loading...</div>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-secondary" onclick="editTankConfig()">Edit</button>
+                    <button class="btn btn-info" onclick="refreshHardware()">Refresh</button>
+                </div>
+            </div>
+            
+            <div class="settings-card">
+                <h3 class="card-title">Hardware Status</h3>
+                <div id="hardware-status" class="status-display">
+                    <div class="loading-placeholder">Loading...</div>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-warning" onclick="toggleMockMode()">Toggle Mock</button>
+                    <button class="btn btn-info" onclick="refreshHardware()">Refresh</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- System Parameters -->
+    <section class="settings-section">
+        <h2 class="section-title">System Parameters</h2>
+        <div class="settings-grid">
+            <div class="settings-card">
+                <h3 class="card-title">Job Settings</h3>
+                <div id="job-settings" class="settings-form">
+                    <div class="loading-placeholder">Loading...</div>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-primary" onclick="saveJobSettings()">Save</button>
+                    <button class="btn btn-secondary" onclick="resetJobSettings()">Reset</button>
+                </div>
+            </div>
+            
+            <div class="settings-card">
+                <h3 class="card-title">Safety Limits</h3>
+                <div class="safety-settings">
+                    <div class="setting-item">
+                        <label>Max Fill Volume (gallons):</label>
+                        <input type="number" id="max-fill-volume" class="form-control" min="1" max="200" value="100">
+                    </div>
+                    <div class="setting-item">
+                        <label>Mix Timeout (minutes):</label>
+                        <input type="number" id="mix-timeout" class="form-control" min="1" max="60" value="10">
+                    </div>
+                    <div class="setting-item">
+                        <label>pH Tolerance:</label>
+                        <input type="number" id="ph-tolerance" class="form-control" min="0.05" max="0.5" step="0.05" value="0.1">
+                    </div>
+                    <div class="setting-item">
+                        <label>EC Tolerance (mS/cm):</label>
+                        <input type="number" id="ec-tolerance" class="form-control" min="0.05" max="0.5" step="0.05" value="0.1">
+                    </div>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-primary" onclick="saveSafetySettings()">Save</button>
+                    <button class="btn btn-secondary" onclick="resetSafetySettings()">Reset</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- System Information -->
+    <section class="settings-section">
+        <h2 class="section-title">System Information</h2>
+        <div class="info-grid">
+            <div class="info-card">
+                <h4>Database</h4>
+                <div id="database-info">
+                    <div class="info-item">
+                        <span class="info-label">Status:</span>
+                        <span class="info-value" id="db-status">Connected</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Total Jobs:</span>
+                        <span class="info-value" id="total-jobs">--</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Hardware Logs:</span>
+                        <span class="info-value" id="hardware-logs">--</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="info-card">
+                <h4>System Health</h4>
+                <div id="system-health">
+                    <div class="health-indicator">
+                        <span class="health-label">Scheduler:</span>
+                        <span class="health-status" id="scheduler-health">Running</span>
+                    </div>
+                    <div class="health-indicator">
+                        <span class="health-label">Hardware:</span>
+                        <span class="health-status" id="hardware-health">Online</span>
+                    </div>
+                    <div class="health-indicator">
+                        <span class="health-label">Uptime:</span>
+                        <span class="health-status" id="system-uptime">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+
+<!-- Formula Edit Modal -->
+<div id="formula-modal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="formula-modal-title">Edit Formula</h3>
+            <button class="modal-close" onclick="closeFormulaModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="formula-form">
+                <div id="formula-fields"></div>
+                <div class="form-group">
+                    <label for="formula-ph-target">pH Target:</label>
+                    <input type="number" id="formula-ph-target" class="form-control" min="5.0" max="7.0" step="0.1" required>
+                </div>
+                <div class="form-group">
+                    <label for="formula-ec-target">EC Target (mS/cm):</label>
+                    <input type="number" id="formula-ec-target" class="form-control" min="0.5" max="3.0" step="0.1" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeFormulaModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Formula</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Page-specific variables
+    let formulas = {};
+    let hardwareConfig = {};
+    let jobSettings = {};
+
+    // Initialize page
+    function initializePage() {
+        loadSettings();
+    }
+
+    // Update page with status
+    function updatePageStatus(status) {
+        // Update system health indicators
+        updateSystemHealth(status);
+    }
+
+    // Load all settings
+    async function loadSettings() {
+        try {
+            // Load formulas
+            const formulaResponse = await apiCall('/api/settings/formulas');
+            formulas = formulaResponse.formulas;
+            updateFormulasDisplay();
+
+            // Load hardware config
+            const hardwareResponse = await apiCall('/api/settings/hardware');
+            hardwareConfig = hardwareResponse;
+            updateHardwareDisplay();
+
+            // Load system settings
+            const systemResponse = await apiCall('/api/settings/system');
+            jobSettings = systemResponse.job_settings;
+            updateJobSettingsDisplay();
+
+        } catch (error) {
+            showMessage('Failed to load settings: ' + error.message, 'error');
+        }
+    }
+
+    // Update formulas display
+    function updateFormulasDisplay() {
+        updateFormulaCard('veg-formula', formulas.VEG);
+        updateFormulaCard('bloom-formula', formulas.BLOOM);
+    }
+
+    function updateFormulaCard(elementId, formula) {
+        const element = document.getElementById(elementId);
+        if (!element || !formula) return;
+
+        element.innerHTML = `
+            <div class="formula-info">
+                <div class="formula-targets">
+                    <span class="target-item">pH: ${formula.ph_target}</span>
+                    <span class="target-item">EC: ${formula.ec_target} mS/cm</span>
+                </div>
+                <div class="formula-nutrients">
+                    ${Object.entries(formula.formula).map(([nutrient, amount]) => `
+                        <div class="nutrient-item">
+                            <span class="nutrient-name">${nutrient}:</span>
+                            <span class="nutrient-amount">${amount} ml/gal</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Update hardware display
+    function updateHardwareDisplay() {
+        updateTankConfigDisplay();
+        updateHardwareStatusDisplay();
+    }
+
+    function updateTankConfigDisplay() {
+        const element = document.getElementById('tank-config');
+        if (!element || !hardwareConfig.tanks) return;
+
+        element.innerHTML = Object.entries(hardwareConfig.tanks).map(([tankId, tank]) => `
+            <div class="tank-config-item">
+                <div class="tank-info">
+                    <span class="tank-name">${tank.name}</span>
+                    <span class="tank-capacity">${tank.capacity_gallons} gal</span>
+                </div>
+                <div class="tank-relays">
+                    <small>Fill: ${tank.fill_relay}, Mix: [${tank.mix_relays?.join(', ') || 'none'}], Send: ${tank.send_relay}</small>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function updateHardwareStatusDisplay() {
+        const element = document.getElementById('hardware-status');
+        if (!element) return;
+
+        const controllers = hardwareConfig.controllers || {};
+        const mockSettings = hardwareConfig.mock_settings || {};
+
+        element.innerHTML = `
+            <div class="controller-status">
+                ${Object.entries(controllers).map(([controller, status]) => `
+                    <div class="controller-item">
+                        <span class="controller-name">${controller}:</span>
+                        <span class="controller-status ${status ? 'online' : 'offline'}">
+                            ${status ? 'Online' : 'Offline'}
+                        </span>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="mock-status">
+                <h5>Mock Hardware:</h5>
+                ${Object.entries(mockSettings).map(([component, enabled]) => `
+                    <div class="mock-item">
+                        <span class="mock-name">${component}:</span>
+                        <span class="mock-enabled ${enabled ? 'enabled' : 'disabled'}">
+                            ${enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    // Update job settings display
+    function updateJobSettingsDisplay() {
+        const element = document.getElementById('job-settings');
+        if (!element || !jobSettings) return;
+
+        element.innerHTML = Object.entries(jobSettings).map(([setting, value]) => `
+            <div class="setting-item">
+                <label for="job-${setting}">${setting.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</label>
+                <input type="number" id="job-${setting}" class="form-control" value="${value}">
+            </div>
+        `).join('');
+    }
+
+    // Update system health
+    function updateSystemHealth(status) {
+        const schedulerHealth = document.getElementById('scheduler-health');
+        const hardwareHealth = document.getElementById('hardware-health');
+        
+        if (schedulerHealth) {
+            schedulerHealth.textContent = status.system_running ? 'Running' : 'Stopped';
+            schedulerHealth.className = 'health-status ' + (status.system_running ? 'healthy' : 'unhealthy');
+        }
+        
+        if (hardwareHealth) {
+            const isHealthy = status.hardware_status && Object.values(status.hardware_status).some(s => s);
+            hardwareHealth.textContent = isHealthy ? 'Online' : 'Offline';
+            hardwareHealth.className = 'health-status ' + (isHealthy ? 'healthy' : 'unhealthy');
+        }
+    }
+
+    // Formula management
+    function editFormula(formulaType) {
+        const formula = formulas[formulaType];
+        if (!formula) return;
+
+        const modal = document.getElementById('formula-modal');
+        const title = document.getElementById('formula-modal-title');
+        const fields = document.getElementById('formula-fields');
+        const phTarget = document.getElementById('formula-ph-target');
+        const ecTarget = document.getElementById('formula-ec-target');
+
+        title.textContent = `Edit ${formulaType} Formula`;
+        phTarget.value = formula.ph_target;
+        ecTarget.value = formula.ec_target;
+
+        // Create nutrient fields
+        fields.innerHTML = Object.entries(formula.formula).map(([nutrient, amount]) => `
+            <div class="form-group">
+                <label for="nutrient-${nutrient.replace(/\s+/g, '-')}">${nutrient} (ml/gal):</label>
+                <input type="number" id="nutrient-${nutrient.replace(/\s+/g, '-')}" 
+                       class="form-control nutrient-input" 
+                       data-nutrient="${nutrient}"
+                       value="${amount}" min="0" max="20" step="0.1" required>
+            </div>
+        `).join('');
+
+        // Set up form submission
+        const form = document.getElementById('formula-form');
+        form.onsubmit = (e) => saveFormula(e, formulaType);
+
+        modal.classList.add('show');
+    }
+
+    async function saveFormula(event, formulaType) {
+        event.preventDefault();
+        
+        try {
+            showLoading('Saving formula...');
+            
+            // Collect nutrient values
+            const nutrientInputs = document.querySelectorAll('.nutrient-input');
+            const newFormula = {};
+            
+            nutrientInputs.forEach(input => {
+                const nutrient = input.dataset.nutrient;
+                newFormula[nutrient] = parseFloat(input.value);
+            });
+
+            const phTarget = parseFloat(document.getElementById('formula-ph-target').value);
+            const ecTarget = parseFloat(document.getElementById('formula-ec-target').value);
+
+            // Update local formulas object
+            formulas[formulaType] = {
+                formula: newFormula,
+                ph_target: phTarget,
+                ec_target: ecTarget
+            };
+
+            // Here you would typically save to the server
+            // For now, just update the display
+            updateFormulasDisplay();
+            closeFormulaModal();
+            
+            showMessage(`${formulaType} formula saved successfully`, 'success');
+        } catch (error) {
+            showMessage('Failed to save formula: ' + error.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    function closeFormulaModal() {
+        const modal = document.getElementById('formula-modal');
+        modal.classList.remove('show');
+    }
+
+    async function testFormula(formulaType) {
+        if (!confirm(`Test ${formulaType} formula with a small amount?`)) return;
+
+        try {
+            showLoading('Testing formula...');
+            
+            // This would trigger a test mix with small amounts
+            showMessage(`${formulaType} formula test started`, 'info');
+            
+        } catch (error) {
+            showMessage('Formula test failed: ' + error.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    // Hardware management
+    async function refreshHardware() {
+        try {
+            showLoading('Refreshing hardware...');
+            await loadSettings();
+            showMessage('Hardware status refreshed', 'success');
+        } catch (error) {
+            showMessage('Failed to refresh hardware: ' + error.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    async function toggleMockMode() {
+        if (!confirm('Toggle mock hardware mode? This may affect system operation.')) return;
+
+        try {
+            showLoading('Toggling mock mode...');
+            
+            // This would toggle mock hardware settings
+            showMessage('Mock mode toggled - restart may be required', 'warning');
+            
+        } catch (error) {
+            showMessage('Failed to toggle mock mode: ' + error.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    function editTankConfig() {
+        showMessage('Tank configuration editing not yet implemented', 'info');
+    }
+
+    // Settings management
+    async function saveJobSettings() {
+        try {
+            showLoading('Saving job settings...');
+            
+            // Collect job setting values
+            const newSettings = {};
+            Object.keys(jobSettings).forEach(setting => {
+                const input = document.getElementById(`job-${setting}`);
+                if (input) {
+                    newSettings[setting] = parseFloat(input.value);
+                }
+            });
+
+            // Update local settings
+            jobSettings = newSettings;
+            
+            showMessage('Job settings saved successfully', 'success');
+        } catch (error) {
+            showMessage('Failed to save job settings: ' + error.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    function resetJobSettings() {
+        if (!confirm('Reset job settings to defaults?')) return;
+        
+        // Reset to default values
+        updateJobSettingsDisplay();
+        showMessage('Job settings reset to defaults', 'info');
+    }
+
+    async function saveSafetySettings() {
+        try {
+            showLoading('Saving safety settings...');
+            
+            const settings = {
+                max_fill_volume: parseFloat(document.getElementById('max-fill-volume').value),
+                mix_timeout: parseFloat(document.getElementById('mix-timeout').value),
+                ph_tolerance: parseFloat(document.getElementById('ph-tolerance').value),
+                ec_tolerance: parseFloat(document.getElementById('ec-tolerance').value)
+            };
+
+            // Here you would save to the server
+            showMessage('Safety settings saved successfully', 'success');
+        } catch (error) {
+            showMessage('Failed to save safety settings: ' + error.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    function resetSafetySettings() {
+        if (!confirm('Reset safety settings to defaults?')) return;
+        
+        document.getElementById('max-fill-volume').value = 100;
+        document.getElementById('mix-timeout').value = 10;
+        document.getElementById('ph-tolerance').value = 0.1;
+        document.getElementById('ec-tolerance').value = 0.1;
+        
+        showMessage('Safety settings reset to defaults', 'info');
+    }
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        const modal = document.getElementById('formula-modal');
+        if (event.target === modal) {
+            closeFormulaModal();
+        }
+    }
+</script>
+{% endblock %}

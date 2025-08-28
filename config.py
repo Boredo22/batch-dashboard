@@ -312,6 +312,62 @@ def validate_flow_meter_id(meter_id):
     return meter_id in FLOW_METER_GPIO_PINS
 
 # =============================================================================
+# NUTRIENT FORMULAS
+# =============================================================================
+
+# Nutrient formulas (ml per gallon)
+VEG_FORMULA = {
+    "Veg A": 4.0,      # ml per gallon
+    "Veg B": 4.0,      # ml per gallon
+    "Cake": 2.0,       # ml per gallon
+    "pH Down": 0.5     # ml per gallon (adjust as needed)
+}
+
+BLOOM_FORMULA = {
+    "Bloom A": 4.0,    # ml per gallon
+    "Bloom B": 4.0,    # ml per gallon
+    "PK Synergy": 2.0, # ml per gallon
+    "Cake": 1.0,       # ml per gallon
+    "pH Down": 0.5     # ml per gallon (adjust as needed)
+}
+
+# Formula targets
+FORMULA_TARGETS = {
+    "VEG": {
+        "ph_target": 6.0,
+        "ec_target": 1.4,
+        "formula": VEG_FORMULA
+    },
+    "BLOOM": {
+        "ph_target": 6.2,
+        "ec_target": 1.6,
+        "formula": BLOOM_FORMULA
+    }
+}
+
+# Pump name to ID mapping for formulas
+PUMP_NAME_TO_ID = {
+    "Veg A": 1,
+    "Veg B": 2,
+    "Bloom A": 3,
+    "Bloom B": 4,
+    "Cake": 5,
+    "PK Synergy": 6,
+    "Runclean": 7,
+    "pH Down": 8
+}
+
+# Job configuration
+JOB_SETTINGS = {
+    "fill_timeout_minutes": 60,
+    "mix_duration_minutes": 5,
+    "send_timeout_minutes": 30,
+    "ph_tolerance": 0.1,
+    "ec_tolerance": 0.1,
+    "min_water_gallons": 20  # Minimum water before mixing
+}
+
+# =============================================================================
 # DEVELOPMENT/DEBUG SETTINGS
 # =============================================================================
 
