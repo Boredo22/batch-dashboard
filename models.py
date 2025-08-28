@@ -6,6 +6,8 @@ SQLite models for tank state management, job tracking, and logging
 
 import sqlite3
 import logging
+import queue
+import threading
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Dict, Any
@@ -34,18 +36,80 @@ class JobType(Enum):
     MIX = "mix"
     SEND = "send"
 
-class DatabaseManager:
-    """Database manager for SQLite operations"""
+class DatabasePool:
+    """Database connection pool for improved performance"""
     
-    def __init__(self, db_path: str = "database.db"):
+    def __init__(self, db_path: str = "database.db", max_connections: int = 5):
         self.db_path = db_path
+        self.max_connections = max_connections
+        self.pool = queue.Queue(maxsize=max_connections)
+        self.lock = threading.Lock()
+        
+        # Initialize connection pool
+        for _ in range(max_connections):
+            conn = sqlite3.connect(db_path, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            self.pool.put(conn)
+        
+        logger.info(f"Database pool initialized with {max_connections} connections")
+    
+    def get_connection(self):
+        """Get connection from pool"""
+        try:
+            return self.pool.get(timeout=5.0)
+        except queue.Empty:
+            logger.warning("Database pool exhausted, creating temporary connection")
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            return conn
+    
+    def return_connection(self, conn):
+        """Return connection to pool"""
+        try:
+            self.pool.put_nowait(conn)
+        except queue.Full:
+            # Pool is full, close the connection
+            conn.close()
+    
+    def close_all(self):
+        """Close all connections in pool"""
+        while not self.pool.empty():
+            try:
+                conn = self.pool.get_nowait()
+                conn.close()
+            except queue.Empty:
+                break
+        logger.info("Database pool closed")
+
+class DatabaseManager:
+    """Database manager for SQLite operations with connection pooling"""
+    
+    def __init__(self, db_path: str = "database.db", use_pool: bool = True):
+        self.db_path = db_path
+        self.use_pool = use_pool
+        
+        if use_pool:
+            self.pool = DatabasePool(db_path)
+        else:
+            self.pool = None
+        
         self.init_database()
     
     def get_connection(self):
-        """Get database connection"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row  # Enable dict-like access
-        return conn
+        """Get database connection (pooled or direct)"""
+        if self.pool:
+            return self.pool.get_connection()
+        else:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row  # Enable dict-like access
+            return conn
+    
+    def return_connection(self, conn):
+        """Return connection to pool or close if not using pool"""
+        if self.pool:
+            self.pool.return_connection(conn)
+        else:
+            conn.close()
     
     def init_database(self):
         """Initialize database tables"""

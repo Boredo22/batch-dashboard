@@ -14,6 +14,7 @@ from hardware.rpi_relays import RelayController
 from hardware.rpi_pumps import EZOPumpController
 from hardware.rpi_flow import FlowMeterController, MockFlowMeterController
 from hardware.rpi_sensors import SensorController, MockSensorController
+from hardware.mock_controllers import MockPumpController, MockRelayController, ConnectionManager
 
 # Import configuration
 from config import (
@@ -62,13 +63,12 @@ class HardwareManager:
         # Initialize relay controller
         try:
             if self.use_mock.get('relays', False):
-                logger.info("Using mock relay controller")
-                # Would implement MockRelayController
-                self.relay_controller = None
+                self.relay_controller = MockRelayController()
+                logger.info("✓ Mock relay controller initialized")
             else:
                 self.relay_controller = RelayController()
                 logger.info("✓ Relay controller initialized")
-                self._log_hardware_action("relay", 0, "initialize", "success")
+            self._log_hardware_action("relay", 0, "initialize", "success")
         except Exception as e:
             logger.error(f"✗ Relay controller failed: {e}")
             self._log_hardware_action("relay", 0, "initialize", "failed", str(e))
@@ -76,13 +76,12 @@ class HardwareManager:
         # Initialize pump controller
         try:
             if self.use_mock.get('pumps', False):
-                logger.info("Using mock pump controller")
-                # Would implement MockPumpController
-                self.pump_controller = None
+                self.pump_controller = MockPumpController()
+                logger.info("✓ Mock pump controller initialized")
             else:
                 self.pump_controller = EZOPumpController()
                 logger.info("✓ Pump controller initialized")
-                self._log_hardware_action("pump", 0, "initialize", "success")
+            self._log_hardware_action("pump", 0, "initialize", "success")
         except Exception as e:
             logger.error(f"✗ Pump controller failed: {e}")
             self._log_hardware_action("pump", 0, "initialize", "failed", str(e))
@@ -450,36 +449,48 @@ class HardwareManager:
     # EMERGENCY AND CLEANUP
     # =============================================================================
     
-    def emergency_stop(self) -> bool:
-        """Emergency stop all operations"""
-        logger.warning("EMERGENCY STOP - Stopping all hardware operations")
+    def emergency_stop_all(self) -> bool:
+        """Stop ALL operations immediately"""
+        logger.warning("EMERGENCY STOP ALL - Stopping ALL hardware operations immediately")
+        success = True
         
         try:
+            # Stop all relays
+            if self.relay_controller:
+                relay_success = self.relay_controller.set_all_relays(False)
+                success &= relay_success
+                self._log_hardware_action("relay", 0, "emergency_stop_all", "success" if relay_success else "failed")
+            
             # Stop all pumps
             if self.pump_controller:
-                self.pump_controller.emergency_stop()
-                self._log_hardware_action("pump", 0, "emergency_stop", "success")
-            
-            # Turn off all relays
-            if self.relay_controller:
-                self.relay_controller.emergency_stop()
-                self._log_hardware_action("relay", 0, "emergency_stop", "success")
+                pump_success = self.pump_controller.emergency_stop()
+                success &= pump_success
+                self._log_hardware_action("pump", 0, "emergency_stop_all", "success" if pump_success else "failed")
             
             # Stop all flow meters
             if self.flow_controller:
-                self.flow_controller.emergency_stop()
-                self._log_hardware_action("flow", 0, "emergency_stop", "success")
+                try:
+                    self.flow_controller.emergency_stop()
+                    self._log_hardware_action("flow", 0, "emergency_stop_all", "success")
+                except Exception as e:
+                    logger.error(f"Flow controller emergency stop failed: {e}")
+                    success = False
+                    self._log_hardware_action("flow", 0, "emergency_stop_all", "failed", str(e))
             
             # Clear active operations
             self.active_operations.clear()
             
-            logger.info("Emergency stop completed")
-            return True
+            logger.info(f"Emergency stop all completed - Success: {success}")
+            return success
             
         except Exception as e:
-            logger.error(f"Error during emergency stop: {e}")
-            self._log_hardware_action("system", 0, "emergency_stop", "failed", str(e))
+            logger.error(f"Critical error during emergency stop: {e}")
+            self._log_hardware_action("system", 0, "emergency_stop_all", "failed", str(e))
             return False
+
+    def emergency_stop(self) -> bool:
+        """Emergency stop all operations (legacy method)"""
+        return self.emergency_stop_all()
     
     def cleanup(self):
         """Clean up all hardware resources"""

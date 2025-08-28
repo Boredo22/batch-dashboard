@@ -25,13 +25,15 @@ class JobPriority(Enum):
 class BaseJob(ABC):
     """Base class for all job types"""
     
-    def __init__(self, job_id: int, tank_id: int, hardware_manager: HardwareManager, 
-                 parameters: Dict[str, Any] = None, priority: JobPriority = JobPriority.NORMAL):
+    def __init__(self, job_id: int, tank_id: int, hardware_manager: HardwareManager,
+                 parameters: Dict[str, Any] = None, priority: JobPriority = JobPriority.NORMAL,
+                 max_runtime: int = 3600):  # Default 1 hour timeout
         self.job_id = job_id
         self.tank_id = tank_id
         self.hardware = hardware_manager
         self.parameters = parameters or {}
         self.priority = priority
+        self.max_runtime = max_runtime  # Maximum runtime in seconds
         
         # Job state
         self.status = JobStatus.PENDING
@@ -45,7 +47,7 @@ class BaseJob(ABC):
         self.total_steps = 1
         self.step_descriptions = ["Initialize"]
         
-        logger.info(f"Job {job_id} created: {self.__class__.__name__} for tank {tank_id}")
+        logger.info(f"Job {job_id} created: {self.__class__.__name__} for tank {tank_id} (timeout: {max_runtime}s)")
     
     @abstractmethod
     def can_start(self) -> bool:
@@ -110,6 +112,26 @@ class BaseJob(ABC):
         self.end_time = time.time()
         logger.error(f"Job {self.job_id} failed: {error_message}")
     
+    def check_timeout(self):
+        """Check if job has exceeded maximum runtime"""
+        if self.start_time:
+            elapsed = time.time() - self.start_time
+            if elapsed > self.max_runtime:
+                self.emergency_stop()
+                raise TimeoutError(f"Job {self.job_id} exceeded {self.max_runtime}s runtime")
+    
+    def emergency_stop(self):
+        """Emergency stop this job"""
+        logger.warning(f"Emergency stopping job {self.job_id}")
+        try:
+            # Stop the job's operations
+            self.stop()
+            # Call hardware emergency stop for this tank
+            self.hardware.stop_tank_operation(self.tank_id)
+            self.set_error("Emergency stopped")
+        except Exception as e:
+            logger.error(f"Error during emergency stop of job {self.job_id}: {e}")
+
     def complete(self):
         """Mark job as completed"""
         self.status = JobStatus.COMPLETED
@@ -183,9 +205,12 @@ class FillJob(BaseJob):
             return False
         
         try:
+            # Check timeout
+            self.check_timeout()
+            
             # Check if fill operation is still active
             tank_status = self.hardware.get_tank_status(self.tank_id)
-            fill_active = any(op.get('active', False) for op_type, op in tank_status.get('operations', {}).items() 
+            fill_active = any(op.get('active', False) for op_type, op in tank_status.get('operations', {}).items()
                             if op_type == 'fill')
             
             if fill_active:
@@ -200,6 +225,9 @@ class FillJob(BaseJob):
                 self.complete()
                 return False
                 
+        except TimeoutError as e:
+            self.set_error(str(e))
+            return False
         except Exception as e:
             self.set_error(f"Error updating fill: {e}")
             return False

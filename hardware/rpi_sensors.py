@@ -6,6 +6,8 @@ Atlas Scientific EZO sensor communication and mock sensor support
 
 import time
 import logging
+import asyncio
+import concurrent.futures
 from typing import Dict, Any, Optional, Tuple
 from config import (
     PH_CALIBRATION_SOLUTIONS,
