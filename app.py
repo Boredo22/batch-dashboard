@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Flask Application for Nutrient Mixing System - SIMPLIFIED VERSION
-3-page mobile-friendly interface: Home (Operations), Settings, Testing
-Following the working pattern from grower_web_app.py
+Fixed to work exactly like simple_gui.py but with HTTP endpoints
 """
 
 from flask import Flask, render_template, request, jsonify
@@ -13,12 +12,12 @@ import time
 from datetime import datetime
 from typing import Dict, Any
 
-# Import the working FeedControlSystem directly
+# Import the working FeedControlSystem directly (like simple_gui.py)
 from main import FeedControlSystem
 from config import (
-    TANKS, VEG_FORMULA, BLOOM_FORMULA, FORMULA_TARGETS, PUMP_NAME_TO_ID,
-    JOB_SETTINGS, get_tank_info, get_pump_name, get_available_pumps,
-    get_available_relays, get_relay_name, MOCK_SETTINGS
+    TANKS, VEG_FORMULA, BLOOM_FORMULA, get_tank_info, get_pump_name, 
+    get_available_pumps, get_available_relays, get_relay_name, 
+    get_available_flow_meters, get_flow_meter_name, MOCK_SETTINGS
 )
 
 # Setup logging
@@ -30,81 +29,78 @@ app = Flask(__name__)
 CORS(app)
 app.secret_key = 'nutrient_mixing_system_2024'
 
-# Global system instance (like grower_web_app.py)
+# Global system instance - SIMPLE like simple_gui.py
 system = None
 system_lock = threading.Lock()
 
 def get_system():
-    """Get or create the feed control system"""
+    """Get or create the feed control system (like simple_gui.py)"""
     global system
     with system_lock:
         if system is None:
             try:
-                # Use mock settings from config (like simple_gui.py)
+                # Use same mock settings pattern as simple_gui
                 use_mock_flow = MOCK_SETTINGS.get('flow_meters', False)
                 system = FeedControlSystem(use_mock_flow=use_mock_flow)
-                system.set_message_callback(system_message_callback)
                 system.start()
-                print("✓ Feed control system started")
+                logger.info("✓ Feed control system started")
             except Exception as e:
-                print(f"✗ Failed to start system: {e}")
+                logger.error(f"✗ Failed to start system: {e}")
                 return None
         return system
 
-def system_message_callback(message):
-    """Handle messages from the system (like simple_gui.py)"""
-    timestamp = datetime.now().strftime('%H:%M:%S')
-    print(f"[{timestamp}] SYS: {message}")
-
 # =============================================================================
-# DIRECT HARDWARE COMMAND FUNCTIONS (Working Pattern)
+# DIRECT HARDWARE COMMAND FUNCTIONS (Copied from simple_gui.py pattern)
 # =============================================================================
 
 def control_relay(relay_id, state):
-    """Control relay with validation (like simple_gui.py)"""
+    """Control relay using exact same validation and command as simple_gui.py"""
     sys = get_system()
     if not sys:
         logger.error("System not available for relay control")
         return False
     
-    # Validate relay ID (like simple_gui.py line 1055-1060)
+    # Same validation as simple_gui.py line 1055-1060
     if relay_id != 0 and relay_id not in get_available_relays():
         logger.error(f"Invalid relay ID: {relay_id}")
         return False
     
+    # Exact same command format as simple_gui.py
     state_str = "ON" if state else "OFF"
     command = f"Start;Relay;{relay_id};{state_str};end"
     success = sys.send_command(command)
     
     if success:
-        if relay_id == 0:
-            logger.info(f"Command sent: All relays {state_str}")
-        else:
-            relay_name = get_relay_name(relay_id)
-            logger.info(f"Command sent: {relay_name} {state_str}")
+        relay_name = get_relay_name(relay_id) if relay_id != 0 else "All Relays"
+        action = "turned on" if state else "turned off"
+        logger.info(f"{relay_name} {action}")
     else:
-        logger.error(f"Failed to send relay command")
+        logger.error(f"Failed to control relay {relay_id}")
     
     return success
 
-def dispense_pump(pump_id, amount):
-    """Dispense from pump with validation (like simple_gui.py)"""
+def dispense_pump(pump_id, amount_ml):
+    """Dispense from pump using exact same pattern as simple_gui.py"""
     sys = get_system()
     if not sys:
         logger.error("System not available for pump control")
         return False
     
-    # Validate pump ID (like simple_gui.py line 1084-1087)
+    # Same validation as simple_gui.py line 1025-1035
     if pump_id not in get_available_pumps():
         logger.error(f"Invalid pump ID: {pump_id}")
         return False
     
-    # Validate amount (like simple_gui.py line 1089-1093)
-    from config import MIN_PUMP_VOLUME_ML, MAX_PUMP_VOLUME_ML
-    if not (MIN_PUMP_VOLUME_ML <= amount <= MAX_PUMP_VOLUME_ML):
-        logger.error(f"Amount must be between {MIN_PUMP_VOLUME_ML} and {MAX_PUMP_VOLUME_ML}ml")
+    try:
+        amount = int(amount_ml)
+        if not (1 <= amount <= 9999):  # Same limits as simple_gui
+            logger.error(f"Amount must be between 1 and 9999 ml, got: {amount}")
+            return False
+    except (ValueError, TypeError):
+        logger.error(f"Invalid amount value: {amount_ml}")
         return False
     
+    # Exact same command format as simple_gui.py line 1044
     command = f"Start;Dispense;{pump_id};{amount};end"
     success = sys.send_command(command)
     
@@ -112,22 +108,23 @@ def dispense_pump(pump_id, amount):
         pump_name = get_pump_name(pump_id)
         logger.info(f"Dispensing {amount}ml from {pump_name}")
     else:
-        logger.error(f"Failed to start dispense")
+        logger.error(f"Failed to start dispense from pump {pump_id}")
     
     return success
 
 def stop_pump(pump_id):
-    """Stop pump with validation (like simple_gui.py)"""
+    """Stop pump using exact same command as simple_gui.py"""
     sys = get_system()
     if not sys:
         logger.error("System not available for pump control")
         return False
     
-    # Validate pump ID
+    # Same validation 
     if pump_id not in get_available_pumps():
         logger.error(f"Invalid pump ID: {pump_id}")
         return False
     
+    # Exact same command format as simple_gui.py line 1054
     command = f"Start;Pump;{pump_id};X;end"
     success = sys.send_command(command)
     
@@ -135,176 +132,163 @@ def stop_pump(pump_id):
         pump_name = get_pump_name(pump_id)
         logger.info(f"Stopped {pump_name}")
     else:
-        logger.error(f"Failed to stop pump")
+        logger.error(f"Failed to stop pump {pump_id}")
     
     return success
 
-# =============================================================================
-# ROUTES - Homepage (Operations)
-# =============================================================================
-
-@app.route('/')
-def home():
-    """Homepage - Tank operations interface"""
-    return render_template('home.html')
-
-@app.route('/api/status')
-def get_status():
-    """Get system status like the working GUI does"""
+def start_flow(flow_id, gallons):
+    """Start flow monitoring using same pattern as simple_gui.py"""
     sys = get_system()
     if not sys:
-        return jsonify({'error': 'System not available'}), 500
+        return False
+    
+    # Same validation as simple_gui.py
+    if flow_id not in get_available_flow_meters():
+        logger.error(f"Invalid flow meter ID: {flow_id}")
+        return False
     
     try:
+        gal = int(gallons)
+        if not (1 <= gal <= 300):  # Same limits as config MAX_FLOW_GALLONS
+            logger.error(f"Gallons must be between 1 and 300, got: {gal}")
+            return False
+    except (ValueError, TypeError):
+        logger.error(f"Invalid gallons value: {gallons}")
+        return False
+    
+    # Same command format as simple_gui.py
+    command = f"Start;StartFlow;{flow_id};{gal};220;end"
+    success = sys.send_command(command)
+    
+    if success:
+        meter_name = get_flow_meter_name(flow_id)
+        logger.info(f"Started {meter_name} for {gal} gallons")
+    
+    return success
+
+def stop_flow(flow_id):
+    """Stop flow monitoring"""
+    sys = get_system()
+    if not sys:
+        return False
+    
+    command = f"Start;StartFlow;{flow_id};0;end"
+    success = sys.send_command(command)
+    
+    if success:
+        meter_name = get_flow_meter_name(flow_id)
+        logger.info(f"Stopped {meter_name}")
+    
+    return success
+
+def emergency_stop():
+    """Emergency stop using same method as simple_gui.py"""
+    sys = get_system()
+    if not sys:
+        return False
+    
+    sys.emergency_stop()
+    logger.warning("🚨 EMERGENCY STOP ACTIVATED 🚨")
+    return True
+
+def get_system_status():
+    """Get system status using same method as simple_gui.py"""
+    sys = get_system()
+    if not sys:
+        return {'error': 'System not available'}
+    
+    try:
+        # Same status call as simple_gui.py
         status = sys.get_system_status()
         
-        # Format for web interface (copy grower_web_app.py pattern)
+        # Format for web interface
         formatted_status = {
             'timestamp': datetime.now().strftime('%H:%M:%S'),
-            'system_running': status['running'],
+            'system_running': status.get('running', False),
             'relays': status.get('relays', {}),
             'pumps': status.get('pumps', {}),
             'flow_meters': status.get('flow_meters', {}),
             'ec_ph': status.get('ec_ph', {})
         }
         
-        return jsonify(formatted_status)
+        return formatted_status
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/emergency_stop', methods=['POST'])
-def emergency_stop():
-    """Emergency stop using working FeedControlSystem"""
-    try:
-        sys = get_system()
-        if not sys:
-            return jsonify({'error': 'System not available'}), 500
-        
-        sys.emergency_stop()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Emergency stop activated'
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error getting system status: {e}")
+        return {'error': str(e)}
 
 # =============================================================================
-# ROUTES - Settings Page
+# FLASK ROUTES (Simple HTTP endpoints for the working commands)
 # =============================================================================
+
+@app.route('/')
+def home():
+    """Main dashboard"""
+    return render_template('home.html', 
+                         tanks=TANKS,
+                         available_pumps=get_available_pumps(),
+                         available_relays=get_available_relays(),
+                         available_flow_meters=get_available_flow_meters())
 
 @app.route('/settings')
 def settings():
-    """Settings page - Configuration management"""
-    return render_template('settings.html')
-
-@app.route('/api/settings/formulas')
-def get_formulas():
-    """Get nutrient formulas"""
-    try:
-        return jsonify({
-            'formulas': FORMULA_TARGETS,
-            'pump_mapping': PUMP_NAME_TO_ID,
-            'job_settings': JOB_SETTINGS
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/settings/system')
-def get_system_settings():
-    """Get system settings"""
-    try:
-        return jsonify({
-            'job_settings': JOB_SETTINGS,
-            'mock_hardware': MOCK_SETTINGS,
-            'tanks': TANKS,
-            'available_pumps': get_available_pumps(),
-            'available_relays': get_available_relays()
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# =============================================================================
-# ROUTES - Testing Page
-# =============================================================================
+    """Settings page"""
+    return render_template('settings.html',
+                         veg_formula=VEG_FORMULA,
+                         bloom_formula=BLOOM_FORMULA)
 
 @app.route('/testing')
 def testing():
-    """Testing page - Hardware testing and diagnostics"""
-    return render_template('testing.html')
+    """Hardware testing page"""
+    return render_template('testing.html',
+                         available_pumps=get_available_pumps(),
+                         available_relays=get_available_relays(),
+                         available_flow_meters=get_available_flow_meters())
 
-@app.route('/api/hardware/relay/<int:relay_id>/<action>', methods=['POST'])
-def control_relay_endpoint(relay_id, action):
-    """Control relay - matches working GUI functionality"""
+# =============================================================================
+# API ENDPOINTS (Direct hardware control - working pattern)
+# =============================================================================
+
+@app.route('/api/status')
+def api_status():
+    """Get system status"""
+    status = get_system_status()
+    return jsonify(status)
+
+@app.route('/api/relay/<int:relay_id>/<action>', methods=['POST'])
+def api_relay_control(relay_id, action):
+    """Control relay - exact same pattern as simple_gui button clicks"""
     try:
         if action not in ['on', 'off']:
-            return jsonify({'error': 'Invalid action'}), 400
+            return jsonify({'error': 'Invalid action. Use on/off'}), 400
         
         state = (action == 'on')
         success = control_relay(relay_id, state)
         
         if success:
+            relay_name = get_relay_name(relay_id) if relay_id != 0 else "All Relays"
             return jsonify({
                 'success': True,
-                'message': f'Relay {relay_id} turned {action.upper()}'
+                'message': f'{relay_name} turned {action}',
+                'relay_id': relay_id,
+                'state': state
             })
         else:
-            return jsonify({'error': 'Command failed'}), 500
+            return jsonify({'error': f'Failed to turn {action} relay {relay_id}'}), 500
             
     except Exception as e:
+        logger.error(f"Error controlling relay {relay_id}: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/hardware/pump/<int:pump_id>/dispense', methods=['POST'])
-def dispense_pump_endpoint(pump_id):
-    """Dispense from pump - matches working GUI functionality"""
+@app.route('/api/pump/<int:pump_id>/dispense', methods=['POST'])
+def api_pump_dispense(pump_id):
+    """Dispense from pump - exact same pattern as simple_gui"""
     try:
-        data = request.get_json() or {}
-        amount = float(data.get('amount', 5.0))
+        data = request.get_json()
+        amount = data.get('amount') if data else request.form.get('amount')
         
-        if not (0.5 <= amount <= 500):
-            return jsonify({'error': 'Amount must be between 0.5 and 500 ml'}), 400
-        
-        success = dispense_pump(pump_id, amount)
-        
-        if success:
-            return jsonify({
-                'success': True,
-                'message': f'Dispensing {amount}ml from pump {pump_id}'
-            })
-        else:
-            return jsonify({'error': 'Command failed'}), 500
-            
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/hardware/pump/<int:pump_id>/stop', methods=['POST'])
-def stop_pump_endpoint(pump_id):
-    """Stop pump using working command format"""
-    try:
-        success = stop_pump(pump_id)
-        
-        if success:
-            return jsonify({
-                'success': True,
-                'message': f'Stopped pump {pump_id}'
-            })
-        else:
-            return jsonify({'error': 'Command failed'}), 500
-            
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/test/pump/<int:pump_id>/dispense', methods=['POST'])
-def test_pump(pump_id):
-    """Test pump dispensing using working command format"""
-    try:
-        data = request.get_json() or {}
-        amount = float(data.get('amount', 5.0))
-        
-        if not (0.5 <= amount <= 50):
-            return jsonify({'error': 'Amount must be between 0.5 and 50 ml'}), 400
+        if not amount:
+            return jsonify({'error': 'Amount required'}), 400
         
         success = dispense_pump(pump_id, amount)
         
@@ -312,186 +296,147 @@ def test_pump(pump_id):
             pump_name = get_pump_name(pump_id)
             return jsonify({
                 'success': True,
-                'message': f'Started dispensing {amount}ml from {pump_name}',
+                'message': f'Dispensing {amount}ml from {pump_name}',
                 'pump_id': pump_id,
-                'amount': amount,
-                'command_used': f'Start;Dispense;{pump_id};{amount};end'
+                'amount': int(amount)
             })
         else:
-            return jsonify({'error': 'Failed to start pump'}), 500
+            return jsonify({'error': f'Failed to dispense from pump {pump_id}'}), 500
             
     except Exception as e:
-        logger.error(f"Error testing pump: {e}")
+        logger.error(f"Error dispensing from pump {pump_id}: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/test/relay/<int:relay_id>/<action>', methods=['POST'])
-def test_relay(relay_id, action):
-    """Test relay using working command format"""
+@app.route('/api/pump/<int:pump_id>/stop', methods=['POST'])
+def api_pump_stop(pump_id):
+    """Stop pump - exact same pattern as simple_gui"""
     try:
-        if action not in ['on', 'off']:
-            return jsonify({'error': 'Invalid action'}), 400
-        
-        state = (action == 'on')
-        success = control_relay(relay_id, state)
+        success = stop_pump(pump_id)
         
         if success:
-            relay_name = get_relay_name(relay_id)
+            pump_name = get_pump_name(pump_id)
             return jsonify({
                 'success': True,
-                'message': f'Relay {relay_id} ({relay_name}) turned {action.upper()}',
-                'relay_id': relay_id,
-                'state': state,
-                'command_used': f'Start;Relay;{relay_id};{action.upper()};end'
+                'message': f'{pump_name} stopped',
+                'pump_id': pump_id
             })
         else:
-            return jsonify({'error': 'Command failed'}), 500
+            return jsonify({'error': f'Failed to stop pump {pump_id}'}), 500
             
     except Exception as e:
+        logger.error(f"Error stopping pump {pump_id}: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/test/status')
-def get_test_status():
-    """Get system status for testing page"""
+@app.route('/api/flow/<int:flow_id>/start', methods=['POST'])
+def api_flow_start(flow_id):
+    """Start flow monitoring"""
     try:
-        sys = get_system()
-        if not sys:
-            return jsonify({'error': 'System not available'}), 500
+        data = request.get_json()
+        gallons = data.get('gallons') if data else request.form.get('gallons')
         
-        status = sys.get_system_status()
+        if not gallons:
+            return jsonify({'error': 'Gallons required'}), 400
         
-        # Format for testing interface
-        test_status = {
-            'timestamp': datetime.now().strftime('%H:%M:%S'),
-            'system_running': status['running'],
-            'hardware_status': {
-                'relays': {},
-                'pumps': {},
-                'sensors': status.get('ec_ph', {})
-            }
-        }
+        success = start_flow(flow_id, gallons)
         
-        # Format relay status with names
-        relay_states = status.get('relays', {})
-        for relay_id in get_available_relays():
-            test_status['hardware_status']['relays'][relay_id] = {
-                'name': get_relay_name(relay_id),
-                'state': relay_states.get(relay_id, False)
-            }
-        
-        # Format pump status with names  
-        pumps = status.get('pumps', {})
-        for pump_id in get_available_pumps():
-            if pump_id in pumps:
-                pump_info = pumps[pump_id]
-                test_status['hardware_status']['pumps'][pump_id] = {
-                    'name': get_pump_name(pump_id),
-                    'dispensing': pump_info.get('is_dispensing', False),
-                    'connected': pump_info.get('connected', False),
-                    'calibrated': pump_info.get('calibrated', False)
-                }
-        
-        return jsonify(test_status)
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# =============================================================================
-# Tank Operation Routes (Simplified)
-# =============================================================================
-
-@app.route('/api/tank/<int:tank_id>/<action>', methods=['POST'])
-def tank_operation(tank_id, action):
-    """Simple tank operations using direct relay control"""
-    try:
-        if tank_id not in TANKS:
-            return jsonify({'error': 'Invalid tank ID'}), 400
-        
-        tank_info = get_tank_info(tank_id)
-        success = False
-        
-        if action == 'fill':
-            fill_relay = tank_info.get('fill_relay')
-            if fill_relay:
-                success = control_relay(fill_relay, True)
-        elif action == 'stop_fill':
-            fill_relay = tank_info.get('fill_relay')
-            if fill_relay:
-                success = control_relay(fill_relay, False)
-        elif action == 'mix':
-            mix_relays = tank_info.get('mix_relays', [])
-            for relay_id in mix_relays:
-                control_relay(relay_id, True)
-            success = len(mix_relays) > 0
-        elif action == 'stop_mix':
-            mix_relays = tank_info.get('mix_relays', [])
-            for relay_id in mix_relays:
-                control_relay(relay_id, False)
-            success = len(mix_relays) > 0
-        elif action == 'send':
-            send_relay = tank_info.get('send_relay')
-            if send_relay:
-                success = control_relay(send_relay, True)
-        elif action == 'stop_send':
-            send_relay = tank_info.get('send_relay')
-            if send_relay:
-                success = control_relay(send_relay, False)
+        if success:
+            meter_name = get_flow_meter_name(flow_id)
+            return jsonify({
+                'success': True,
+                'message': f'Started {meter_name} for {gallons} gallons',
+                'flow_id': flow_id,
+                'gallons': int(gallons)
+            })
         else:
-            return jsonify({'error': 'Invalid action'}), 400
+            return jsonify({'error': f'Failed to start flow meter {flow_id}'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error starting flow meter {flow_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/flow/<int:flow_id>/stop', methods=['POST'])
+def api_flow_stop(flow_id):
+    """Stop flow monitoring"""
+    try:
+        success = stop_flow(flow_id)
+        
+        if success:
+            meter_name = get_flow_meter_name(flow_id)
+            return jsonify({
+                'success': True,
+                'message': f'{meter_name} stopped',
+                'flow_id': flow_id
+            })
+        else:
+            return jsonify({'error': f'Failed to stop flow meter {flow_id}'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error stopping flow meter {flow_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/emergency-stop', methods=['POST'])
+def api_emergency_stop():
+    """Emergency stop all operations"""
+    try:
+        success = emergency_stop()
         
         if success:
             return jsonify({
                 'success': True,
-                'message': f'Tank {tank_id} {action} completed'
+                'message': '🚨 EMERGENCY STOP ACTIVATED 🚨'
             })
         else:
-            return jsonify({'error': 'Command failed'}), 500
+            return jsonify({'error': 'Failed to execute emergency stop'}), 500
             
     except Exception as e:
+        logger.error(f"Error during emergency stop: {e}")
         return jsonify({'error': str(e)}), 500
 
 # =============================================================================
-# Error Handlers
+# SYSTEM CLEANUP
 # =============================================================================
 
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
+def cleanup_system():
+    """Cleanup system resources"""
+    global system
+    try:
+        if system:
+            logger.info("Shutting down system...")
+            system.stop()
+            system = None
+        logger.info("System cleanup completed")
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}")
 
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
+@app.teardown_appcontext
+def close_system(error):
+    """Clean up after request"""
+    pass  # System stays running between requests
 
 # =============================================================================
-# Application Startup
+# MAIN APPLICATION STARTUP
 # =============================================================================
+
+def main():
+    """Main entry point"""
+    logger.info("Starting Nutrient Mixing System Flask App")
+    
+    # Initialize system on startup
+    sys = get_system()
+    if not sys:
+        logger.error("Failed to initialize system")
+        return
+    
+    try:
+        # Run Flask app
+        app.run(
+            host='0.0.0.0',  # Listen on all interfaces for mobile access
+            port=5000,
+            debug=False,  # Set to True for development
+            threaded=True
+        )
+    finally:
+        cleanup_system()
 
 if __name__ == '__main__':
-    print("🌱 Nutrient Mixing System - Simplified Flask Application")
-    print("=" * 60)
-    
-    # Initialize system using simple pattern
-    sys = get_system()
-    if sys:
-        print("✓ System initialized successfully")
-        print("📱 Access the interface at: http://localhost:5000")
-        print("   - Home: Tank operations")
-        print("   - Settings: Configuration management") 
-        print("   - Testing: Hardware diagnostics")
-        print("🔧 Emergency stop available on all pages")
-        
-        try:
-            # Run Flask app
-            app.run(
-                host='0.0.0.0',
-                port=5000,
-                debug=False,
-                threaded=True
-            )
-        except KeyboardInterrupt:
-            print("\nShutting down...")
-        finally:
-            if sys:
-                sys.stop()
-    else:
-        print("✗ System initialization failed")
-        exit(1)
+    main()
