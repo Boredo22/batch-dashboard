@@ -621,36 +621,7 @@ body {
     font-size: 0.9rem;
 }
 
-/* Testing Page */
-.testing-section {
-    margin-bottom: 2rem;
-}
 
-.test-card {
-    background: white;
-    border-radius: 12px;
-    padding: 1.5rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    border: 1px solid #e5e7eb;
-    margin-bottom: 1.5rem;
-}
-
-.test-title {
-    font-size: 1.2rem;
-    font-weight: 600;
-    color: #1f2937;
-    margin-bottom: 1rem;
-}
-
-.test-content {
-    margin-bottom: 1rem;
-}
-
-.test-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-}
 
 /* Hardware Grids */
 .relay-grid, .pump-grid, .flow-grid {

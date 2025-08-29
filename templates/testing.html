@@ -1,12 +1,14 @@
 {% extends "base.html" %}
 
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='testing.css') }}">
+{% endblock %}
+
 {% block title %}Hardware Testing - Nutrient Mixing System{% endblock %}
 
 {% block header_title %}🔧 Hardware Testing Terminal{% endblock %}
 
-{% block head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='testing.css') }}">
-{% endblock %}
+
 
 {% block content %}
 <style>
