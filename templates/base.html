@@ -4,252 +4,321 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Nutrient Mixing System{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌱</text></svg>">
+    
+    <!-- Bootstrap CSS for styling -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --info-color: #17a2b8;
+            --primary-color: #007bff;
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            color: var(--primary-color) !important;
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-online { background-color: var(--success-color); }
+        .status-offline { background-color: var(--danger-color); }
+        .status-warning { background-color: var(--warning-color); }
+        
+        .hardware-card {
+            transition: all 0.3s ease;
+            border: 1px solid #dee2e6;
+        }
+        
+        .hardware-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .btn-relay-on {
+            background-color: var(--success-color);
+            border-color: var(--success-color);
+            color: white;
+        }
+        
+        .btn-relay-off {
+            background-color: var(--danger-color);
+            border-color: var(--danger-color);
+            color: white;
+        }
+        
+        .btn-emergency {
+            background-color: var(--danger-color);
+            border-color: var(--danger-color);
+            color: white;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        
+        .system-status {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .flash-messages {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+            max-width: 350px;
+        }
+        
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+    </style>
+    
+    {% block extra_css %}{% endblock %}
 </head>
-<body class="{% block body_class %}{% endblock %}">
-    <!-- Header -->
-    <header class="header">
-        <div class="header-content">
-            <h1 class="header-title">
-                <span class="header-icon">🌱</span>
-                {% block header_title %}Nutrient Mixing System{% endblock %}
-            </h1>
-            <div class="status-bar">
-                <div class="status-item">
-                    <span class="status-label">Status:</span>
-                    <span id="system-status" class="status-value">Loading...</span>
-                </div>
-                <div class="status-item">
-                    <span class="status-label">Time:</span>
-                    <span id="current-time" class="status-value">--:--:--</span>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-flask me-2"></i>Nutrient Mixing System
+            </a>
+            
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('index') }}">
+                            <i class="fas fa-home me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('status_page') }}">
+                            <i class="fas fa-chart-line me-1"></i>System Status
+                        </a>
+                    </li>
+                </ul>
+                
+                <!-- System Status Indicator -->
+                <div class="navbar-text">
+                    <span class="status-indicator" id="systemStatusIndicator"></span>
+                    <span id="systemStatusText">Checking...</span>
                 </div>
             </div>
         </div>
-    </header>
-
-    <!-- Navigation -->
-    <nav class="navigation">
-        <div class="nav-container">
-            <a href="{{ url_for('home') }}" class="nav-item {% if request.endpoint == 'home' %}active{% endif %}">
-                <span class="nav-icon">🏠</span>
-                <span class="nav-label">Operations</span>
-            </a>
-            <a href="{{ url_for('settings') }}" class="nav-item {% if request.endpoint == 'settings' %}active{% endif %}">
-                <span class="nav-icon">⚙️</span>
-                <span class="nav-label">Settings</span>
-            </a>
-            <a href="{{ url_for('testing') }}" class="nav-item {% if request.endpoint == 'testing' %}active{% endif %}">
-                <span class="nav-icon">🔧</span>
-                <span class="nav-label">Testing</span>
-            </a>
-        </div>
     </nav>
 
-    <!-- Emergency Stop Button -->
-    <div class="emergency-section">
-        <button id="emergency-btn" class="emergency-btn" onclick="emergencyStop()">
-            🚨 EMERGENCY STOP 🚨
-        </button>
+    <!-- Flash Messages -->
+    <div class="flash-messages" id="flashMessages">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
     </div>
 
     <!-- Main Content -->
-    <main class="main-content">
+    <div class="container mt-4">
         {% block content %}{% endblock %}
-    </main>
-
-    <!-- Message Toast -->
-    <div id="message-toast" class="message-toast">
-        <span id="message-text"></span>
-        <button id="message-close" class="message-close">&times;</button>
     </div>
 
-    <!-- Loading Overlay -->
-    <div id="loading-overlay" class="loading-overlay">
-        <div class="loading-spinner">
-            <div class="spinner"></div>
-            <div class="loading-text">Processing...</div>
-        </div>
-    </div>
-
-    <!-- Base JavaScript -->
+    <!-- Bootstrap JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Common JavaScript -->
     <script>
-        // Global variables
-        let currentStatus = {};
-        let statusUpdateInterval;
-
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeApp();
-        });
-
-        function initializeApp() {
-            // Start status updates
-            updateStatus();
-            statusUpdateInterval = setInterval(updateStatus, 3000);
-
-            // Initialize message toast
-            initializeMessageToast();
-
-            // Page-specific initialization
-            if (typeof initializePage === 'function') {
-                initializePage();
-            }
+        // Global functions for hardware control
+        
+        function showLoading(element) {
+            element.classList.add('loading');
+            element.disabled = true;
         }
-
-        // Status updates
-        async function updateStatus() {
-            try {
-                const response = await fetch('/api/status');
-                if (!response.ok) throw new Error('Failed to get status');
-                
-                currentStatus = await response.json();
-                updateStatusDisplay();
-                
-                // Call page-specific status update
-                if (typeof updatePageStatus === 'function') {
-                    updatePageStatus(currentStatus);
+        
+        function hideLoading(element) {
+            element.classList.remove('loading');
+            element.disabled = false;
+        }
+        
+        function showNotification(message, type = 'info') {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            alertDiv.role = 'alert';
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.getElementById('flashMessages').appendChild(alertDiv);
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
                 }
-            } catch (error) {
-                console.error('Status update failed:', error);
-                showMessage('Connection error', 'error');
-            }
+            }, 5000);
         }
-
-        function updateStatusDisplay() {
-            // Update system status
-            const statusElement = document.getElementById('system-status');
-            if (statusElement) {
-                statusElement.textContent = currentStatus.system_running ? 'Online ✓' : 'Offline ✗';
-                statusElement.className = 'status-value ' + (currentStatus.system_running ? 'status-online' : 'status-offline');
-            }
-            
-            // Update time
-            const timeElement = document.getElementById('current-time');
-            if (timeElement) {
-                timeElement.textContent = currentStatus.timestamp || '--:--:--';
-            }
-        }
-
-        // Message system
-        function initializeMessageToast() {
-            const closeBtn = document.getElementById('message-close');
-            if (closeBtn) {
-                closeBtn.addEventListener('click', hideMessage);
-            }
-        }
-
-        function showMessage(message, type = 'info', duration = 5000) {
-            const toast = document.getElementById('message-toast');
-            const text = document.getElementById('message-text');
-            
-            if (toast && text) {
-                text.textContent = message;
-                toast.className = `message-toast show ${type}`;
-                
-                // Auto-hide after duration
-                setTimeout(hideMessage, duration);
-            }
-        }
-
-        function hideMessage() {
-            const toast = document.getElementById('message-toast');
-            if (toast) {
-                toast.className = 'message-toast';
-            }
-        }
-
-        // Loading overlay
-        function showLoading(text = 'Processing...') {
-            const overlay = document.getElementById('loading-overlay');
-            const loadingText = document.querySelector('.loading-text');
-            
-            if (overlay) {
-                if (loadingText) loadingText.textContent = text;
-                overlay.classList.add('show');
-            }
-        }
-
-        function hideLoading() {
-            const overlay = document.getElementById('loading-overlay');
-            if (overlay) {
-                overlay.classList.remove('show');
-            }
-        }
-
-        // Emergency stop
-        async function emergencyStop() {
-            if (!confirm('Are you sure you want to EMERGENCY STOP all operations?')) {
-                return;
-            }
-
-            try {
-                showLoading('Emergency stopping...');
-                
-                const response = await fetch('/api/emergency_stop', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'}
+        
+        // System status checker
+        function updateSystemStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    const indicator = document.getElementById('systemStatusIndicator');
+                    const text = document.getElementById('systemStatusText');
+                    
+                    if (data.success && data.status.system_ready) {
+                        indicator.className = 'status-indicator status-online';
+                        text.textContent = 'System Online';
+                    } else {
+                        indicator.className = 'status-indicator status-offline';
+                        text.textContent = 'System Offline';
+                    }
+                })
+                .catch(error => {
+                    const indicator = document.getElementById('systemStatusIndicator');
+                    const text = document.getElementById('systemStatusText');
+                    indicator.className = 'status-indicator status-warning';
+                    text.textContent = 'Status Unknown';
                 });
+        }
+        
+        // Hardware control functions
+        async function controlRelay(relayId, state) {
+            const button = event.target;
+            showLoading(button);
+            
+            try {
+                const response = await fetch(`/api/relay/${relayId}/${state ? 'on' : 'off'}`);
+                const data = await response.json();
                 
-                const result = await response.json();
-                
-                if (response.ok) {
-                    showMessage('🚨 EMERGENCY STOP ACTIVATED 🚨', 'error', 10000);
-                    updateStatus(); // Immediate update
+                if (data.success) {
+                    showNotification(`Relay ${relayId} ${state ? 'turned on' : 'turned off'}`, 'success');
                 } else {
-                    showMessage(result.error || 'Emergency stop failed', 'error');
+                    showNotification(`Failed to control relay ${relayId}: ${data.error || 'Unknown error'}`, 'danger');
                 }
             } catch (error) {
-                showMessage('Network error during emergency stop', 'error');
+                showNotification(`Error controlling relay ${relayId}: ${error.message}`, 'danger');
             } finally {
-                hideLoading();
+                hideLoading(button);
             }
         }
-
-        // Utility functions
-        function formatDuration(seconds) {
-            if (seconds < 60) return `${Math.round(seconds)}s`;
-            if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-            return `${Math.round(seconds / 3600)}h`;
-        }
-
-        function formatTimestamp(timestamp) {
-            if (!timestamp) return '--:--:--';
-            return new Date(timestamp * 1000).toLocaleTimeString();
-        }
-
-        // API helper functions
-        async function apiCall(url, options = {}) {
+        
+        async function allRelaysOff() {
+            const button = event.target;
+            if (!confirm('Turn off ALL relays?')) return;
+            
+            showLoading(button);
+            
             try {
-                const response = await fetch(url, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...options.headers
-                    },
-                    ...options
-                });
+                const response = await fetch('/api/relay/all/off', { method: 'POST' });
+                const data = await response.json();
                 
-                const result = await response.json();
-                
-                if (!response.ok) {
-                    throw new Error(result.error || 'API call failed');
+                if (data.success) {
+                    showNotification('All relays turned off', 'success');
+                } else {
+                    showNotification(`Failed to turn off relays: ${data.error || 'Unknown error'}`, 'danger');
                 }
-                
-                return result;
             } catch (error) {
-                console.error('API call failed:', error);
-                throw error;
+                showNotification(`Error turning off relays: ${error.message}`, 'danger');
+            } finally {
+                hideLoading(button);
             }
         }
-
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', function() {
-            if (statusUpdateInterval) {
-                clearInterval(statusUpdateInterval);
+        
+        async function dispensePump(pumpId, amount) {
+            const button = event.target;
+            showLoading(button);
+            
+            try {
+                const response = await fetch(`/api/pump/${pumpId}/dispense`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount: amount })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification(`Dispensing ${amount}ml from pump ${pumpId}`, 'success');
+                } else {
+                    showNotification(`Failed to dispense from pump ${pumpId}: ${data.error || 'Unknown error'}`, 'danger');
+                }
+            } catch (error) {
+                showNotification(`Error dispensing from pump ${pumpId}: ${error.message}`, 'danger');
+            } finally {
+                hideLoading(button);
             }
+        }
+        
+        async function stopPump(pumpId) {
+            const button = event.target;
+            showLoading(button);
+            
+            try {
+                const response = await fetch(`/api/pump/${pumpId}/stop`, { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification(`Pump ${pumpId} stopped`, 'success');
+                } else {
+                    showNotification(`Failed to stop pump ${pumpId}: ${data.error || 'Unknown error'}`, 'danger');
+                }
+            } catch (error) {
+                showNotification(`Error stopping pump ${pumpId}: ${error.message}`, 'danger');
+            } finally {
+                hideLoading(button);
+            }
+        }
+        
+        async function emergencyStop() {
+            const button = event.target;
+            if (!confirm('🚨 EMERGENCY STOP - Are you sure?')) return;
+            
+            showLoading(button);
+            
+            try {
+                const response = await fetch('/api/emergency/stop', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('🚨 EMERGENCY STOP ACTIVATED 🚨', 'warning');
+                } else {
+                    showNotification(`Emergency stop failed: ${data.error || 'Unknown error'}`, 'danger');
+                }
+            } catch (error) {
+                showNotification(`Emergency stop error: ${error.message}`, 'danger');
+            } finally {
+                hideLoading(button);
+            }
+        }
+        
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            updateSystemStatus();
+            // Update system status every 10 seconds
+            setInterval(updateSystemStatus, 10000);
         });
     </script>
-
-    {% block scripts %}{% endblock %}
+    
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

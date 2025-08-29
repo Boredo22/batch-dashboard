@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Nutrient Mixing System{% endblock %}
+
+{% block content %}
+<!-- System Status Overview -->
+<div class="system-status">
+    <div class="row">
+        <div class="col-md-8">
+            <h2><i class="fas fa-tachometer-alt me-2"></i>System Dashboard</h2>
+            <p class="text-muted">Hardware control and monitoring interface</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <div class="d-grid">
+                <button class="btn btn-emergency btn-lg" onclick="emergencyStop()">
+                    <i class="fas fa-stop-circle me-2"></i>EMERGENCY STOP
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Status Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card hardware-card">
+            <div class="card-body text-center">
+                <i class="fas fa-pump-medical fa-2x text-primary mb-2"></i>
+                <h5>Pumps</h5>
+                <h3 class="text-success">{{ hardware['pumps']['ids']|length }}</h3>
+                <small class="text-muted">Available</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card hardware-card">
+            <div class="card-body text-center">
+                <i class="fas fa-toggle-on fa-2x text-warning mb-2"></i>
+                <h5>Relays</h5>
+                <h3 class="text-success">{{ hardware['relays']['ids']|length }}</h3>
+                <small class="text-muted">Available</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card hardware-card">
+            <div class="card-body text-center">
+                <i class="fas fa-water fa-2x text-info mb-2"></i>
+                <h5>Flow Meters</h5>
+                <h3 class="text-success">{{ hardware['flow_meters']['ids']|length }}</h3>
+                <small class="text-muted">Available</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card hardware-card">
+            <div class="card-body text-center">
+                <i class="fas fa-heartbeat fa-2x text-success mb-2"></i>
+                <h5>System</h5>
+                <h3 class="text-success">{{ 'Ready' if status.system_ready else 'Error' }}</h3>
+                <small class="text-muted">Status</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hardware Control Sections -->
+<div class="row">
+    <!-- Pump Control -->
+    <div class="col-lg-6 mb-4">
+        <div class="card hardware-card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-pump-medical me-2"></i>Pump Control
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if hardware['pumps']['ids'] %}
+                    <!-- Quick Dispense Form -->
+                    <form class="row g-3 mb-4" onsubmit="return quickDispense(event)">
+                        <div class="col-md-4">
+                            <label class="form-label">Pump</label>
+                            <select class="form-select" id="quickPumpId" required>
+                                {% for pump_id in hardware['pumps']['ids'] %}
+                                <option value="{{ pump_id }}">{{ hardware['pumps']['names'][pump_id] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Amount (ml)</label>
+                            <input type="number" class="form-control" id="quickAmount" 
+                                   min="{{ hardware['limits']['pump_min_ml'] or 1 }}" 
+                                   max="{{ hardware['limits']['pump_max_ml'] or 9999 }}" 
+                                   value="10" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">&nbsp;</label>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-play me-1"></i>Dispense
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                    
+                    <!-- Individual Pump Controls -->
+                    <div class="row">
+                        {% for pump_id in hardware['pumps']['ids'] %}
+                        <div class="col-md-6 mb-3">
+                            <div class="border rounded p-3">
+                                <h6>{{ hardware['pumps']['names'][pump_id] }}</h6>
+                                <div class="btn-group w-100" role="group">
+                                    <button class="btn btn-outline-success btn-sm" 
+                                            onclick="dispensePump({{ pump_id }}, 5)">5ml</button>
+                                    <button class="btn btn-outline-success btn-sm" 
+                                            onclick="dispensePump({{ pump_id }}, 10)">10ml</button>
+                                    <button class="btn btn-outline-danger btn-sm" 
+                                            onclick="stopPump({{ pump_id }})">
+                                        <i class="fas fa-stop"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                        <p>No pumps available</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Relay Control -->
+    <div class="col-lg-6 mb-4">
+        <div class="card hardware-card">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-toggle-on me-2"></i>Relay Control
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if hardware['relays']['ids'] %}
+                    <!-- All Relays Off Button -->
+                    <div class="d-grid mb-4">
+                        <button class="btn btn-danger" onclick="allRelaysOff()">
+                            <i class="fas fa-power-off me-2"></i>Turn ALL Relays OFF
+                        </button>
+                    </div>
+                    
+                    <!-- Individual Relay Controls -->
+                    <div class="row">
+                        {% for relay_id in hardware['relays']['ids'] %}
+                        <div class="col-md-6 mb-3">
+                            <div class="border rounded p-3">
+                                <h6>{{ hardware['relays']['names'][relay_id] }}</h6>
+                                <div class="btn-group w-100" role="group">
+                                    <button class="btn btn-relay-on btn-sm" 
+                                            onclick="controlRelay({{ relay_id }}, true)">ON</button>
+                                    <button class="btn btn-relay-off btn-sm" 
+                                            onclick="controlRelay({{ relay_id }}, false)">OFF</button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                        <p>No relays available</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Flow Control Section (if flow meters available) -->
+{% if hardware['flow_meters']['ids'] %}
+<div class="row">
+    <div class="col-12 mb-4">
+        <div class="card hardware-card">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-water me-2"></i>Flow Meter Control
+                </h5>
+            </div>
+            <div class="card-body">
+                <form class="row g-3" onsubmit="return quickFlow(event)">
+                    <div class="col-md-3">
+                        <label class="form-label">Flow Meter</label>
+                        <select class="form-select" id="quickFlowId" required>
+                            {% for flow_id in hardware['flow_meters']['ids'] %}
+                            <option value="{{ flow_id }}">{{ hardware['flow_meters']['names'][flow_id] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Gallons</label>
+                        <input type="number" class="form-control" id="quickGallons" 
+                               min="1" max="{{ hardware['limits']['flow_max_gallons'] or 300 }}" 
+                               value="5" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-info">
+                                <i class="fas fa-play me-1"></i>Start Flow
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <div class="d-grid">
+                            <button type="button" class="btn btn-secondary" onclick="stopAllFlows()">
+                                <i class="fas fa-stop me-1"></i>Stop All
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- System Information -->
+<div class="row">
+    <div class="col-12">
+        <div class="card hardware-card">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle me-2"></i>System Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Hardware Limits</h6>
+                        <ul class="list-unstyled">
+                            <li><strong>Pump Volume:</strong> {{ hardware['limits']['pump_min_ml'] or 'N/A' }} - {{ hardware['limits']['pump_max_ml'] or 'N/A' }} ml</li>
+                            <li><strong>Max Flow:</strong> {{ hardware['limits']['flow_max_gallons'] or 'N/A' }} gallons</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Last Status Update</h6>
+                        <p class="text-muted">{{ status.timestamp or 'Never' }}</p>
+                        
+                        <h6>Mock Hardware</h6>
+                        <ul class="list-unstyled">
+                            {% for device, is_mock in hardware.get('mock_settings', {}).items() %}
+                            <li>{{ device.title() }}: <span class="badge bg-{{ 'warning' if is_mock else 'success' }}">{{ 'Mock' if is_mock else 'Real' }}</span></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function quickDispense(event) {
+        event.preventDefault();
+        const pumpId = parseInt(document.getElementById('quickPumpId').value);
+        const amount = parseFloat(document.getElementById('quickAmount').value);
+        dispensePump(pumpId, amount);
+        return false;
+    }
+    
+    async function quickFlow(event) {
+        event.preventDefault();
+        const flowId = parseInt(document.getElementById('quickFlowId').value);
+        const gallons = parseInt(document.getElementById('quickGallons').value);
+        
+        const button = event.target.querySelector('button[type="submit"]');
+        showLoading(button);
+        
+        try {
+            const response = await fetch(`/api/flow/${flowId}/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gallons: gallons })
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                showNotification(`Flow meter ${flowId} started for ${gallons} gallons`, 'success');
+            } else {
+                showNotification(`Failed to start flow meter ${flowId}: ${data.error || 'Unknown error'}`, 'danger');
+            }
+        } catch (error) {
+            showNotification(`Error starting flow meter ${flowId}: ${error.message}`, 'danger');
+        } finally {
+            hideLoading(button);
+        }
+        
+        return false;
+    }
+    
+    async function stopAllFlows() {
+        const button = event.target;
+        if (!confirm('Stop all flow meters?')) return;
+        
+        showLoading(button);
+        
+        // Stop all flow meters
+        const flowIds = {{ hardware['flow_meters']['ids'] | tojson }};
+        
+        try {
+            for (const flowId of flowIds) {
+                const response = await fetch(`/api/flow/${flowId}/stop`, { method: 'POST' });
+                const data = await response.json();
+                
+                if (!data.success) {
+                    showNotification(`Failed to stop flow meter ${flowId}`, 'warning');
+                }
+            }
+            showNotification('All flow meters stopped', 'success');
+        } catch (error) {
+            showNotification(`Error stopping flow meters: ${error.message}`, 'danger');
+        } finally {
+            hideLoading(button);
+        }
+    }
+</script>
+{% endblock %}
