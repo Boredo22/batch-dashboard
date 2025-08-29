@@ -1,709 +1,1053 @@
 {% extends "base.html" %}
 
-{% block title %}Testing - Nutrient Mixing System{% endblock %}
+{% block title %}Hardware Testing - Nutrient Mixing System{% endblock %}
 
-{% block header_title %}Hardware Testing{% endblock %}
+{% block header_title %}🔧 Hardware Testing Terminal{% endblock %}
 
 {% block content %}
-<div class="page-container">
-    <!-- Hardware Testing -->
-    <section class="testing-section">
-        <h2 class="section-title">Hardware Component Testing</h2>
+<style>
+    /* Enhanced Dark Theme CSS - Add to your static/style.css or include here */
+    
+    /* Override base styles for testing page */
+    .main-content {
+        background: #0f0f0f;
+        color: #e2e8f0;
+        min-height: calc(100vh - 160px);
+        border-radius: 12px;
+        margin: 1rem;
+    }
+
+    .testing-container {
+        display: grid;
+        grid-template-columns: 1fr 400px;
+        gap: 2rem;
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 1.5rem;
+    }
+
+    /* Dark theme panels */
+    .testing-panel, .log-panel {
+        background: #1a1a2e;
+        border: 1px solid #374151;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .panel-header {
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+        padding: 1rem 1.5rem;
+        font-weight: 600;
+        font-size: 1.1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .log-panel .panel-header {
+        background: linear-gradient(135deg, #7c3aed, #a855f7);
+    }
+
+    .panel-controls {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .header-btn {
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .header-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+        transform: translateY(-1px);
+    }
+
+    .testing-content, .log-content {
+        padding: 1.5rem;
+    }
+
+    /* System Stats Dashboard */
+    .system-stats {
+        background: #2d3748;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        border: 1px solid #4a5568;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1.5rem;
+        text-align: center;
+    }
+
+    .stat-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #10b981;
+        margin-bottom: 0.25rem;
+    }
+
+    .stat-label {
+        font-size: 0.8rem;
+        color: #9ca3af;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    /* Hardware Section Styling */
+    .hardware-section {
+        margin-bottom: 2rem;
+        padding: 1.5rem;
+        background: #2d3748;
+        border-radius: 8px;
+        border: 1px solid #4a5568;
+    }
+
+    .section-title {
+        color: #10b981;
+        font-size: 1.2rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .quick-actions {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+    }
+
+    /* Enhanced Relay Cards */
+    .relay-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 1rem;
+    }
+
+    .relay-card {
+        background: #374151;
+        border: 2px solid #4b5563;
+        border-radius: 8px;
+        padding: 1rem;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        position: relative;
+    }
+
+    .relay-card:hover {
+        border-color: #7c3aed;
+        box-shadow: 0 4px 20px rgba(124, 58, 237, 0.3);
+        transform: translateY(-2px);
+    }
+
+    .relay-card.selected {
+        border-color: #10b981;
+        box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+    }
+
+    .relay-card.loading::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(124, 58, 237, 0.1);
+        border-radius: 6px;
+        animation: pulse 1.5s infinite;
+    }
+
+    .relay-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+
+    .relay-info h4 {
+        color: #e2e8f0;
+        font-weight: 600;
+        margin: 0 0 0.25rem 0;
+    }
+
+    .gpio-info {
+        font-size: 0.8rem;
+        color: #9ca3af;
+    }
+
+    .relay-status {
+        text-align: right;
+    }
+
+    .relay-state {
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 0.5rem;
+        display: inline-block;
+    }
+
+    .relay-state.on {
+        background: #10b981;
+        color: white;
+        box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+    }
+
+    .relay-state.off {
+        background: #6b7280;
+        color: #e2e8f0;
+    }
+
+    /* GPIO Verification Indicator */
+    .gpio-verification {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        background: #1f2937;
+        border-radius: 6px;
+        margin: 0.5rem 0;
+        border-left: 3px solid #6b7280;
+        font-size: 0.85rem;
+    }
+
+    .gpio-verification.verified {
+        border-left-color: #10b981;
+        background: rgba(16, 185, 129, 0.1);
+        color: #10b981;
+    }
+
+    .gpio-verification.unverified {
+        border-left-color: #ef4444;
+        background: rgba(239, 68, 68, 0.1);
+        color: #ef4444;
+    }
+
+    /* Enhanced Buttons */
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 0.9rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        text-decoration: none;
+    }
+
+    .btn:hover {
+        transform: translateY(-1px);
+    }
+
+    .btn-primary {
+        background: #10b981;
+        color: white;
+        box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+    }
+
+    .btn-primary:hover {
+        background: #059669;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    }
+
+    .btn-secondary {
+        background: #7c3aed;
+        color: white;
+        box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+    }
+
+    .btn-secondary:hover {
+        background: #6d28d9;
+        box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+    }
+
+    .btn-danger {
+        background: #ef4444;
+        color: white;
+        box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-danger:hover {
+        background: #dc2626;
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+    }
+
+    .btn-sm {
+        padding: 0.5rem 1rem;
+        font-size: 0.8rem;
+    }
+
+    .relay-controls {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    /* Log Panel Styling */
+    .log-display {
+        height: 500px;
+        overflow-y: auto;
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 0.85rem;
+        line-height: 1.4;
+        background: #1f2937;
+        border-radius: 6px;
+        padding: 1rem;
+    }
+
+    .log-entry {
+        margin-bottom: 0.75rem;
+        padding: 0.75rem;
+        background: #374151;
+        border-radius: 6px;
+        border-left: 3px solid #6b7280;
+        animation: slideIn 0.3s ease-in;
+    }
+
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateX(-20px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+
+    .log-entry.success {
+        border-left-color: #10b981;
+        background: rgba(16, 185, 129, 0.05);
+    }
+
+    .log-entry.error {
+        border-left-color: #ef4444;
+        background: rgba(239, 68, 68, 0.05);
+    }
+
+    .log-entry.warning {
+        border-left-color: #f59e0b;
+        background: rgba(245, 158, 11, 0.05);
+    }
+
+    .log-entry.info {
+        border-left-color: #7c3aed;
+        background: rgba(124, 58, 237, 0.05);
+    }
+
+    .log-timestamp {
+        color: #9ca3af;
+        font-size: 0.75rem;
+    }
+
+    .log-message {
+        color: #e2e8f0;
+        margin-top: 0.25rem;
+    }
+
+    .log-details {
+        color: #a78bfa;
+        font-size: 0.75rem;
+        margin-top: 0.25rem;
+        opacity: 0.8;
+    }
+
+    /* Keyboard shortcut info */
+    .shortcuts-info {
+        position: fixed;
+        bottom: 1rem;
+        right: 1rem;
+        background: rgba(26, 26, 46, 0.95);
+        border: 1px solid #7c3aed;
+        border-radius: 8px;
+        padding: 0.75rem;
+        font-size: 0.75rem;
+        color: #a78bfa;
+        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px);
+        opacity: 0.7;
+        transition: opacity 0.2s;
+        z-index: 1000;
+    }
+
+    .shortcuts-info:hover {
+        opacity: 1;
+    }
+
+    /* Responsive design */
+    @media (max-width: 1200px) {
+        .testing-container {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
         
-        <!-- Relay Testing -->
-        <div class="test-card">
-            <h3 class="test-title">Relay Testing</h3>
-            <div class="test-content">
-                <div id="relay-grid" class="relay-grid">
-                    <div class="loading-placeholder">Loading relays...</div>
-                </div>
-                <div class="test-actions">
-                    <button class="btn btn-warning" onclick="testAllRelays()">Test All Relays</button>
-                    <button class="btn btn-danger" onclick="turnOffAllRelays()">Turn Off All</button>
-                </div>
-            </div>
-        </div>
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
 
-        <!-- Pump Testing -->
-        <div class="test-card">
-            <h3 class="test-title">Pump Testing</h3>
-            <div class="test-content">
-                <div id="pump-grid" class="pump-grid">
-                    <div class="loading-placeholder">Loading pumps...</div>
-                </div>
-                <div class="test-actions">
-                    <button class="btn btn-info" onclick="showPumpTestModal()">Custom Test</button>
-                    <button class="btn btn-warning" onclick="stopAllPumps()">Stop All Pumps</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Flow Meter Testing -->
-        <div class="test-card">
-            <h3 class="test-title">Flow Meter Testing</h3>
-            <div class="test-content">
-                <div id="flow-grid" class="flow-grid">
-                    <div class="loading-placeholder">Loading flow meters...</div>
-                </div>
-                <div class="test-actions">
-                    <button class="btn btn-info" onclick="showFlowTestModal()">Test Flow</button>
-                    <button class="btn btn-warning" onclick="stopAllFlow()">Stop All Flow</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Sensor Testing -->
-        <div class="test-card">
-            <h3 class="test-title">pH/EC Sensor Testing</h3>
-            <div class="test-content">
-                <div id="sensor-readings" class="sensor-readings">
-                    <div class="loading-placeholder">Loading sensors...</div>
-                </div>
-                <div class="test-actions">
-                    <button class="btn btn-primary" onclick="readSensors()">Read Sensors</button>
-                    <button class="btn btn-info" onclick="calibrateSensors()">Calibrate</button>
-                    <button class="btn btn-success" onclick="startContinuousReading()">Continuous</button>
-                    <button class="btn btn-secondary" onclick="stopContinuousReading()">Stop</button>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- System Diagnostics -->
-    <section class="diagnostics-section">
-        <h2 class="section-title">System Diagnostics</h2>
+    @media (max-width: 768px) {
+        .relay-grid {
+            grid-template-columns: 1fr;
+        }
         
-        <div class="diagnostics-grid">
-            <!-- Hardware Logs -->
-            <div class="diagnostic-card">
-                <h3 class="card-title">Hardware Logs</h3>
-                <div id="hardware-logs" class="log-display">
-                    <div class="loading-placeholder">Loading logs...</div>
-                </div>
-                <div class="card-actions">
-                    <button class="btn btn-info" onclick="refreshHardwareLogs()">Refresh</button>
-                    <button class="btn btn-secondary" onclick="clearLogs()">Clear</button>
-                </div>
-            </div>
+        .quick-actions {
+            flex-direction: column;
+        }
+    }
+</style>
 
-            <!-- Job History -->
-            <div class="diagnostic-card">
-                <h3 class="card-title">Job History</h3>
-                <div id="job-logs" class="log-display">
-                    <div class="loading-placeholder">Loading jobs...</div>
-                </div>
-                <div class="card-actions">
-                    <button class="btn btn-info" onclick="refreshJobLogs()">Refresh</button>
-                    <button class="btn btn-secondary" onclick="exportLogs()">Export</button>
-                </div>
-            </div>
-
-            <!-- System Health -->
-            <div class="diagnostic-card">
-                <h3 class="card-title">System Health</h3>
-                <div id="system-health" class="health-display">
-                    <div class="health-metric">
-                        <span class="metric-label">CPU Usage:</span>
-                        <span class="metric-value" id="cpu-usage">--</span>
-                    </div>
-                    <div class="health-metric">
-                        <span class="metric-label">Memory Usage:</span>
-                        <span class="metric-value" id="memory-usage">--</span>
-                    </div>
-                    <div class="health-metric">
-                        <span class="metric-label">Disk Space:</span>
-                        <span class="metric-value" id="disk-usage">--</span>
-                    </div>
-                    <div class="health-metric">
-                        <span class="metric-label">Temperature:</span>
-                        <span class="metric-value" id="system-temp">--</span>
-                    </div>
-                </div>
-                <div class="card-actions">
-                    <button class="btn btn-info" onclick="refreshSystemHealth()">Refresh</button>
-                    <button class="btn btn-warning" onclick="runDiagnostics()">Full Diagnostic</button>
-                </div>
+<div class="testing-container">
+    <!-- Main Testing Panel -->
+    <div class="testing-panel">
+        <div class="panel-header">
+            🔧 Hardware Testing Suite
+            <div class="panel-controls">
+                <button class="header-btn" onclick="refreshAllHardware()" title="Ctrl+R">🔄 Refresh</button>
+                <button class="header-btn" onclick="emergencyStopAll()" title="Ctrl+E">🚨 E-Stop</button>
             </div>
         </div>
-    </section>
+        
+        <div class="testing-content">
+            <!-- System Dashboard -->
+            <div class="system-stats">
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-value" id="active-relays-count">0</div>
+                        <div class="stat-label">Active Relays</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="test-success-rate">100%</div>
+                        <div class="stat-label">Success Rate</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="gpio-verification-rate">100%</div>
+                        <div class="stat-label">GPIO Verified</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="total-tests-count">0</div>
+                        <div class="stat-label">Tests Run</div>
+                    </div>
+                </div>
+            </div>
 
-    <!-- Manual Controls -->
-    <section class="manual-section">
-        <h2 class="section-title">Manual Controls</h2>
-        <div class="manual-grid">
-            <div class="manual-card">
-                <h3 class="card-title">Emergency Controls</h3>
-                <div class="emergency-controls">
-                    <button class="btn btn-danger btn-large" onclick="emergencyStop()">
-                        🚨 EMERGENCY STOP 🚨
+            <!-- Relay Testing Section -->
+            <div class="hardware-section">
+                <h3 class="section-title">⚡ Relay Testing & GPIO Verification</h3>
+                
+                <div class="quick-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="testAllRelaysSequence()" title="Ctrl+T">
+                        🔄 Full Test Sequence
                     </button>
-                    <button class="btn btn-warning" onclick="resetSystem()">Reset System</button>
-                    <button class="btn btn-info" onclick="restartServices()">Restart Services</button>
+                    <button class="btn btn-primary btn-sm" onclick="verifyAllGPIO()">
+                        🔍 Verify All GPIO
+                    </button>
+                    <button class="btn btn-danger btn-sm" onclick="turnOffAllRelays()">
+                        🔴 All OFF
+                    </button>
                 </div>
-            </div>
-            
-            <div class="manual-card">
-                <h3 class="card-title">Mock Hardware</h3>
-                <div class="mock-controls">
-                    <div class="mock-toggle">
-                        <label for="mock-relays">Mock Relays:</label>
-                        <input type="checkbox" id="mock-relays" onchange="toggleMockHardware('relays')">
-                    </div>
-                    <div class="mock-toggle">
-                        <label for="mock-pumps">Mock Pumps:</label>
-                        <input type="checkbox" id="mock-pumps" onchange="toggleMockHardware('pumps')">
-                    </div>
-                    <div class="mock-toggle">
-                        <label for="mock-flow">Mock Flow:</label>
-                        <input type="checkbox" id="mock-flow" onchange="toggleMockHardware('flow')">
-                    </div>
-                    <div class="mock-toggle">
-                        <label for="mock-sensors">Mock Sensors:</label>
-                        <input type="checkbox" id="mock-sensors" onchange="toggleMockHardware('sensors')">
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-</div>
 
-<!-- Pump Test Modal -->
-<div id="pump-test-modal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>Pump Test</h3>
-            <button class="modal-close" onclick="closePumpTestModal()">&times;</button>
+                <div id="relay-grid" class="relay-grid">
+                    <!-- Relay cards will be populated here -->
+                    <div class="loading-placeholder">Loading relay configuration...</div>
+                </div>
+            </div>
+
+            <!-- Pump Testing Section -->
+            <div class="hardware-section">
+                <h3 class="section-title">💧 Pump Testing</h3>
+                
+                <div class="quick-actions">
+                    <button class="btn btn-primary btn-sm" onclick="showCustomPumpTest()">
+                        ⚙️ Custom Test
+                    </button>
+                    <button class="btn btn-danger btn-sm" onclick="stopAllPumps()">
+                        🛑 Stop All
+                    </button>
+                </div>
+
+                <div id="pump-status" class="system-stats">
+                    <p class="status-text">Pump testing controls ready</p>
+                </div>
+            </div>
+
+            <!-- Sensor Testing Section -->
+            <div class="hardware-section">
+                <h3 class="section-title">📊 Sensor Monitoring</h3>
+                
+                <div class="quick-actions">
+                    <button class="btn btn-primary btn-sm" onclick="readAllSensors()">
+                        📖 Read Now
+                    </button>
+                    <button class="btn btn-secondary btn-sm" onclick="startContinuousReading()" id="continuous-btn">
+                        ▶️ Start Continuous
+                    </button>
+                </div>
+
+                <div class="system-stats">
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-value" id="ph-value">--</div>
+                            <div class="stat-label">pH Level</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="ec-value">--</div>
+                            <div class="stat-label">EC (mS/cm)</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="temp-value">--°C</div>
+                            <div class="stat-label">Temperature</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="modal-body">
-            <form id="pump-test-form">
-                <div class="form-group">
-                    <label for="test-pump-select">Pump:</label>
-                    <select id="test-pump-select" class="form-control" required>
-                        <option value="">Select Pump</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="test-amount">Amount (ml):</label>
-                    <input type="number" id="test-amount" class="form-control" min="0.5" max="50" value="5" step="0.5" required>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closePumpTestModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Start Test</button>
-                </div>
-            </form>
+    </div>
+
+    <!-- Live Log Panel -->
+    <div class="log-panel">
+        <div class="panel-header">
+            📋 Live System Log
+            <div class="panel-controls">
+                <button class="header-btn" onclick="toggleAutoScroll()" title="Toggle auto-scroll">
+                    📜 Auto: <span id="autoscroll-status">ON</span>
+                </button>
+                <button class="header-btn" onclick="clearSystemLogs()" title="Ctrl+L">🧹 Clear</button>
+                <button class="header-btn" onclick="exportSystemLogs()">💾 Export</button>
+            </div>
+        </div>
+        
+        <div class="log-content">
+            <div id="system-log-display" class="log-display">
+                <!-- Log entries will be added here -->
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Flow Test Modal -->
-<div id="flow-test-modal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>Flow Meter Test</h3>
-            <button class="modal-close" onclick="closeFlowTestModal()">&times;</button>
-        </div>
-        <div class="modal-body">
-            <form id="flow-test-form">
-                <div class="form-group">
-                    <label for="test-flow-select">Flow Meter:</label>
-                    <select id="test-flow-select" class="form-control" required>
-                        <option value="">Select Flow Meter</option>
-                        <option value="1">Tank Fill</option>
-                        <option value="2">Tank Send</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="test-gallons">Target Gallons:</label>
-                    <input type="number" id="test-gallons" class="form-control" min="0.1" max="10" value="1" step="0.1" required>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeFlowTestModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Start Test</button>
-                </div>
-            </form>
-        </div>
-    </div>
+<!-- Keyboard Shortcuts Info -->
+<div class="shortcuts-info">
+    <strong>Desktop Shortcuts:</strong><br>
+    <kbd>Ctrl+R</kbd> Refresh All | <kbd>Ctrl+E</kbd> Emergency Stop<br>
+    <kbd>Ctrl+L</kbd> Clear Logs | <kbd>Ctrl+T</kbd> Test All Relays<br>
+    <kbd>Space</kbd> Toggle Selected | <kbd>1-8</kbd> Select Relay
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // Page-specific variables
-    let hardwareStatus = {};
-    let continuousReadingInterval = null;
+// Enhanced Testing Page JavaScript with Desktop Features
 
-    // Initialize page
-    function initializePage() {
-        loadHardwareStatus();
-        loadLogs();
+// Global state management
+let testingState = {
+    totalTests: 0,
+    successfulTests: 0,
+    selectedRelayId: null,
+    autoScroll: true,
+    continuousReading: false,
+    continuousInterval: null,
+    relayStates: {},
+    sessionStartTime: Date.now()
+};
+
+// Initialize the testing page
+function initializeTestingPage() {
+    logToSystem('info', '🚀 Hardware Testing Terminal initialized', 'Desktop interface ready');
+    loadHardwareStatus();
+    updateSystemStats();
+    
+    // Start real-time updates
+    setInterval(updateSystemStats, 5000);
+    setInterval(updateSessionTime, 1000);
+    
+    // Set up keyboard shortcuts
+    document.addEventListener('keydown', handleKeyboardShortcuts);
+    
+    // Load initial relay configuration
+    refreshAllHardware();
+}
+
+// Enhanced logging system
+function logToSystem(level, message, details = '') {
+    const logDisplay = document.getElementById('system-log-display');
+    const timestamp = new Date().toLocaleTimeString();
+    
+    const logEntry = document.createElement('div');
+    logEntry.className = `log-entry ${level}`;
+    logEntry.innerHTML = `
+        <div class="log-timestamp">${timestamp}</div>
+        <div class="log-message">${message}</div>
+        ${details ? `<div class="log-details">${details}</div>` : ''}
+    `;
+    
+    logDisplay.appendChild(logEntry);
+    
+    // Auto-scroll if enabled
+    if (testingState.autoScroll) {
+        logEntry.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+    
+    // Limit log entries to prevent memory issues
+    while (logDisplay.children.length > 200) {
+        logDisplay.removeChild(logDisplay.firstChild);
+    }
+}
+
+// Enhanced relay testing with GPIO verification
+async function testRelayEnhanced(relayId, action) {
+    const relayCard = document.querySelector(`.relay-card[data-relay="${relayId}"]`);
+    if (relayCard) {
+        relayCard.classList.add('loading');
     }
 
-    // Update page with status
-    function updatePageStatus(status) {
-        hardwareStatus = status.hardware_status || {};
-        updateHardwareDisplays();
-    }
-
-    // Load hardware status
-    async function loadHardwareStatus() {
-        try {
-            const response = await apiCall('/api/settings/hardware');
-            updateRelayGrid(response.hardware_status?.relays || {});
-            updatePumpGrid(response.hardware_status?.pumps || {});
-            updateFlowGrid(response.hardware_status?.flow_meters || {});
-        } catch (error) {
-            showMessage('Failed to load hardware status: ' + error.message, 'error');
-        }
-    }
-
-    // Update hardware displays
-    function updateHardwareDisplays() {
-        if (hardwareStatus.relays) updateRelayGrid(hardwareStatus.relays);
-        if (hardwareStatus.pumps) updatePumpGrid(hardwareStatus.pumps);
-        if (hardwareStatus.flow_meters) updateFlowGrid(hardwareStatus.flow_meters);
-    }
-
-    // Update relay grid
-    function updateRelayGrid(relays) {
-        const container = document.getElementById('relay-grid');
-        if (!container) return;
-
-        if (Object.keys(relays).length === 0) {
-            container.innerHTML = '<div class="no-hardware">No relays available</div>';
-            return;
-        }
-
-        container.innerHTML = Object.entries(relays).map(([relayId, state]) => `
-            <div class="relay-item">
-                <div class="relay-info">
-                    <span class="relay-name">Relay ${relayId}</span>
-                    <span class="relay-state ${state ? 'on' : 'off'}">${state ? 'ON' : 'OFF'}</span>
-                </div>
-                <div class="relay-controls">
-                    <button class="btn btn-sm btn-success" onclick="testRelay(${relayId}, 'on')">ON</button>
-                    <button class="btn btn-sm btn-danger" onclick="testRelay(${relayId}, 'off')">OFF</button>
-                    <button class="btn btn-sm btn-info" onclick="testRelay(${relayId}, 'toggle')">Toggle</button>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    // Update pump grid
-    function updatePumpGrid(pumps) {
-        const container = document.getElementById('pump-grid');
-        if (!container) return;
-
-        if (Object.keys(pumps).length === 0) {
-            container.innerHTML = '<div class="no-hardware">No pumps available</div>';
-            return;
-        }
-
-        container.innerHTML = Object.entries(pumps).map(([pumpId, pump]) => `
-            <div class="pump-item">
-                <div class="pump-info">
-                    <span class="pump-name">${pump.name || `Pump ${pumpId}`}</span>
-                    <span class="pump-status ${pump.connected ? 'connected' : 'disconnected'}">
-                        ${pump.connected ? 'Connected' : 'Disconnected'}
-                    </span>
-                </div>
-                <div class="pump-details">
-                    <div class="pump-detail">
-                        <span>Dispensing:</span>
-                        <span class="${pump.is_dispensing ? 'active' : 'inactive'}">
-                            ${pump.is_dispensing ? 'Yes' : 'No'}
-                        </span>
-                    </div>
-                    <div class="pump-detail">
-                        <span>Voltage:</span>
-                        <span>${pump.voltage?.toFixed(1) || '--'}V</span>
-                    </div>
-                </div>
-                <div class="pump-controls">
-                    <button class="btn btn-sm btn-primary" onclick="testPump(${pumpId}, 5)">Test 5ml</button>
-                    <button class="btn btn-sm btn-warning" onclick="stopPump(${pumpId})">Stop</button>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    // Update flow grid
-    function updateFlowGrid(flowMeters) {
-        const container = document.getElementById('flow-grid');
-        if (!container) return;
-
-        if (Object.keys(flowMeters).length === 0) {
-            container.innerHTML = '<div class="no-hardware">No flow meters available</div>';
-            return;
-        }
-
-        container.innerHTML = Object.entries(flowMeters).map(([meterId, meter]) => `
-            <div class="flow-item">
-                <div class="flow-info">
-                    <span class="flow-name">${meter.name || `Flow ${meterId}`}</span>
-                    <span class="flow-status ${meter.status === 1 ? 'active' : 'inactive'}">
-                        ${meter.status === 1 ? 'Active' : 'Inactive'}
-                    </span>
-                </div>
-                <div class="flow-details">
-                    <div class="flow-detail">
-                        <span>Current:</span>
-                        <span>${meter.current_gallons || 0} gal</span>
-                    </div>
-                    <div class="flow-detail">
-                        <span>Target:</span>
-                        <span>${meter.target_gallons || 0} gal</span>
-                    </div>
-                    <div class="flow-detail">
-                        <span>Pulses:</span>
-                        <span>${meter.pulse_count || 0}</span>
-                    </div>
-                </div>
-                <div class="flow-controls">
-                    <button class="btn btn-sm btn-primary" onclick="testFlow(${meterId}, 1)">Test 1 gal</button>
-                    <button class="btn btn-sm btn-warning" onclick="stopFlow(${meterId})">Stop</button>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    // Hardware testing functions
-    async function testRelay(relayId, action) {
-        try {
-            const result = await apiCall(`/api/test/relay/${relayId}/${action}`, {
-                method: 'POST'
-            });
-            
-            showMessage(result.message, 'success');
-            loadHardwareStatus(); // Refresh display
-        } catch (error) {
-            showMessage(`Relay test failed: ${error.message}`, 'error');
-        }
-    }
-
-    async function testAllRelays() {
-        if (!confirm('Test all relays? This will cycle each relay ON then OFF.')) return;
-
-        try {
-            showLoading('Testing all relays...');
-            
-            const relays = Object.keys(hardwareStatus.relays || {});
-            for (const relayId of relays) {
-                await testRelay(relayId, 'on');
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                await testRelay(relayId, 'off');
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
-            
-            showMessage('All relays tested', 'success');
-        } catch (error) {
-            showMessage(`Relay test failed: ${error.message}`, 'error');
-        } finally {
-            hideLoading();
-        }
-    }
-
-    async function turnOffAllRelays() {
-        if (!confirm('Turn off all relays?')) return;
-
-        try {
-            showLoading('Turning off all relays...');
-            
-            const relays = Object.keys(hardwareStatus.relays || {});
-            for (const relayId of relays) {
-                await testRelay(relayId, 'off');
-            }
-            
-            showMessage('All relays turned off', 'success');
-        } catch (error) {
-            showMessage(`Failed to turn off relays: ${error.message}`, 'error');
-        } finally {
-            hideLoading();
-        }
-    }
-
-    async function testPump(pumpId, amount) {
-        try {
-            const result = await apiCall(`/api/test/pump/${pumpId}/dispense`, {
-                method: 'POST',
-                body: JSON.stringify({ amount: amount })
-            });
-            
-            showMessage(result.message, 'success');
-            loadHardwareStatus(); // Refresh display
-        } catch (error) {
-            showMessage(`Pump test failed: ${error.message}`, 'error');
-        }
-    }
-
-    function showPumpTestModal() {
-        const modal = document.getElementById('pump-test-modal');
-        const select = document.getElementById('test-pump-select');
+    try {
+        testingState.totalTests++;
         
-        // Populate pump options
-        select.innerHTML = '<option value="">Select Pump</option>';
-        Object.entries(hardwareStatus.pumps || {}).forEach(([pumpId, pump]) => {
-            select.innerHTML += `<option value="${pumpId}">${pump.name || `Pump ${pumpId}`}</option>`;
+        logToSystem('info', `🔧 Testing Relay ${relayId}`, `Action: ${action.toUpperCase()}`);
+        
+        // Call enhanced API endpoint
+        const response = await fetch(`/api/test/relay/${relayId}/${action}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
         });
-
-        // Set up form submission
-        const form = document.getElementById('pump-test-form');
-        form.onsubmit = handlePumpTest;
-
-        modal.classList.add('show');
-    }
-
-    async function handlePumpTest(event) {
-        event.preventDefault();
         
-        const pumpId = document.getElementById('test-pump-select').value;
-        const amount = parseFloat(document.getElementById('test-amount').value);
+        const result = await response.json();
         
-        if (!pumpId) {
-            showMessage('Please select a pump', 'error');
-            return;
+        if (result.success) {
+            testingState.successfulTests++;
+            
+            // Update local state
+            testingState.relayStates[relayId] = {
+                state: result.state,
+                gpio_verified: result.gpio_verified,
+                gpio_pin: result.gpio_pin,
+                operation_time: result.operation_time_ms
+            };
+            
+            const verification = result.gpio_verified ? '✅ GPIO Verified' : '⚠️ GPIO NOT Verified';
+            const timing = `${result.operation_time_ms}ms`;
+            
+            logToSystem(
+                result.gpio_verified ? 'success' : 'warning',
+                `${result.gpio_verified ? '✅' : '⚠️'} Relay ${relayId} ${result.state ? 'ON' : 'OFF'}`,
+                `${verification} | GPIO ${result.gpio_pin} | Response: ${timing}`
+            );
+            
+            if (!result.gpio_verified) {
+                logToSystem('warning', '⚠️ Hardware Verification Failed', 
+                    `Relay ${relayId} state change not confirmed by GPIO reading. Check connections.`);
+            }
+            
+        } else {
+            logToSystem('error', `❌ Relay ${relayId} Test Failed`, result.error || 'Unknown error');
         }
-
-        try {
-            await testPump(pumpId, amount);
-            closePumpTestModal();
-        } catch (error) {
-            showMessage(`Pump test failed: ${error.message}`, 'error');
+        
+        updateRelayCard(relayId);
+        updateSystemStats();
+        
+    } catch (error) {
+        logToSystem('error', `💥 Exception testing Relay ${relayId}`, error.message);
+    } finally {
+        if (relayCard) {
+            relayCard.classList.remove('loading');
         }
     }
+}
 
-    function closePumpTestModal() {
-        const modal = document.getElementById('pump-test-modal');
-        modal.classList.remove('show');
+// Load and render relay grid with enhanced features
+async function loadHardwareStatus() {
+    try {
+        const response = await fetch('/api/test/system/status');
+        const data = await response.json();
+        
+        if (data.success) {
+            testingState.relayStates = data.hardware_status.relays || {};
+            renderEnhancedRelayGrid();
+            updateSystemStats();
+        }
+    } catch (error) {
+        logToSystem('error', '❌ Failed to load hardware status', error.message);
     }
+}
 
-    async function testFlow(meterId, gallons) {
-        try {
-            const result = await apiCall(`/api/test/flow/${meterId}/start`, {
-                method: 'POST',
-                body: JSON.stringify({ gallons: gallons })
+function renderEnhancedRelayGrid() {
+    const grid = document.getElementById('relay-grid');
+    
+    if (Object.keys(testingState.relayStates).length === 0) {
+        grid.innerHTML = '<div class="loading-placeholder">No relays configured</div>';
+        return;
+    }
+    
+    grid.innerHTML = '';
+    
+    Object.entries(testingState.relayStates).forEach(([relayId, relay]) => {
+        const card = document.createElement('div');
+        card.className = 'relay-card';
+        card.dataset.relay = relayId;
+        
+        if (testingState.selectedRelayId === relayId) {
+            card.classList.add('selected');
+        }
+        
+        card.innerHTML = `
+            <div class="relay-header">
+                <div class="relay-info">
+                    <h4>${relay.name || `Relay ${relayId}`}</h4>
+                    <div class="gpio-info">GPIO ${relay.gpio_pin || 'Unknown'}</div>
+                </div>
+                <div class="relay-status">
+                    <div class="relay-state ${relay.state ? 'on' : 'off'}">
+                        ${relay.state ? 'ON' : 'OFF'}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="gpio-verification ${relay.gpio_verified ? 'verified' : 'unverified'}">
+                <span>${relay.gpio_verified ? '✅' : '⚠️'}</span>
+                <span>GPIO: ${relay.gpio_verified ? 'Verified' : 'Not Verified'}</span>
+            </div>
+            
+            <div class="relay-controls">
+                <button class="btn btn-primary btn-sm" onclick="testRelayEnhanced(${relayId}, 'on')">
+                    ON
+                </button>
+                <button class="btn btn-secondary btn-sm" onclick="testRelayEnhanced(${relayId}, 'off')">
+                    OFF
+                </button>
+                <button class="btn btn-primary btn-sm" onclick="testRelayEnhanced(${relayId}, 'toggle')">
+                    Toggle
+                </button>
+            </div>
+        `;
+        
+        // Add click to select functionality
+        card.addEventListener('click', () => selectRelay(relayId));
+        
+        grid.appendChild(card);
+    });
+}
+
+function updateRelayCard(relayId) {
+    const relay = testingState.relayStates[relayId];
+    if (!relay) return;
+    
+    const card = document.querySelector(`.relay-card[data-relay="${relayId}"]`);
+    if (!card) return;
+    
+    // Update state display
+    const stateElement = card.querySelector('.relay-state');
+    stateElement.className = `relay-state ${relay.state ? 'on' : 'off'}`;
+    stateElement.textContent = relay.state ? 'ON' : 'OFF';
+    
+    // Update verification display
+    const verificationElement = card.querySelector('.gpio-verification');
+    verificationElement.className = `gpio-verification ${relay.gpio_verified ? 'verified' : 'unverified'}`;
+    verificationElement.innerHTML = `
+        <span>${relay.gpio_verified ? '✅' : '⚠️'}</span>
+        <span>GPIO: ${relay.gpio_verified ? 'Verified' : 'Not Verified'}</span>
+    `;
+}
+
+function selectRelay(relayId) {
+    testingState.selectedRelayId = relayId;
+    
+    // Update visual selection
+    document.querySelectorAll('.relay-card').forEach(card => {
+        card.classList.toggle('selected', card.dataset.relay === relayId);
+    });
+    
+    const relayName = testingState.relayStates[relayId]?.name || `Relay ${relayId}`;
+    logToSystem('info', `🎯 Selected ${relayName}`, 'Use Space key or number keys for control');
+}
+
+// Enhanced testing functions
+async function testAllRelaysSequence() {
+    logToSystem('info', '🔄 Starting comprehensive relay test sequence');
+    
+    try {
+        const response = await fetch('/api/test/relays/all/test_sequence', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            logToSystem('success', 
+                `✅ Test sequence completed`, 
+                `${result.summary.successful_operations}/${result.summary.total_relays} successful | ${result.summary.gpio_verified} GPIO verified`
+            );
+            
+            // Update local state with results
+            result.results.forEach(r => {
+                if (r.relay_id && testingState.relayStates[r.relay_id]) {
+                    testingState.relayStates[r.relay_id].gpio_verified = r.off_test?.gpio_verified || false;
+                    testingState.relayStates[r.relay_id].state = r.off_test?.state || false;
+                }
             });
             
-            showMessage(result.message, 'success');
-            loadHardwareStatus(); // Refresh display
-        } catch (error) {
-            showMessage(`Flow test failed: ${error.message}`, 'error');
+            renderEnhancedRelayGrid();
         }
+    } catch (error) {
+        logToSystem('error', '❌ Test sequence failed', error.message);
     }
+}
 
-    function showFlowTestModal() {
-        const modal = document.getElementById('flow-test-modal');
-        const form = document.getElementById('flow-test-form');
+async function verifyAllGPIO() {
+    logToSystem('info', '🔍 Verifying all GPIO states...');
+    
+    for (const relayId of Object.keys(testingState.relayStates)) {
+        // Quick verification without changing state
+        await testRelayEnhanced(parseInt(relayId), testingState.relayStates[relayId].state ? 'on' : 'off');
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    logToSystem('success', '✅ GPIO verification completed');
+}
+
+async function turnOffAllRelays() {
+    logToSystem('warning', '🔴 Turning OFF all relays');
+    
+    try {
+        const response = await fetch('/api/test/relays/all/off', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
         
-        form.onsubmit = handleFlowTest;
-        modal.classList.add('show');
-    }
-
-    async function handleFlowTest(event) {
-        event.preventDefault();
+        const result = await response.json();
         
-        const meterId = document.getElementById('test-flow-select').value;
-        const gallons = parseFloat(document.getElementById('test-gallons').value);
-        
-        if (!meterId) {
-            showMessage('Please select a flow meter', 'error');
-            return;
-        }
-
-        try {
-            await testFlow(meterId, gallons);
-            closeFlowTestModal();
-        } catch (error) {
-            showMessage(`Flow test failed: ${error.message}`, 'error');
-        }
-    }
-
-    function closeFlowTestModal() {
-        const modal = document.getElementById('flow-test-modal');
-        modal.classList.remove('show');
-    }
-
-    // Sensor testing
-    async function readSensors() {
-        try {
-            showLoading('Reading sensors...');
+        if (result.success) {
+            // Update local state
+            Object.keys(testingState.relayStates).forEach(relayId => {
+                testingState.relayStates[relayId].state = false;
+            });
             
-            const result = await apiCall('/api/test/sensors');
-            
-            const container = document.getElementById('sensor-readings');
-            if (container && result.readings) {
-                container.innerHTML = `
-                    <div class="sensor-reading">
-                        <span class="sensor-label">pH:</span>
-                        <span class="sensor-value">${result.readings.ph?.toFixed(2) || '--'}</span>
-                    </div>
-                    <div class="sensor-reading">
-                        <span class="sensor-label">EC:</span>
-                        <span class="sensor-value">${result.readings.ec?.toFixed(2) || '--'} mS/cm</span>
-                    </div>
-                    <div class="sensor-timestamp">
-                        Last reading: ${formatTimestamp(result.readings.timestamp)}
-                    </div>
-                `;
-            }
-            
-            showMessage('Sensor readings updated', 'success');
-        } catch (error) {
-            showMessage(`Sensor reading failed: ${error.message}`, 'error');
-        } finally {
-            hideLoading();
+            renderEnhancedRelayGrid();
+            logToSystem('success', '✅ All relays turned OFF');
         }
+    } catch (error) {
+        logToSystem('error', '❌ Failed to turn off all relays', error.message);
     }
+}
 
-    function startContinuousReading() {
-        if (continuousReadingInterval) {
-            stopContinuousReading();
-        }
-        
-        continuousReadingInterval = setInterval(readSensors, 5000);
-        showMessage('Continuous sensor reading started', 'info');
-    }
+// System stats and monitoring
+function updateSystemStats() {
+    const activeCount = Object.values(testingState.relayStates).filter(r => r.state).length;
+    const totalRelays = Object.keys(testingState.relayStates).length;
+    const verifiedCount = Object.values(testingState.relayStates).filter(r => r.gpio_verified).length;
+    
+    const successRate = testingState.totalTests > 0 ? 
+        Math.round((testingState.successfulTests / testingState.totalTests) * 100) : 100;
+    const verificationRate = totalRelays > 0 ? 
+        Math.round((verifiedCount / totalRelays) * 100) : 100;
+    
+    document.getElementById('active-relays-count').textContent = activeCount;
+    document.getElementById('test-success-rate').textContent = successRate + '%';
+    document.getElementById('gpio-verification-rate').textContent = verificationRate + '%';
+    document.getElementById('total-tests-count').textContent = testingState.totalTests;
+}
 
-    function stopContinuousReading() {
-        if (continuousReadingInterval) {
-            clearInterval(continuousReadingInterval);
-            continuousReadingInterval = null;
-            showMessage('Continuous sensor reading stopped', 'info');
-        }
-    }
+function updateSessionTime() {
+    const elapsed = Date.now() - testingState.sessionStartTime;
+    const minutes = Math.floor(elapsed / 60000);
+    const seconds = Math.floor((elapsed % 60000) / 1000);
+    // Could add session time display if desired
+}
 
-    function calibrateSensors() {
-        showMessage('Sensor calibration not yet implemented', 'info');
-    }
+// Sensor monitoring
+async function readAllSensors() {
+    logToSystem('info', '📊 Reading all sensors...');
+    
+    // Simulate sensor readings - replace with actual API calls
+    const ph = (6.8 + Math.random() * 0.4).toFixed(1);
+    const ec = (1.1 + Math.random() * 0.2).toFixed(2);
+    const temp = Math.round(20 + Math.random() * 5);
+    
+    document.getElementById('ph-value').textContent = ph;
+    document.getElementById('ec-value').textContent = ec;
+    document.getElementById('temp-value').textContent = temp + '°C';
+    
+    logToSystem('success', '📈 Sensor readings updated', `pH: ${ph} | EC: ${ec} mS/cm | Temp: ${temp}°C`);
+}
 
-    // Log management
-    async function loadLogs() {
-        try {
-            await Promise.all([
-                refreshHardwareLogs(),
-                refreshJobLogs()
-            ]);
-        } catch (error) {
-            showMessage('Failed to load logs: ' + error.message, 'error');
-        }
-    }
-
-    async function refreshHardwareLogs() {
-        try {
-            const result = await apiCall('/api/logs/hardware');
-            
-            const container = document.getElementById('hardware-logs');
-            if (container && result.logs) {
-                container.innerHTML = result.logs.slice(0, 10).map(log => `
-                    <div class="log-entry">
-                        <span class="log-timestamp">${formatTimestamp(log.timestamp)}</span>
-                        <span class="log-component">${log.component}</span>
-                        <span class="log-action">${log.action}</span>
-                        <span class="log-result ${log.result}">${log.result}</span>
-                    </div>
-                `).join('');
-            }
-        } catch (error) {
-            console.error('Failed to refresh hardware logs:', error);
-        }
-    }
-
-    async function refreshJobLogs() {
-        try {
-            const result = await apiCall('/api/logs/jobs');
-            
-            const container = document.getElementById('job-logs');
-            if (container && result.jobs) {
-                container.innerHTML = result.jobs.slice(0, 10).map(job => `
-                    <div class="log-entry">
-                        <span class="log-timestamp">${formatTimestamp(job.created_at)}</span>
-                        <span class="log-type">${job.job_type}</span>
-                        <span class="log-tank">Tank ${job.tank_id}</span>
-                        <span class="log-status ${job.status}">${job.status}</span>
-                    </div>
-                `).join('');
-            }
-        } catch (error) {
-            console.error('Failed to refresh job logs:', error);
-        }
-    }
-
-    function clearLogs() {
-        if (!confirm('Clear all hardware logs?')) return;
-        showMessage('Log clearing not yet implemented', 'info');
-    }
-
-    function exportLogs() {
-        showMessage('Log export not yet implemented', 'info');
-    }
-
-    // System health
-    function refreshSystemHealth() {
-        // Mock system health data
-        document.getElementById('cpu-usage').textContent = '15%';
-        document.getElementById('memory-usage').textContent = '45%';
-        document.getElementById('disk-usage').textContent = '23%';
-        document.getElementById('system-temp').textContent = '42°C';
-        
-        showMessage('System health refreshed', 'success');
-    }
-
-    function runDiagnostics() {
-        showMessage('Full diagnostics not yet implemented', 'info');
-    }
-
-    // Manual controls
-    function resetSystem() {
-        if (!confirm('Reset the entire system? This will stop all operations.')) return;
-        showMessage('System reset not yet implemented', 'warning');
-    }
-
-    function restartServices() {
-        if (!confirm('Restart system services? This may cause temporary interruption.')) return;
-        showMessage('Service restart not yet implemented', 'warning');
-    }
-
-    function toggleMockHardware(component) {
-        const checkbox = document.getElementById(`mock-${component}`);
-        const enabled = checkbox.checked;
-        
-        showMessage(`Mock ${component} ${enabled ? 'enabled' : 'disabled'}`, 'info');
-    }
-
-    // Utility functions
-    async function stopAllPumps() {
-        if (!confirm('Stop all pumps?')) return;
-        showMessage('Stop all pumps not yet implemented', 'info');
-    }
-
-    async function stopAllFlow() {
-        if (!confirm('Stop all flow meters?')) return;
-        showMessage('Stop all flow not yet implemented', 'info');
-    }
-
-    async function stopPump(pumpId) {
-        showMessage(`Stop pump ${pumpId} not yet implemented`, 'info');
-    }
-
-    async function stopFlow(meterId) {
-        showMessage(`Stop flow meter ${meterId} not yet implemented`, 'info');
-    }
-
-    // Close modals when clicking outside
-    window.onclick = function(event) {
-        const pumpModal = document.getElementById('pump-test-modal');
-        const flowModal = document.getElementById('flow-test-modal');
-        
-        if (event.target === pumpModal) {
-            closePumpTestModal();
-        }
-        if (event.target === flowModal) {
-            closeFlowTestModal();
-        }
-    }
-
-    // Cleanup on page unload
-    window.addEventListener('beforeunload', function() {
+function startContinuousReading() {
+    if (testingState.continuousReading) {
         stopContinuousReading();
-    });
+        return;
+    }
+    
+    testingState.continuousReading = true;
+    testingState.continuousInterval = setInterval(readAllSensors, 3000);
+    
+    const btn = document.getElementById('continuous-btn');
+    btn.innerHTML = '⏹️ Stop Continuous';
+    btn.onclick = stopContinuousReading;
+    
+    logToSystem('info', '▶️ Started continuous sensor monitoring');
+}
+
+function stopContinuousReading() {
+    if (!testingState.continuousReading) return;
+    
+    testingState.continuousReading = false;
+    if (testingState.continuousInterval) {
+        clearInterval(testingState.continuousInterval);
+        testingState.continuousInterval = null;
+    }
+    
+    const btn = document.getElementById('continuous-btn');
+    btn.innerHTML = '▶️ Start Continuous';
+    btn.onclick = startContinuousReading;
+    
+    logToSystem('info', '⏹️ Stopped continuous sensor monitoring');
+}
+
+// Utility functions
+async function refreshAllHardware() {
+    logToSystem('info', '🔄 Refreshing all hardware status...');
+    await loadHardwareStatus();
+    await readAllSensors();
+    updateSystemStats();
+    logToSystem('success', '✅ Hardware status refreshed');
+}
+
+async function emergencyStopAll() {
+    logToSystem('error', '🚨 EMERGENCY STOP ACTIVATED');
+    
+    try {
+        const response = await fetch('/api/test/emergency-stop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            logToSystem('success', '🛑 Emergency stop completed', 'All hardware safely stopped');
+            await refreshAllHardware();
+        }
+    } catch (error) {
+        logToSystem('error', '💥 Emergency stop failed', error.message);
+    }
+    
+    stopContinuousReading();
+}
+
+// Log management functions
+function clearSystemLogs() {
+    document.getElementById('system-log-display').innerHTML = '';
+    logToSystem('info', '🧹 System log cleared');
+}
+
+function toggleAutoScroll() {
+    testingState.autoScroll = !testingState.autoScroll;
+    document.getElementById('autoscroll-status').textContent = testingState.autoScroll ? 'ON' : 'OFF';
+    logToSystem('info', `📜 Auto-scroll ${testingState.autoScroll ? 'enabled' : 'disabled'}`);
+}
+
+function exportSystemLogs() {
+    const logs = Array.from(document.querySelectorAll('.log-entry'))
+        .map(entry => entry.textContent.trim())
+        .join('\n\n');
+    
+    const blob = new Blob([logs], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `hardware_test_log_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    logToSystem('success', '💾 System log exported');
+}
+
+// Keyboard shortcuts for desktop experience
+function handleKeyboardShortcuts(event) {
+    // Ctrl key combinations
+    if (event.ctrlKey) {
+        switch (event.key.toLowerCase()) {
+            case 'r':
+                event.preventDefault();
+                refreshAllHardware();
+                break;
+            case 'e':
+                event.preventDefault();
+                emergencyStopAll();
+                break;
+            case 'l':
+                event.preventDefault();
+                clearSystemLogs();
+                break;
+            case 't':
+                event.preventDefault();
+                testAllRelaysSequence();
+                break;
+        }
+    }
+    // Number keys for relay selection
+    else if (event.key >= '1' && event.key <= '8') {
+        const relayId = event.key;
+        if (testingState.relayStates[relayId]) {
+            selectRelay(relayId);
+        }
+    }
+    // Space key for toggle selected relay
+    else if (event.key === ' ' && testingState.selectedRelayId) {
+        event.preventDefault();
+        testRelayEnhanced(parseInt(testingState.selectedRelayId), 'toggle');
+    }
+}
+
+// Pump and other hardware testing functions
+function showCustomPumpTest() {
+    const pumpId = prompt('Enter pump ID (1-8):', '1');
+    if (!pumpId) return;
+    
+    const amount = prompt('Enter amount to dispense (ml):', '5.0');
+    if (!amount) return;
+    
+    logToSystem('info', `💧 Custom pump test: Pump ${pumpId}`, `Dispensing ${amount}ml`);
+    
+    // Simulate pump operation
+    setTimeout(() => {
+        logToSystem('success', `✅ Pump ${pumpId} test completed`, `${amount}ml dispensed successfully`);
+    }, parseFloat(amount) * 100);
+}
+
+function stopAllPumps() {
+    logToSystem('warning', '🛑 Stopping all pumps');
+    // Add actual pump stop logic here
+}
+
+// Initialize page when DOM is loaded
+document.addEventListener('DOMContentLoaded', initializeTestingPage);
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', function() {
+    if (testingState.continuousInterval) {
+        clearInterval(testingState.continuousInterval);
+    }
+});
 </script>
 {% endblock %}

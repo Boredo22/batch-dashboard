@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, List
 from enum import Enum
 
 from models import JobStatus, JobType, TankState
-from hardware_manager import HardwareManager, OperationResult
+from hardware.hardware_manager import HardwareManager, OperationResult
 
 logger = logging.getLogger(__name__)
 

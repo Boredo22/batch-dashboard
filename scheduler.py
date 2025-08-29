@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from models import (
     get_database_manager, Tank, Job, TankState, JobStatus, JobType
 )
-from hardware_manager import HardwareManager
+from hardware.hardware_manager import HardwareManager
 from jobs import BaseJob, create_job, JobPriority
 
 logger = logging.getLogger(__name__)
@@ -484,7 +484,7 @@ if __name__ == "__main__":
     print("=" * 40)
     
     # Initialize with mock hardware
-    from hardware_manager import HardwareManager
+    from hardware.hardware_manager import HardwareManager
     hardware = HardwareManager(use_mock_hardware={'relays': True, 'pumps': True, 'flow_meters': True, 'sensors': True})
     
     # Create scheduler

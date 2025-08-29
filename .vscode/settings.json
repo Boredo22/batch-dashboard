@@ -8,7 +8,8 @@
         "**/__pycache__": true,
         "__pycache__": true,
         "**/.vscode": true,
-        ".vscode": true
+        ".vscode": true,
+        "**/__init__.py": true
     },
     "explorerExclude.backup": {}
 }

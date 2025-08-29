@@ -11,7 +11,7 @@ import os
 # Add the project root to the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from hardware_manager import HardwareManager
+from hardware.hardware_manager import HardwareManager
 
 def test_emergency_stop():
     """Test emergency stop procedure with mock hardware"""
