@@ -40,7 +40,10 @@ def get_system():
     with system_lock:
         if system is None:
             try:
-                system = FeedControlSystem(use_mock_flow=True)
+                # Use mock settings from config (like simple_gui.py)
+                use_mock_flow = MOCK_SETTINGS.get('flow_meters', False)
+                system = FeedControlSystem(use_mock_flow=use_mock_flow)
+                system.set_message_callback(system_message_callback)
                 system.start()
                 print("✓ Feed control system started")
             except Exception as e:
@@ -48,37 +51,93 @@ def get_system():
                 return None
         return system
 
+def system_message_callback(message):
+    """Handle messages from the system (like simple_gui.py)"""
+    timestamp = datetime.now().strftime('%H:%M:%S')
+    print(f"[{timestamp}] SYS: {message}")
+
 # =============================================================================
 # DIRECT HARDWARE COMMAND FUNCTIONS (Working Pattern)
 # =============================================================================
 
 def control_relay(relay_id, state):
-    """Control relay using working command format"""
+    """Control relay with validation (like simple_gui.py)"""
     sys = get_system()
     if not sys:
+        logger.error("System not available for relay control")
+        return False
+    
+    # Validate relay ID (like simple_gui.py line 1055-1060)
+    if relay_id != 0 and relay_id not in get_available_relays():
+        logger.error(f"Invalid relay ID: {relay_id}")
         return False
     
     state_str = "ON" if state else "OFF"
     command = f"Start;Relay;{relay_id};{state_str};end"
-    return sys.send_command(command)
+    success = sys.send_command(command)
+    
+    if success:
+        if relay_id == 0:
+            logger.info(f"Command sent: All relays {state_str}")
+        else:
+            relay_name = get_relay_name(relay_id)
+            logger.info(f"Command sent: {relay_name} {state_str}")
+    else:
+        logger.error(f"Failed to send relay command")
+    
+    return success
 
 def dispense_pump(pump_id, amount):
-    """Dispense from pump using working command format"""
+    """Dispense from pump with validation (like simple_gui.py)"""
     sys = get_system()
     if not sys:
+        logger.error("System not available for pump control")
+        return False
+    
+    # Validate pump ID (like simple_gui.py line 1084-1087)
+    if pump_id not in get_available_pumps():
+        logger.error(f"Invalid pump ID: {pump_id}")
+        return False
+    
+    # Validate amount (like simple_gui.py line 1089-1093)
+    from config import MIN_PUMP_VOLUME_ML, MAX_PUMP_VOLUME_ML
+    if not (MIN_PUMP_VOLUME_ML <= amount <= MAX_PUMP_VOLUME_ML):
+        logger.error(f"Amount must be between {MIN_PUMP_VOLUME_ML} and {MAX_PUMP_VOLUME_ML}ml")
         return False
     
     command = f"Start;Dispense;{pump_id};{amount};end"
-    return sys.send_command(command)
+    success = sys.send_command(command)
+    
+    if success:
+        pump_name = get_pump_name(pump_id)
+        logger.info(f"Dispensing {amount}ml from {pump_name}")
+    else:
+        logger.error(f"Failed to start dispense")
+    
+    return success
 
 def stop_pump(pump_id):
-    """Stop pump using working command format"""
+    """Stop pump with validation (like simple_gui.py)"""
     sys = get_system()
     if not sys:
+        logger.error("System not available for pump control")
+        return False
+    
+    # Validate pump ID
+    if pump_id not in get_available_pumps():
+        logger.error(f"Invalid pump ID: {pump_id}")
         return False
     
     command = f"Start;Pump;{pump_id};X;end"
-    return sys.send_command(command)
+    success = sys.send_command(command)
+    
+    if success:
+        pump_name = get_pump_name(pump_id)
+        logger.info(f"Stopped {pump_name}")
+    else:
+        logger.error(f"Failed to stop pump")
+    
+    return success
 
 # =============================================================================
 # ROUTES - Homepage (Operations)
