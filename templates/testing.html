@@ -19,11 +19,12 @@
 
     .testing-container {
         display: grid;
-        grid-template-columns: 1fr 400px;
-        gap: 2rem;
-        max-width: 1400px;
+        grid-template-columns: 2fr 1fr;
+        gap: 1.5rem;
+        max-width: 1600px;
         margin: 0 auto;
-        padding: 1.5rem;
+        padding: 1rem;
+        min-height: calc(100vh - 200px);
     }
 
     /* Dark theme panels */
@@ -79,15 +80,15 @@
     .system-stats {
         background: #2d3748;
         border-radius: 8px;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
+        padding: 1.25rem;
+        margin-bottom: 1.5rem;
         border: 1px solid #4a5568;
     }
 
     .stats-grid {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 1.5rem;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 1rem;
         text-align: center;
     }
 
@@ -113,8 +114,8 @@
 
     /* Hardware Section Styling */
     .hardware-section {
-        margin-bottom: 2rem;
-        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        padding: 1.25rem;
         background: #2d3748;
         border-radius: 8px;
         border: 1px solid #4a5568;
@@ -132,23 +133,23 @@
 
     .quick-actions {
         display: flex;
-        gap: 1rem;
-        margin-bottom: 1.5rem;
+        gap: 0.75rem;
+        margin-bottom: 1.25rem;
         flex-wrap: wrap;
     }
 
     /* Enhanced Relay Cards */
     .relay-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 0.75rem;
     }
 
     .relay-card {
         background: #374151;
         border: 2px solid #4b5563;
         border-radius: 8px;
-        padding: 1rem;
+        padding: 0.875rem;
         transition: all 0.3s ease;
         cursor: pointer;
         position: relative;
@@ -309,7 +310,9 @@
 
     /* Log Panel Styling */
     .log-display {
-        height: 500px;
+        height: calc(100vh - 400px);
+        min-height: 400px;
+        max-height: 600px;
         overflow-y: auto;
         font-family: 'Consolas', 'Monaco', monospace;
         font-size: 0.85rem;
@@ -393,14 +396,24 @@
     }
 
     /* Responsive design */
-    @media (max-width: 1200px) {
+    @media (max-width: 1400px) {
         .testing-container {
             grid-template-columns: 1fr;
             gap: 1rem;
         }
         
         .stats-grid {
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        }
+    }
+
+    @media (max-width: 1200px) {
+        .testing-container {
+            padding: 0.75rem;
+        }
+        
+        .relay-grid {
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
         }
     }
 
@@ -516,6 +529,10 @@
                             <div class="stat-value" id="temp-value">--°C</div>
                             <div class="stat-label">Temperature</div>
                         </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="flow-value">--</div>
+                            <div class="stat-label">Flow Rate</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -527,6 +544,9 @@
         <div class="panel-header">
             📋 Live System Log
             <div class="panel-controls">
+                <button class="header-btn" onclick="toggleLogPanel()" title="Toggle log panel">
+                    📐 <span id="log-toggle-status">Collapse</span>
+                </button>
                 <button class="header-btn" onclick="toggleAutoScroll()" title="Toggle auto-scroll">
                     📜 Auto: <span id="autoscroll-status">ON</span>
                 </button>
@@ -548,7 +568,8 @@
     <strong>Desktop Shortcuts:</strong><br>
     <kbd>Ctrl+R</kbd> Refresh All | <kbd>Ctrl+E</kbd> Emergency Stop<br>
     <kbd>Ctrl+L</kbd> Clear Logs | <kbd>Ctrl+T</kbd> Test All Relays<br>
-    <kbd>Space</kbd> Toggle Selected | <kbd>1-8</kbd> Select Relay
+    <kbd>Ctrl+H</kbd> Toggle Log Panel | <kbd>Space</kbd> Toggle Selected<br>
+    <kbd>1-8</kbd> Select Relay
 </div>
 {% endblock %}
 
@@ -600,9 +621,13 @@ function logToSystem(level, message, details = '') {
     
     logDisplay.appendChild(logEntry);
     
-    // Auto-scroll if enabled
+    // Auto-scroll if enabled - but don't scroll the whole page
     if (testingState.autoScroll) {
-        logEntry.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        // Only scroll within the log container, not the entire page
+        const logContainer = logDisplay.parentElement;
+        if (logContainer) {
+            logDisplay.scrollTop = logDisplay.scrollHeight;
+        }
     }
     
     // Limit log entries to prevent memory issues
@@ -1003,6 +1028,10 @@ function handleKeyboardShortcuts(event) {
                 event.preventDefault();
                 testAllRelaysSequence();
                 break;
+            case 'h':
+                event.preventDefault();
+                toggleLogPanel();
+                break;
         }
     }
     // Number keys for relay selection
@@ -1016,6 +1045,25 @@ function handleKeyboardShortcuts(event) {
     else if (event.key === ' ' && testingState.selectedRelayId) {
         event.preventDefault();
         testRelayEnhanced(parseInt(testingState.selectedRelayId), 'toggle');
+    }
+}
+
+// Toggle log panel visibility
+function toggleLogPanel() {
+    const logPanel = document.querySelector('.log-panel');
+    const testingContainer = document.querySelector('.testing-container');
+    const toggleStatus = document.getElementById('log-toggle-status');
+    
+    if (logPanel.style.display === 'none') {
+        logPanel.style.display = 'block';
+        testingContainer.style.gridTemplateColumns = '2fr 1fr';
+        toggleStatus.textContent = 'Collapse';
+        logToSystem('info', '📐 Log panel expanded');
+    } else {
+        logPanel.style.display = 'none';
+        testingContainer.style.gridTemplateColumns = '1fr';
+        toggleStatus.textContent = 'Expand';
+        logToSystem('info', '📐 Log panel collapsed');
     }
 }
 

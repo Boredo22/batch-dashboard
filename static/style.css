@@ -1261,11 +1261,12 @@ body.testing-page .main-content {
 /* Enhanced Panel Styling */
 .testing-container {
     display: grid;
-    grid-template-columns: 1fr 400px;
-    gap: 2rem;
-    max-width: 1400px;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.5rem;
+    max-width: 1600px;
     margin: 0 auto;
-    padding: 1.5rem;
+    padding: 1rem;
+    min-height: calc(100vh - 200px);
 }
 
 .testing-panel, .log-panel {
@@ -1320,8 +1321,8 @@ body.testing-page .main-content {
 .system-stats {
     background: #2d3748;
     border-radius: 8px;
-    padding: 1.5rem;
-    margin-bottom: 2rem;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
     border: 1px solid #4a5568;
 }
 
@@ -1332,8 +1333,8 @@ body.testing-page .main-content {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1rem;
     text-align: center;
 }
 
@@ -1360,8 +1361,8 @@ body.testing-page .main-content {
 
 /* Hardware Section Styling */
 .hardware-section {
-    margin-bottom: 2rem;
-    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    padding: 1.25rem;
     background: #2d3748;
     border-radius: 8px;
     border: 1px solid #4a5568;
@@ -1391,23 +1392,23 @@ body.testing-page .main-content {
 
 .quick-actions {
     display: flex;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
     flex-wrap: wrap;
 }
 
 /* Enhanced Relay Cards */
 .relay-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 0.75rem;
 }
 
 .relay-card {
     background: #374151;
     border: 2px solid #4b5563;
     border-radius: 8px;
-    padding: 1rem;
+    padding: 0.875rem;
     transition: all 0.3s ease;
     cursor: pointer;
     position: relative;
@@ -1625,7 +1626,9 @@ body.testing-page .main-content {
 
 /* Log Panel Styling */
 .log-display {
-    height: 500px;
+    height: calc(100vh - 400px);
+    min-height: 400px;
+    max-height: 600px;
     overflow-y: auto;
     font-family: 'Consolas', 'Monaco', monospace;
     font-size: 0.85rem;
@@ -1803,10 +1806,24 @@ body.testing-page .main-content {
 }
 
 /* Responsive Design for Dark Theme */
-@media (max-width: 1200px) {
+@media (max-width: 1400px) {
     .testing-container {
         grid-template-columns: 1fr;
         gap: 1rem;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    }
+}
+
+@media (max-width: 1200px) {
+    .testing-container {
+        padding: 0.75rem;
+    }
+    
+    .relay-grid {
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     }
     
     .stats-grid {
