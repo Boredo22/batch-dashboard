@@ -762,8 +762,8 @@ def get_enhanced_system_status():
 
 
 @app.route('/api/test/logs/hardware', methods=['GET'])
-def get_hardware_logs():
-    """Get recent hardware operation logs"""
+def get_test_hardware_logs():
+    """Get recent hardware operation logs for testing"""
     try:
         # This would typically read from a log file or database
         # For now, return sample log entries
