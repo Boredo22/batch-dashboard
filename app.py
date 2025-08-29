@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Dict, Any
 
 # Import our reliable hardware communications module
-from hardware_comms import (
+from hardware.hardware_comms import (
     control_relay, dispense_pump, stop_pump, start_flow, stop_flow,
     emergency_stop, get_system_status, get_available_hardware,
     all_relays_off, cleanup_hardware
