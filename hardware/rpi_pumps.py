@@ -3,6 +3,7 @@
 Atlas Scientific EZO Pump Controller for Raspberry Pi
 Uses centralized configuration from config.py
 Implements the correct I2C communication method for EZO pumps
+Works independently without hardware manager - compatible with simple_gui.py pattern
 """
 
 import time

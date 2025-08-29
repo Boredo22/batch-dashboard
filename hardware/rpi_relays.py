@@ -2,12 +2,13 @@
 """
 GPIO Relay Control for Raspberry Pi with ULN2803A Darlington Array
 Uses centralized configuration from config.py
+Works independently without hardware manager - compatible with simple_gui.py pattern
 """
 
 import logging
 from config import (
-    RELAY_GPIO_PINS, 
-    RELAY_NAMES, 
+    RELAY_GPIO_PINS,
+    RELAY_NAMES,
     RELAY_ACTIVE_HIGH,
     get_relay_name,
     get_available_relays,

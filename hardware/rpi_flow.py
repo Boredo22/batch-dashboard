@@ -2,6 +2,7 @@
 """
 Flow Meter Control for Raspberry Pi
 Updated to use centralized configuration from config.py
+Works independently without hardware manager - compatible with simple_gui.py pattern
 """
 
 import time

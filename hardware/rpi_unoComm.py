@@ -2,6 +2,7 @@
 """
 Arduino Uno Communication for EC/pH Sensors
 Updated to use centralized configuration from config.py
+Works independently without hardware manager - compatible with simple_gui.py pattern
 """
 
 import serial
