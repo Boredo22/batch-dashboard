@@ -23,7 +23,7 @@ from config import (
 )
 
 # Import models for logging
-from models import get_database_manager, HardwareLog
+from db.models import get_database_manager, HardwareLog
 
 logger = logging.getLogger(__name__)
 

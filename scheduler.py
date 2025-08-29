@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any
 from queue import Queue, PriorityQueue
 from dataclasses import dataclass, field
 
-from models import (
+from db.models import (
     get_database_manager, Tank, Job, TankState, JobStatus, JobType
 )
 from hardware.hardware_manager import HardwareManager

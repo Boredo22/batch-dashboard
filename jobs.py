@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 from enum import Enum
 
-from models import JobStatus, JobType, TankState
+from db.models import JobStatus, JobType, TankState
 from hardware.hardware_manager import HardwareManager, OperationResult
 
 logger = logging.getLogger(__name__)

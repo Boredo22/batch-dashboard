@@ -254,7 +254,7 @@ class HardwareTestUtility:
     def test_database_connection(self):
         """Test database connectivity"""
         try:
-            from models import DatabaseManager
+            from db.models import DatabaseManager
             db = DatabaseManager()
             # Simple test query
             return True
