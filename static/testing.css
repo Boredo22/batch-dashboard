@@ -1,0 +1,501 @@
+/* ================================================================
+   TESTING PAGE STYLESHEET - testing.css
+   Hardware Testing Interface for Pi 4B Hydroponic System
+   ================================================================ */
+
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body.testing-page {
+    background: #1a1a1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    min-height: 100vh;
+}
+
+/* Header Styles */
+.testing-page .header {
+    background: #2a2a2a;
+    border-bottom: 1px solid #444;
+    padding: 1rem;
+}
+
+.testing-page .header-title {
+    color: #4CAF50;
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+/* Main Content Layout */
+.testing-page .main-content {
+    background: #1a1a1a;
+    padding: 1rem;
+    min-height: calc(100vh - 80px);
+}
+
+/* Testing Container - 1.75x wider left panel for desktop */
+.testing-container {
+    display: grid;
+    grid-template-columns: 2.75fr 1fr; /* Left panel 1.75x wider */
+    gap: 1.5rem;
+    max-width: 1600px;
+    margin: 0 auto;
+    min-height: calc(100vh - 200px);
+}
+
+/* Panel Styling */
+.testing-panel, .log-panel {
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.panel-header {
+    background: #333;
+    color: white;
+    padding: 1rem;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.panel-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.header-btn {
+    background: #555;
+    border: none;
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.header-btn:hover {
+    background: #666;
+}
+
+.testing-content, .log-content {
+    padding: 1.5rem;
+}
+
+/* System Stats Dashboard */
+.system-stats {
+    background: #333;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid #555;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1rem;
+    text-align: center;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.stat-value {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #4CAF50;
+    margin-bottom: 0.25rem;
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    color: #bbb;
+    text-transform: uppercase;
+}
+
+/* Hardware Section Styling */
+.hardware-section {
+    margin-bottom: 1.5rem;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 1rem;
+}
+
+.section-title {
+    color: #4CAF50;
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #444;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Hardware Mode Indicators */
+.hardware-mode {
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.hardware-mode.real {
+    background: #4CAF50;
+    color: white;
+}
+
+.hardware-mode.mock {
+    background: #ff9800;
+    color: white;
+}
+
+/* Quick Action Buttons */
+.quick-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+/* Button Styles */
+.btn {
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.9rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn:hover {
+    opacity: 0.9;
+}
+
+.btn-primary {
+    background: #4CAF50;
+    color: white;
+}
+
+.btn-secondary {
+    background: #2196F3;
+    color: white;
+}
+
+.btn-danger {
+    background: #f44336;
+    color: white;
+}
+
+.btn-sm {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+}
+
+/* Relay Grid */
+.relay-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+/* Pump Grid - Two rows of four */
+.pump-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+/* Card Styling */
+.relay-card, .pump-card {
+    background: #333;
+    border: 1px solid #555;
+    border-radius: 6px;
+    padding: 1rem;
+}
+
+.relay-card.selected, .pump-card.selected {
+    border-color: #4CAF50;
+}
+
+/* Card Headers */
+.relay-header, .pump-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.relay-name, .pump-name {
+    font-weight: 600;
+    color: #e0e0e0;
+}
+
+/* State/Status Indicators */
+.relay-state, .pump-voltage {
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.relay-state.on {
+    background: #4CAF50;
+    color: white;
+}
+
+.relay-state.off {
+    background: #666;
+    color: #e0e0e0;
+}
+
+.pump-voltage.connected {
+    background: #4CAF50;
+    color: white;
+}
+
+.pump-voltage.disconnected {
+    background: #f44336;
+    color: white;
+}
+
+/* Pump Status Display */
+.pump-status {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+    font-size: 0.85rem;
+}
+
+.status-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.status-label {
+    color: #bbb;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+}
+
+.status-value {
+    color: #e0e0e0;
+    font-weight: 600;
+}
+
+/* GPIO Verification Indicators */
+.gpio-verification {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: #2a2a2a;
+    border-radius: 4px;
+    margin: 0.5rem 0;
+    border-left: 3px solid #666;
+    font-size: 0.85rem;
+}
+
+.gpio-verification.verified {
+    border-left-color: #4CAF50;
+    background: #2a3d2a;
+    color: #4CAF50;
+}
+
+.gpio-verification.unverified {
+    border-left-color: #f44336;
+    background: #3d2a2a;
+    color: #f44336;
+}
+
+/* Control Buttons */
+.relay-controls, .pump-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+/* Log Panel Styling */
+.log-display {
+    height: calc(100vh - 400px);
+    overflow-y: auto;
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 1rem;
+}
+
+/* Condensed Log Entries */
+.log-entry {
+    margin-bottom: 0.25rem;
+    padding: 0.4rem 0.75rem;
+    background: #2a2a2a;
+    border-radius: 4px;
+    border-left: 3px solid #666;
+    font-size: 0.8rem;
+}
+
+.log-entry.success {
+    border-left-color: #4CAF50;
+}
+
+.log-entry.error {
+    border-left-color: #f44336;
+}
+
+.log-entry.warning {
+    border-left-color: #ff9800;
+}
+
+.log-entry.info {
+    border-left-color: #2196F3;
+}
+
+/* Communication Log Styling */
+.log-entry.comm {
+    border-left-color: #9c27b0;
+    background: #2a1a2a;
+    font-family: 'Courier New', monospace;
+}
+
+.log-timestamp {
+    color: #999;
+    font-size: 0.65rem;
+    float: right;
+}
+
+.log-message {
+    color: #e0e0e0;
+    margin-top: 0.1rem;
+}
+
+.log-details {
+    color: #bbb;
+    font-size: 0.65rem;
+    margin-top: 0.1rem;
+}
+
+/* Communication Styling */
+.comm-direction {
+    color: #9c27b0;
+    font-weight: bold;
+}
+
+.comm-data {
+    color: #ffeb3b;
+    font-family: 'Courier New', monospace;
+}
+
+/* Loading placeholder */
+.loading-placeholder {
+    text-align: center;
+    color: #999;
+    font-style: italic;
+    padding: 2rem;
+    background: #333;
+    border-radius: 6px;
+    border: 1px solid #555;
+}
+
+/* Keyboard shortcuts info */
+.shortcuts-info {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    background: #2a2a2a;
+    border: 1px solid #4CAF50;
+    border-radius: 6px;
+    padding: 0.75rem;
+    font-size: 0.75rem;
+    color: #bbb;
+    z-index: 1000;
+}
+
+.shortcuts-info kbd {
+    background: #444;
+    border: 1px solid #666;
+    border-radius: 3px;
+    padding: 0.1rem 0.3rem;
+    font-family: monospace;
+    font-size: 0.7rem;
+    color: #e0e0e0;
+}
+
+/* Responsive Design */
+@media (max-width: 1400px) {
+    .testing-container {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+}
+
+@media (max-width: 1200px) {
+    .pump-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .testing-container {
+        padding: 1rem;
+    }
+    
+    .relay-grid, .pump-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .quick-actions {
+        flex-direction: column;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .shortcuts-info {
+        position: static;
+        margin: 1rem;
+        opacity: 1;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .testing-container {
+        display: block;
+    }
+    
+    .shortcuts-info,
+    .panel-controls,
+    .quick-actions,
+    .relay-controls,
+    .pump-controls {
+        display: none;
+    }
+    
+    .testing-panel,
+    .log-panel {
+        break-inside: avoid;
+        margin-bottom: 1rem;
+    }
+}
