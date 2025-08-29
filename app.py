@@ -55,10 +55,23 @@ def index():
     """Main dashboard page"""
     try:
         # Get hardware configuration for the interface
-        hardware = get_available_hardware()
+        raw_hardware = get_available_hardware()
         status = get_system_status()
         
-        return render_template('index.html', 
+        # Transform hardware data to match template expectations
+        hardware = {
+            'pumps': raw_hardware['pumps'],
+            'relays': raw_hardware['relays'],
+            'flow_meters': raw_hardware['flow_meters'],
+            'limits': {
+                'pump_min_ml': raw_hardware['pumps']['volume_limits']['min_ml'],
+                'pump_max_ml': raw_hardware['pumps']['volume_limits']['max_ml'],
+                'flow_max_gallons': raw_hardware['flow_meters']['max_gallons']
+            },
+            'mock_settings': raw_hardware.get('mock_settings', {})
+        }
+        
+        return render_template('index.html',
                              hardware=hardware,
                              status=status,
                              tanks=TANKS)
@@ -72,9 +85,23 @@ def status_page():
     """System status page"""
     try:
         status = get_system_status()
-        hardware = get_available_hardware()
-        return render_template('status.html', 
-                             status=status, 
+        raw_hardware = get_available_hardware()
+        
+        # Transform hardware data to match template expectations
+        hardware = {
+            'pumps': raw_hardware['pumps'],
+            'relays': raw_hardware['relays'],
+            'flow_meters': raw_hardware['flow_meters'],
+            'limits': {
+                'pump_min_ml': raw_hardware['pumps']['volume_limits']['min_ml'],
+                'pump_max_ml': raw_hardware['pumps']['volume_limits']['max_ml'],
+                'flow_max_gallons': raw_hardware['flow_meters']['max_gallons']
+            },
+            'mock_settings': raw_hardware.get('mock_settings', {})
+        }
+        
+        return render_template('status.html',
+                             status=status,
                              hardware=hardware)
     except Exception as e:
         logger.error(f"Error loading status page: {e}")
@@ -89,7 +116,20 @@ def api_status():
     """Get current system status"""
     try:
         status = get_system_status()
-        hardware = get_available_hardware()
+        raw_hardware = get_available_hardware()
+        
+        # Transform hardware data to match expected structure
+        hardware = {
+            'pumps': raw_hardware['pumps'],
+            'relays': raw_hardware['relays'],
+            'flow_meters': raw_hardware['flow_meters'],
+            'limits': {
+                'pump_min_ml': raw_hardware['pumps']['volume_limits']['min_ml'],
+                'pump_max_ml': raw_hardware['pumps']['volume_limits']['max_ml'],
+                'flow_max_gallons': raw_hardware['flow_meters']['max_gallons']
+            },
+            'mock_settings': raw_hardware.get('mock_settings', {})
+        }
         
         return jsonify({
             'success': True,
