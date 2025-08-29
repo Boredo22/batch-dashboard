@@ -361,35 +361,6 @@ def testing():
     """Testing page - Hardware testing and diagnostics"""
     return render_template('testing.html')
 
-@app.route('/api/test/relay/<int:relay_id>/<action>', methods=['POST'])
-def test_relay(relay_id, action):
-    """Test individual relay"""
-    try:
-        if not hardware_manager or not hardware_manager.relay_controller:
-            return jsonify({'error': 'Relay controller not available'}), 500
-        
-        if action not in ['on', 'off', 'toggle']:
-            return jsonify({'error': 'Invalid action'}), 400
-        
-        if action == 'toggle':
-            success = hardware_manager.relay_controller.toggle_relay(relay_id)
-        else:
-            state = action == 'on'
-            success = hardware_manager.relay_controller.set_relay(relay_id, state)
-        
-        if success:
-            relay_state = hardware_manager.relay_controller.get_relay_state(relay_id)
-            return jsonify({
-                'success': True,
-                'message': f'Relay {relay_id} {"ON" if relay_state else "OFF"}',
-                'state': relay_state
-            })
-        else:
-            return jsonify({'error': 'Relay operation failed'}), 500
-            
-    except Exception as e:
-        logger.error(f"Error testing relay: {e}")
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/test/pump/<int:pump_id>/dispense', methods=['POST'])
 def test_pump(pump_id):
