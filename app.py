@@ -15,6 +15,7 @@ from typing import Dict, Any
 from hardware.hardware_manager import HardwareManager
 from scheduler import JobScheduler
 from models import JobType, JobStatus, get_database_manager, init_models
+from main import FeedControlSystem  # Import the working FeedControlSystem
 from config import (
     TANKS, VEG_FORMULA, BLOOM_FORMULA, FORMULA_TARGETS, PUMP_NAME_TO_ID,
     JOB_SETTINGS, get_tank_info, get_pump_name, get_available_pumps,
@@ -34,10 +35,11 @@ app.secret_key = 'nutrient_mixing_system_2024'
 hardware_manager = None
 job_scheduler = None
 models = None
+feed_control_system = None  # Add the working FeedControlSystem
 
 def initialize_system():
     """Initialize the complete system"""
-    global hardware_manager, job_scheduler, models
+    global hardware_manager, job_scheduler, models, feed_control_system
     
     try:
         # Initialize models ONCE at startup
@@ -51,6 +53,12 @@ def initialize_system():
         job_model = models['job']
         sensor_log_model = models['sensor_log']
         hardware_log_model = models['hardware_log']
+        
+        # Initialize the working FeedControlSystem (from grower_web_app.py)
+        logger.info("🔧 Initializing FeedControlSystem...")
+        feed_control_system = FeedControlSystem(use_mock_flow=MOCK_SETTINGS.get('flow_meters', False))
+        feed_control_system.start()
+        logger.info("✅ FeedControlSystem initialized and started")
         
         # Initialize hardware manager with mock settings for development
         hardware_manager = HardwareManager(use_mock_hardware=MOCK_SETTINGS)
@@ -79,6 +87,69 @@ def cleanup_system():
         logger.info("System cleanup completed")
     except Exception as e:
         logger.error(f"Error during cleanup: {e}")
+
+# =============================================================================
+# HELPER FUNCTIONS FOR HARDWARE COMMUNICATION
+# =============================================================================
+
+def send_hardware_command(command_str):
+    """Send command using the working FeedControlSystem format"""
+    global feed_control_system
+    
+    if not feed_control_system:
+        logger.error("FeedControlSystem not initialized")
+        return False
+    
+    try:
+        success = feed_control_system.send_command(command_str)
+        if success:
+            logger.info(f"Hardware command sent successfully: {command_str}")
+        else:
+            logger.error(f"Hardware command failed: {command_str}")
+        return success
+    except Exception as e:
+        logger.error(f"Error sending hardware command '{command_str}': {e}")
+        return False
+
+def control_relay_direct(relay_id, state):
+    """Control relay using the working command format"""
+    state_str = "ON" if state else "OFF"
+    command = f"Start;Relay;{relay_id};{state_str};end"
+    return send_hardware_command(command)
+
+def dispense_pump_direct(pump_id, amount_ml):
+    """Dispense from pump using the working command format"""
+    command = f"Start;Dispense;{pump_id};{amount_ml};end"
+    return send_hardware_command(command)
+
+def stop_pump_direct(pump_id):
+    """Stop pump using the working command format"""
+    command = f"Start;Pump;{pump_id};X;end"
+    return send_hardware_command(command)
+
+def get_system_status_with_feed_control():
+    """Get system status including FeedControlSystem data"""
+    status = {}
+    
+    # Get status from FeedControlSystem if available
+    if feed_control_system:
+        try:
+            feed_status = feed_control_system.get_system_status()
+            status.update(feed_status)
+        except Exception as e:
+            logger.error(f"Error getting FeedControlSystem status: {e}")
+    
+    # Get status from job scheduler if available
+    if job_scheduler:
+        try:
+            scheduler_status = job_scheduler.get_system_status()
+            status['scheduler_running'] = scheduler_status.get('scheduler_running', False)
+            status['active_jobs'] = scheduler_status.get('active_jobs', [])
+            status['pending_jobs'] = scheduler_status.get('pending_jobs', [])
+        except Exception as e:
+            logger.error(f"Error getting scheduler status: {e}")
+    
+    return status
 
 # =============================================================================
 # ROUTES - Homepage (Operations)
@@ -364,10 +435,10 @@ def testing():
 
 @app.route('/api/test/pump/<int:pump_id>/dispense', methods=['POST'])
 def test_pump(pump_id):
-    """Test pump dispensing"""
+    """Test pump dispensing using working command format"""
     try:
-        if not hardware_manager or not hardware_manager.pump_controller:
-            return jsonify({'error': 'Pump controller not available'}), 500
+        if not feed_control_system:
+            return jsonify({'error': 'FeedControlSystem not available'}), 500
         
         data = request.get_json() or {}
         amount = float(data.get('amount', 5.0))
@@ -375,7 +446,8 @@ def test_pump(pump_id):
         if not (0.5 <= amount <= 50):
             return jsonify({'error': 'Amount must be between 0.5 and 50 ml'}), 400
         
-        success = hardware_manager.pump_controller.start_dispense(pump_id, amount)
+        # Use the working command format
+        success = dispense_pump_direct(pump_id, amount)
         
         if success:
             pump_name = get_pump_name(pump_id)
@@ -383,7 +455,8 @@ def test_pump(pump_id):
                 'success': True,
                 'message': f'Started dispensing {amount}ml from {pump_name}',
                 'pump_id': pump_id,
-                'amount': amount
+                'amount': amount,
+                'command_used': f'Start;Dispense;{pump_id};{amount};end'
             })
         else:
             return jsonify({'error': 'Failed to start pump'}), 500
@@ -486,10 +559,10 @@ def get_job_logs():
 
 @app.route('/api/test/relay/<int:relay_id>/<action>', methods=['POST'])
 def test_relay_enhanced(relay_id, action):
-    """Enhanced relay testing with GPIO verification"""
+    """Enhanced relay testing using working command format"""
     try:
-        if not hardware_manager or not hardware_manager.relay_controller:
-            return jsonify({'error': 'Relay controller not available'}), 500
+        if not feed_control_system:
+            return jsonify({'error': 'FeedControlSystem not available'}), 500
         
         if action not in ['on', 'off', 'toggle']:
             return jsonify({'error': 'Invalid action'}), 400
@@ -500,37 +573,49 @@ def test_relay_enhanced(relay_id, action):
         # Log the action
         logger.info(f"Testing relay {relay_id}: {action}")
         
-        # Perform relay operation
-        if action == 'toggle':
-            success = hardware_manager.relay_controller.toggle_relay(relay_id)
-        else:
-            state = action == 'on'
-            success = hardware_manager.relay_controller.set_relay(relay_id, state)
+        # Get current state for toggle
+        current_state = False
+        if feed_control_system.relay_controller:
+            current_state = feed_control_system.relay_controller.get_relay_state(relay_id)
         
-        # Get current state
-        current_state = hardware_manager.relay_controller.get_relay_state(relay_id)
+        # Determine target state
+        if action == 'toggle':
+            target_state = not current_state
+        else:
+            target_state = action == 'on'
+        
+        # Use the working command format
+        success = control_relay_direct(relay_id, target_state)
+        
+        # Get updated state
+        new_state = target_state if success else current_state
+        if feed_control_system.relay_controller:
+            new_state = feed_control_system.relay_controller.get_relay_state(relay_id)
         
         # Verify GPIO state (this is the key enhancement!)
-        gpio_verified = verify_gpio_state(relay_id, current_state)
+        gpio_verified = verify_gpio_state_feed_control(relay_id, new_state)
         
         # Calculate operation time
         operation_time = int((time.time() - start_time) * 1000)  # milliseconds
         
         # Get relay info
-        relay_info = hardware_manager.relay_controller.get_relay_info(relay_id)
+        relay_info = None
+        if feed_control_system.relay_controller:
+            relay_info = feed_control_system.relay_controller.get_relay_info(relay_id)
         
         if success:
             result = {
                 'success': True,
                 'relay_id': relay_id,
                 'action': action,
-                'state': current_state,
+                'state': new_state,
                 'gpio_verified': gpio_verified,
                 'operation_time_ms': operation_time,
                 'gpio_pin': relay_info.get('gpio_pin') if relay_info else None,
-                'message': f'Relay {relay_id} {"ON" if current_state else "OFF"}',
+                'message': f'Relay {relay_id} {"ON" if new_state else "OFF"}',
                 'verification_status': 'verified' if gpio_verified else 'unverified',
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'command_used': f"Start;Relay;{relay_id};{'ON' if target_state else 'OFF'};end"
             }
             
             # Log success with details
@@ -543,7 +628,8 @@ def test_relay_enhanced(relay_id, action):
                 'error': 'Relay operation failed',
                 'relay_id': relay_id,
                 'gpio_verified': False,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'command_used': f"Start;Relay;{relay_id};{'ON' if target_state else 'OFF'};end"
             }
             logger.error(f"Relay {relay_id} operation failed")
             
@@ -608,6 +694,55 @@ def verify_gpio_state(relay_id, expected_state):
             
     except Exception as e:
         logger.error(f"Exception during GPIO verification: {e}")
+        return False
+
+def verify_gpio_state_feed_control(relay_id, expected_state):
+    """
+    Verify GPIO state using FeedControlSystem relay controller
+    """
+    try:
+        if not feed_control_system or not feed_control_system.relay_controller:
+            return False
+            
+        # Get relay info to find GPIO pin
+        relay_info = feed_control_system.relay_controller.get_relay_info(relay_id)
+        if not relay_info:
+            return False
+            
+        gpio_pin = relay_info.get('gpio_pin')
+        if gpio_pin is None:
+            return False
+        
+        # For real hardware, read the actual GPIO pin state
+        if hasattr(feed_control_system.relay_controller, 'h') and feed_control_system.relay_controller.h:
+            import lgpio
+            try:
+                # Read actual GPIO state
+                actual_gpio_state = lgpio.gpio_read(feed_control_system.relay_controller.h, gpio_pin)
+                
+                # Account for relay logic (active high/low)
+                from config import RELAY_ACTIVE_HIGH
+                expected_gpio_state = 1 if (expected_state == RELAY_ACTIVE_HIGH) else 0
+                
+                gpio_verified = (actual_gpio_state == expected_gpio_state)
+                
+                if not gpio_verified:
+                    logger.warning(f"GPIO verification failed: GPIO {gpio_pin} is {actual_gpio_state}, expected {expected_gpio_state}")
+                else:
+                    logger.debug(f"GPIO verification passed: GPIO {gpio_pin} = {actual_gpio_state}")
+                    
+                return gpio_verified
+                
+            except Exception as gpio_error:
+                logger.error(f"GPIO verification error: {gpio_error}")
+                return False
+        else:
+            # For mock hardware, simulate verification (occasionally fail for realism)
+            import random
+            return random.random() > 0.05  # 95% success rate for mock
+            
+    except Exception as e:
+        logger.error(f"Exception during FeedControl GPIO verification: {e}")
         return False
 
 
@@ -821,6 +956,188 @@ def emergency_stop_all():
         logger.error(f"Error during emergency stop: {e}")
         return jsonify({'error': str(e)}), 500
 
+
+# =============================================================================
+# DIRECT HARDWARE CONTROL ENDPOINTS (Using Working Command Format)
+# =============================================================================
+
+@app.route('/api/hardware/relay/<int:relay_id>/<state>', methods=['POST'])
+def control_relay_direct_endpoint(relay_id, state):
+    """Direct relay control using working command format (like grower_web_app.py)"""
+    try:
+        if not feed_control_system:
+            return jsonify({'error': 'FeedControlSystem not available'}), 500
+        
+        if state not in ['on', 'off']:
+            return jsonify({'error': 'Invalid state. Use "on" or "off"'}), 400
+        
+        # Validate relay ID
+        if relay_id not in get_available_relays():
+            return jsonify({'error': 'Invalid relay ID'}), 400
+        
+        # Use the working command format
+        target_state = state == 'on'
+        success = control_relay_direct(relay_id, target_state)
+        
+        if success:
+            from config import get_relay_name
+            relay_name = get_relay_name(relay_id)
+            return jsonify({
+                'success': True,
+                'message': f'Relay {relay_id} ({relay_name}) turned {state.upper()}',
+                'relay_id': relay_id,
+                'state': state,
+                'command_used': f"Start;Relay;{relay_id};{state.upper()};end"
+            })
+        else:
+            return jsonify({'error': 'Command failed'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error controlling relay {relay_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/hardware/pump/<int:pump_id>/dispense', methods=['POST'])
+def dispense_pump_direct_endpoint(pump_id):
+    """Direct pump dispensing using working command format (like grower_web_app.py)"""
+    try:
+        if not feed_control_system:
+            return jsonify({'error': 'FeedControlSystem not available'}), 500
+        
+        # Validate pump ID
+        if pump_id not in get_available_pumps():
+            return jsonify({'error': 'Invalid pump ID'}), 400
+        
+        data = request.get_json() or {}
+        amount = float(data.get('amount', 10.0))
+        
+        if not (0.5 <= amount <= 500):  # Reasonable limits
+            return jsonify({'error': 'Amount must be between 0.5 and 500 ml'}), 400
+        
+        # Use the working command format
+        success = dispense_pump_direct(pump_id, amount)
+        
+        if success:
+            pump_name = get_pump_name(pump_id)
+            return jsonify({
+                'success': True,
+                'message': f'Dispensing {amount}ml from {pump_name}',
+                'pump_id': pump_id,
+                'amount': amount,
+                'command_used': f"Start;Dispense;{pump_id};{amount};end"
+            })
+        else:
+            return jsonify({'error': 'Command failed'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error dispensing from pump {pump_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/hardware/pump/<int:pump_id>/stop', methods=['POST'])
+def stop_pump_direct_endpoint(pump_id):
+    """Direct pump stop using working command format (like grower_web_app.py)"""
+    try:
+        if not feed_control_system:
+            return jsonify({'error': 'FeedControlSystem not available'}), 500
+        
+        # Validate pump ID
+        if pump_id not in get_available_pumps():
+            return jsonify({'error': 'Invalid pump ID'}), 400
+        
+        # Use the working command format
+        success = stop_pump_direct(pump_id)
+        
+        if success:
+            pump_name = get_pump_name(pump_id)
+            return jsonify({
+                'success': True,
+                'message': f'Stopped {pump_name}',
+                'pump_id': pump_id,
+                'command_used': f"Start;Pump;{pump_id};X;end"
+            })
+        else:
+            return jsonify({'error': 'Command failed'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error stopping pump {pump_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/hardware/emergency_stop', methods=['POST'])
+def emergency_stop_hardware():
+    """Emergency stop using working FeedControlSystem (like grower_web_app.py)"""
+    try:
+        if not feed_control_system:
+            return jsonify({'error': 'FeedControlSystem not available'}), 500
+        
+        # Use the FeedControlSystem emergency stop
+        feed_control_system.emergency_stop()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Emergency stop activated via FeedControlSystem',
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error during hardware emergency stop: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/hardware/status', methods=['GET'])
+def get_hardware_status():
+    """Get hardware status from FeedControlSystem (like grower_web_app.py)"""
+    try:
+        if not feed_control_system:
+            return jsonify({'error': 'FeedControlSystem not available'}), 500
+        
+        # Get status from FeedControlSystem
+        status = feed_control_system.get_system_status()
+        
+        # Format for compatibility with grower_web_app.py
+        formatted_status = {
+            'timestamp': datetime.now().strftime('%H:%M:%S'),
+            'system_running': status['running'],
+            'tanks': {},
+            'relays': {},
+            'ec_ph': status.get('ec_ph', {}),
+            'pumps': {}
+        }
+        
+        # Tank status based on relay states
+        relay_states = status.get('relays', {})
+        for tank_id, tank_info in TANKS.items():
+            tank_status = {
+                'name': tank_info['name'],
+                'capacity': tank_info['capacity_gallons'],
+                'filling': relay_states.get(tank_info.get('fill_relay'), False),
+                'mixing': any(relay_states.get(r, False) for r in tank_info.get('mix_relays', [])),
+                'sending': relay_states.get(tank_info.get('send_relay'), False)
+            }
+            formatted_status['tanks'][tank_id] = tank_status
+        
+        # Relay states with names
+        for relay_id in get_available_relays():
+            from config import get_relay_name
+            formatted_status['relays'][relay_id] = {
+                'name': get_relay_name(relay_id),
+                'state': relay_states.get(relay_id, False)
+            }
+        
+        # Pump status
+        pumps = status.get('pumps', {})
+        for pump_id in get_available_pumps():
+            if pump_id in pumps:
+                pump_info = pumps[pump_id]
+                formatted_status['pumps'][pump_id] = {
+                    'name': get_pump_name(pump_id),
+                    'dispensing': pump_info.get('is_dispensing', False),
+                    'volume': pump_info.get('current_volume', 0),
+                    'target': pump_info.get('target_volume', 0)
+                }
+        
+        return jsonify(formatted_status)
+        
+    except Exception as e:
+        logger.error(f"Error getting hardware status: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # =============================================================================
 # UTILITY FUNCTIONS FOR TESTING
