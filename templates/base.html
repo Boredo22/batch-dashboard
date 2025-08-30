@@ -137,187 +137,29 @@
         {% endwith %}
     </div>
 
-    <!-- Main Content -->
-    <div class="container mt-4">
-        {% block content %}{% endblock %}
-    </div>
+    <!-- Svelte app mount point -->
+    <div id="app"></div>
+
+    <!-- Pass Flask data to Svelte -->
+    <script>
+        window.flaskData = {
+            hardware: {{ hardware | tojson if hardware else '{}' }},
+            status: {{ status | tojson if status else '{}' }},
+            page: "{{ request.endpoint or 'index' }}"
+        };
+    </script>
 
     <!-- Bootstrap JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- Common JavaScript -->
-    <script>
-        // Global functions for hardware control
-        
-        function showLoading(element) {
-            element.classList.add('loading');
-            element.disabled = true;
-        }
-        
-        function hideLoading(element) {
-            element.classList.remove('loading');
-            element.disabled = false;
-        }
-        
-        function showNotification(message, type = 'info') {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-            alertDiv.role = 'alert';
-            alertDiv.innerHTML = `
-                ${message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            
-            document.getElementById('flashMessages').appendChild(alertDiv);
-            
-            // Auto-dismiss after 5 seconds
-            setTimeout(() => {
-                if (alertDiv.parentNode) {
-                    alertDiv.remove();
-                }
-            }, 5000);
-        }
-        
-        // System status checker
-        function updateSystemStatus() {
-            fetch('/api/status')
-                .then(response => response.json())
-                .then(data => {
-                    const indicator = document.getElementById('systemStatusIndicator');
-                    const text = document.getElementById('systemStatusText');
-                    
-                    if (data.success && data.status.system_ready) {
-                        indicator.className = 'status-indicator status-online';
-                        text.textContent = 'System Online';
-                    } else {
-                        indicator.className = 'status-indicator status-offline';
-                        text.textContent = 'System Offline';
-                    }
-                })
-                .catch(error => {
-                    const indicator = document.getElementById('systemStatusIndicator');
-                    const text = document.getElementById('systemStatusText');
-                    indicator.className = 'status-indicator status-warning';
-                    text.textContent = 'Status Unknown';
-                });
-        }
-        
-        // Hardware control functions
-        async function controlRelay(relayId, state) {
-            const button = event.target;
-            showLoading(button);
-            
-            try {
-                const response = await fetch(`/api/relay/${relayId}/${state ? 'on' : 'off'}`);
-                const data = await response.json();
-                
-                if (data.success) {
-                    showNotification(`Relay ${relayId} ${state ? 'turned on' : 'turned off'}`, 'success');
-                } else {
-                    showNotification(`Failed to control relay ${relayId}: ${data.error || 'Unknown error'}`, 'danger');
-                }
-            } catch (error) {
-                showNotification(`Error controlling relay ${relayId}: ${error.message}`, 'danger');
-            } finally {
-                hideLoading(button);
-            }
-        }
-        
-        async function allRelaysOff() {
-            const button = event.target;
-            if (!confirm('Turn off ALL relays?')) return;
-            
-            showLoading(button);
-            
-            try {
-                const response = await fetch('/api/relay/all/off', { method: 'POST' });
-                const data = await response.json();
-                
-                if (data.success) {
-                    showNotification('All relays turned off', 'success');
-                } else {
-                    showNotification(`Failed to turn off relays: ${data.error || 'Unknown error'}`, 'danger');
-                }
-            } catch (error) {
-                showNotification(`Error turning off relays: ${error.message}`, 'danger');
-            } finally {
-                hideLoading(button);
-            }
-        }
-        
-        async function dispensePump(pumpId, amount) {
-            const button = event.target;
-            showLoading(button);
-            
-            try {
-                const response = await fetch(`/api/pump/${pumpId}/dispense`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ amount: amount })
-                });
-                const data = await response.json();
-                
-                if (data.success) {
-                    showNotification(`Dispensing ${amount}ml from pump ${pumpId}`, 'success');
-                } else {
-                    showNotification(`Failed to dispense from pump ${pumpId}: ${data.error || 'Unknown error'}`, 'danger');
-                }
-            } catch (error) {
-                showNotification(`Error dispensing from pump ${pumpId}: ${error.message}`, 'danger');
-            } finally {
-                hideLoading(button);
-            }
-        }
-        
-        async function stopPump(pumpId) {
-            const button = event.target;
-            showLoading(button);
-            
-            try {
-                const response = await fetch(`/api/pump/${pumpId}/stop`, { method: 'POST' });
-                const data = await response.json();
-                
-                if (data.success) {
-                    showNotification(`Pump ${pumpId} stopped`, 'success');
-                } else {
-                    showNotification(`Failed to stop pump ${pumpId}: ${data.error || 'Unknown error'}`, 'danger');
-                }
-            } catch (error) {
-                showNotification(`Error stopping pump ${pumpId}: ${error.message}`, 'danger');
-            } finally {
-                hideLoading(button);
-            }
-        }
-        
-        async function emergencyStop() {
-            const button = event.target;
-            if (!confirm('🚨 EMERGENCY STOP - Are you sure?')) return;
-            
-            showLoading(button);
-            
-            try {
-                const response = await fetch('/api/emergency/stop', { method: 'POST' });
-                const data = await response.json();
-                
-                if (data.success) {
-                    showNotification('🚨 EMERGENCY STOP ACTIVATED 🚨', 'warning');
-                } else {
-                    showNotification(`Emergency stop failed: ${data.error || 'Unknown error'}`, 'danger');
-                }
-            } catch (error) {
-                showNotification(`Emergency stop error: ${error.message}`, 'danger');
-            } finally {
-                hideLoading(button);
-            }
-        }
-        
-        // Initialize page
-        document.addEventListener('DOMContentLoaded', function() {
-            updateSystemStatus();
-            // Update system status every 10 seconds
-            setInterval(updateSystemStatus, 10000);
-        });
-    </script>
+
+    <!-- Load appropriate Svelte bundle -->
+    {% if request.endpoint == 'status_page' %}
+        <script type="module" src="{{ url_for('static', filename='dist/status.js') }}"></script>
+    {% elif request.endpoint == 'home' %}
+        <script type="module" src="{{ url_for('static', filename='dist/dashboard.js') }}"></script>
+    {% else %}
+        <script type="module" src="{{ url_for('static', filename='dist/main.js') }}"></script>
+    {% endif %}
     
     {% block extra_js %}{% endblock %}
 </body>

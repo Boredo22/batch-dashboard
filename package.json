@@ -1,0 +1,16 @@
+{
+  "name": "nutrient-mixing-system",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "watch": "vite build --watch"
+  },
+  "devDependencies": {
+    "svelte": "^5.0.0",
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "vite": "^5.0.0"
+  }
+}
