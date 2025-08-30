@@ -3,3 +3,5 @@ smbus2
 pyserial
 flask
 flask-cors
+svelte
+vite
