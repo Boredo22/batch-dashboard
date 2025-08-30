@@ -5,86 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Nutrient Mixing System{% endblock %}</title>
     
-    <!-- Bootstrap CSS for styling -->
+    <!-- Bootstrap CSS -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome for icons -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     
-    <style>
-        :root {
-            --success-color: #28a745;
-            --danger-color: #dc3545;
-            --warning-color: #ffc107;
-            --info-color: #17a2b8;
-            --primary-color: #007bff;
-        }
-        
-        .navbar-brand {
-            font-weight: bold;
-            color: var(--primary-color) !important;
-        }
-        
-        .status-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-            margin-right: 8px;
-        }
-        
-        .status-online { background-color: var(--success-color); }
-        .status-offline { background-color: var(--danger-color); }
-        .status-warning { background-color: var(--warning-color); }
-        
-        .hardware-card {
-            transition: all 0.3s ease;
-            border: 1px solid #dee2e6;
-        }
-        
-        .hardware-card:hover {
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        
-        .btn-relay-on {
-            background-color: var(--success-color);
-            border-color: var(--success-color);
-            color: white;
-        }
-        
-        .btn-relay-off {
-            background-color: var(--danger-color);
-            border-color: var(--danger-color);
-            color: white;
-        }
-        
-        .btn-emergency {
-            background-color: var(--danger-color);
-            border-color: var(--danger-color);
-            color: white;
-            font-weight: bold;
-            font-size: 1.1em;
-        }
-        
-        .system-status {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .flash-messages {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1050;
-            max-width: 350px;
-        }
-        
-        .loading {
-            opacity: 0.6;
-            pointer-events: none;
-        }
-    </style>
+    <!-- Your existing styles -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     
     {% block extra_css %}{% endblock %}
 </head>
@@ -140,22 +66,27 @@
     <!-- Svelte app mount point -->
     <div id="app"></div>
 
-    <!-- Pass Flask data to Svelte -->
-    <script>
-        window.flaskData = {
-            hardware: {{ hardware | tojson if hardware else '{}' }},
-            status: {{ status | tojson if status else '{}' }},
-            page: "{{ request.endpoint or 'index' }}"
-        };
-    </script>
-
     <!-- Bootstrap JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
 
-    <!-- Load appropriate Svelte bundle -->
+    <!-- Pass Flask data to Svelte -->
+    <script>
+        // Set Flask data before loading Svelte
+        window.flaskData = {
+            hardware: {{ (hardware | tojson) if hardware else '{}' | safe }},
+            status: {{ (status | tojson) if status else '{}' | safe }},
+            page: "{{ request.endpoint or 'index' }}"
+        };
+        
+        // Debug log to verify data is available
+        console.log('Flask data loaded:', window.flaskData);
+    </script>
+
+    <!-- Load appropriate Svelte bundle - FIXED ENDPOINT NAMES -->
     {% if request.endpoint == 'status_page' %}
         <script type="module" src="{{ url_for('static', filename='dist/status.js') }}"></script>
-    {% elif request.endpoint == 'home' %}
+    {% elif request.endpoint == 'index' %}
+        <!-- FIXED: Changed from 'home' to 'index' to match Flask route -->
         <script type="module" src="{{ url_for('static', filename='dist/dashboard.js') }}"></script>
     {% else %}
         <script type="module" src="{{ url_for('static', filename='dist/main.js') }}"></script>

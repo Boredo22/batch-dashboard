@@ -1,5 +1,5 @@
 <script>
-  let { title = 'Modal', onclose = () => {} } = $props();
+  let { title = 'Modal', onclose = () => {}, children } = $props();
   
   function handleDialogClick(event) {
     event.stopPropagation();
@@ -16,7 +16,7 @@
         <button type="button" class="btn-close" aria-label="Close modal" onclick={onclose}></button>
       </div>
       <div class="modal-body">
-        <slot></slot>
+        {@render children()}
       </div>
     </div>
   </div>
