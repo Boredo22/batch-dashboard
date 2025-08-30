@@ -1,43 +1,31 @@
-<!-- src/lib/components/NotificationToast.svelte -->
 <script>
   import { hardwareStore } from '../stores/hardware.svelte.js';
   
   const { ui } = hardwareStore;
-  
-  function getToastClass(type) {
-    switch (type) {
-      case 'success': return 'border-success text-success';
-      case 'danger': return 'border-danger text-danger';
-      case 'warning': return 'border-warning text-warning';
-      case 'info': return 'border-info text-info';
-      default: return 'border-primary text-primary';
-    }
-  }
-  
-  function getToastIcon(type) {
-    switch (type) {
-      case 'success': return 'fa-check-circle';
-      case 'danger': return 'fa-exclamation-circle';
-      case 'warning': return 'fa-exclamation-triangle';
-      case 'info': return 'fa-info-circle';
-      default: return 'fa-bell';
-    }
-  }
 </script>
 
-<!-- Toast Container -->
-<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;">
+<div class="toast-container">
   {#each ui.notifications as notification (notification.id)}
-    <div class="toast show {getToastClass(notification.type)}" role="alert">
+    <div 
+      class="toast show toast-{notification.type}"
+      role="alert"
+    >
       <div class="toast-header">
-        <i class="fas {getToastIcon(notification.type)} me-2"></i>
-        <strong class="me-auto">System</strong>
-        <small class="text-muted">
-          {Math.round((Date.now() - notification.timestamp) / 1000)}s ago
-        </small>
+        <strong class="me-auto">
+          {#if notification.type === 'success'}
+            <i class="fas fa-check-circle text-success"></i>
+          {:else if notification.type === 'danger'}
+            <i class="fas fa-exclamation-circle text-danger"></i>
+          {:else if notification.type === 'warning'}
+            <i class="fas fa-exclamation-triangle text-warning"></i>
+          {:else}
+            <i class="fas fa-info-circle text-info"></i>
+          {/if}
+          Notification
+        </strong>
         <button 
           type="button" 
-          class="btn-close" 
+          class="btn-close"
           onclick={() => hardwareStore.removeNotification(notification.id)}
         ></button>
       </div>
@@ -49,14 +37,39 @@
 </div>
 
 <style>
-  .toast {
-    margin-bottom: 0.5rem;
-    border-left: 4px solid;
+  .toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1055;
+    max-width: 350px;
   }
   
-  .toast.border-success { border-left-color: #28a745; }
-  .toast.border-danger { border-left-color: #dc3545; }
-  .toast.border-warning { border-left-color: #ffc107; }
-  .toast.border-info { border-left-color: #17a2b8; }
-  .toast.border-primary { border-left-color: #007bff; }
+  .toast {
+    margin-bottom: 0.5rem;
+    background-color: white;
+    border: 1px solid rgba(0, 0, 0, 0.125);
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  }
+  
+  .toast-header {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background-color: rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+    border-radius: 0.375rem 0.375rem 0 0;
+  }
+  
+  .toast-body {
+    padding: 0.75rem;
+  }
+  
+  .btn-close {
+    background: none;
+    border: none;
+    margin-left: auto;
+    cursor: pointer;
+  }
 </style>

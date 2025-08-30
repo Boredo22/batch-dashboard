@@ -139,6 +139,20 @@ export class HardwareStore {
     return data;
   }
 
+  async stopAllOperations() {
+    const response = await fetch('/api/operations/stop-all', { method: 'POST' });
+    const data = await response.json();
+    
+    if (data.success) {
+      this.showNotification('All operations stopped', 'warning');
+      await this.updateSystemStatus();
+    } else {
+      this.showNotification(`Failed to stop operations: ${data.error}`, 'danger');
+    }
+    
+    return data;
+  }
+
   // Notification system
   showNotification(message, type = 'info') {
     const id = Date.now();
