@@ -1,125 +1,120 @@
-// src/lib/stores/hardware.svelte.js
-// Hardware state management using Svelte 5 runes
-
-export class HardwareStore {
-  // System status state
+// src/lib/stores/hardware.svelte.js - FIXED VERSION
+class HardwareStore {
+  // Initialize state with runes
+  hardware = $state({
+    pumps: {},
+    relays: {},
+    flow_meters: {},
+    limits: {}
+  });
+  
+  status = $state({
+    pumps: {},
+    relays: {},
+    flow_meters: {},
+    ec_ph: {},
+    running: false
+  });
+  
   systemStatus = $state({
     connected: false,
-    timestamp: null,
-    lastUpdate: Date.now()
+    lastUpdate: null,
+    error: null
   });
-
-  // Hardware configuration
-  hardware = $state({
-    pumps: { ids: [] },
-    flow_meters: { ids: [] },
-    mock_settings: {}
-  });
-
-  // Real-time status data
-  status = $state({
-    tanks: {},
-    pumps: {},
-    flows: {},
-    jobs: {}
-  });
-
-  // UI state
+  
   ui = $state({
     loading: false,
     activeModal: null,
     notifications: []
   });
+  
+  // Derived computed values
+  isOnline = $derived(this.systemStatus.connected && !this.systemStatus.error);
+  totalPumps = $derived(Object.keys(this.hardware.pumps).length);
+  activePumps = $derived(Object.values(this.status.pumps).filter(p => p.active).length);
+  totalRelays = $derived(Object.keys(this.hardware.relays).length);
+  activeRelays = $derived(Object.values(this.status.relays).filter(r => r.state).length);
 
   constructor() {
-    // Initialize from Flask data if available
+    // Initialize with Flask data if available
     if (typeof window !== 'undefined' && window.flaskData) {
       this.hardware = { ...this.hardware, ...window.flaskData.hardware };
       this.status = { ...this.status, ...window.flaskData.status };
+      this.systemStatus.connected = true;
+      this.systemStatus.lastUpdate = Date.now();
     }
-
-    // Start status polling
-    this.startStatusPolling();
   }
 
-  // Derived values using $derived
-  isOnline = $derived(this.systemStatus.connected);
-
-  statusText = $derived(
-    this.systemStatus.connected ? 'Online' :
-    this.ui.loading ? 'Checking...' : 'Offline'
-  );
-
-  activePumps = $derived(
-    Object.entries(this.status.pumps || {})
-      .filter(([id, pump]) => pump.active)
-      .length
-  );
-
-  activeFlows = $derived(
-    Object.entries(this.status.flows || {})
-      .filter(([id, flow]) => flow.active)
-      .length
-  );
-
-  // API methods
-  async updateSystemStatus() {
-    this.ui.loading = true;
+  // FIXED: Remove $effect from class method - use regular polling
+  startStatusPolling() {
+    // Initial load
+    this.updateSystemStatus();
     
+    // Set up regular polling
+    const interval = setInterval(() => {
+      this.updateSystemStatus();
+    }, 10000); // Every 10 seconds
+
+    // Return cleanup function that components can call
+    return () => {
+      clearInterval(interval);
+    };
+  }
+
+  async updateSystemStatus() {
     try {
+      this.ui.loading = true;
+      
       const response = await fetch('/api/status');
       const data = await response.json();
       
       if (data.success) {
         this.status = { ...this.status, ...data.status };
+        this.hardware = { ...this.hardware, ...data.hardware };
         this.systemStatus.connected = true;
-        this.systemStatus.timestamp = new Date().toLocaleString();
         this.systemStatus.lastUpdate = Date.now();
+        this.systemStatus.error = null;
       } else {
-        this.systemStatus.connected = false;
-        this.showNotification(`Status update failed: ${data.error}`, 'danger');
+        throw new Error(data.error || 'Failed to get status');
       }
     } catch (error) {
+      console.error('Status update failed:', error);
       this.systemStatus.connected = false;
-      this.showNotification(`Status error: ${error.message}`, 'danger');
+      this.systemStatus.error = error.message;
     } finally {
       this.ui.loading = false;
     }
   }
 
-  async dispensePump(pumpId, amount) {
-    const response = await fetch(`/api/pump/${pumpId}/dispense`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount })
-    });
-    
+  async controlRelay(relayId, state) {
+    const action = state ? 'on' : 'off';
+    const response = await fetch(`/api/relay/${relayId}/${action}`, { method: 'POST' });
     const data = await response.json();
     
     if (data.success) {
-      this.showNotification(`Pump ${pumpId} dispensing ${amount}ml`, 'success');
-      await this.updateSystemStatus(); // Refresh status
+      this.showNotification(`Relay ${relayId} turned ${action}`, 'success');
+      await this.updateSystemStatus();
     } else {
-      this.showNotification(`Pump ${pumpId} failed: ${data.error}`, 'danger');
+      this.showNotification(`Relay ${relayId} failed: ${data.error}`, 'danger');
     }
     
     return data;
   }
 
-  async startFlow(flowId, gallons) {
-    const response = await fetch(`/api/flow/${flowId}/start`, {
+  async dispense(pumpId, volume) {
+    const response = await fetch(`/api/pump/${pumpId}/dispense`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gallons })
+      body: JSON.stringify({ volume })
     });
     
     const data = await response.json();
     
     if (data.success) {
-      this.showNotification(`Flow meter ${flowId} started for ${gallons} gallons`, 'success');
+      this.showNotification(`Pump ${pumpId} dispensing ${volume}ml`, 'success');
       await this.updateSystemStatus();
     } else {
-      this.showNotification(`Flow meter ${flowId} failed: ${data.error}`, 'danger');
+      this.showNotification(`Pump ${pumpId} failed: ${data.error}`, 'danger');
     }
     
     return data;
@@ -134,20 +129,6 @@ export class HardwareStore {
       await this.updateSystemStatus();
     } else {
       this.showNotification(`Emergency stop failed: ${data.error}`, 'danger');
-    }
-    
-    return data;
-  }
-
-  async stopAllOperations() {
-    const response = await fetch('/api/operations/stop-all', { method: 'POST' });
-    const data = await response.json();
-    
-    if (data.success) {
-      this.showNotification('All operations stopped', 'warning');
-      await this.updateSystemStatus();
-    } else {
-      this.showNotification(`Failed to stop operations: ${data.error}`, 'danger');
     }
     
     return data;
@@ -180,47 +161,6 @@ export class HardwareStore {
 
   closeModal() {
     this.ui.activeModal = null;
-  }
-
-  // Status polling with $effect
-  startStatusPolling() {
-    $effect(() => {
-      const interval = setInterval(() => {
-        this.updateSystemStatus();
-      }, 10000); // Every 10 seconds
-
-      // Initial load
-      this.updateSystemStatus();
-
-      // Cleanup function
-      return () => {
-        clearInterval(interval);
-      };
-    });
-  }
-
-  // WebSocket connection (optional enhancement)
-  connectWebSocket() {
-    if (typeof window === 'undefined') return;
-    
-    const ws = new WebSocket(`ws://${window.location.host}/api/status/stream`);
-    
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      this.status = { ...this.status, ...data };
-      this.systemStatus.connected = true;
-      this.systemStatus.lastUpdate = Date.now();
-    };
-    
-    ws.onclose = () => {
-      this.systemStatus.connected = false;
-      // Try to reconnect after 5 seconds
-      setTimeout(() => this.connectWebSocket(), 5000);
-    };
-    
-    ws.onerror = () => {
-      this.systemStatus.connected = false;
-    };
   }
 }
 

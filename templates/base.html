@@ -73,9 +73,9 @@
     <script>
         // Set Flask data before loading Svelte
         window.flaskData = {
-            hardware: {{ (hardware | tojson) if hardware else '{}' | safe }},
-            status: {{ (status | tojson) if status else '{}' | safe }},
-            page: "{{ request.endpoint or 'index' }}"
+            hardware: {{ hardware | tojson | safe if hardware else '{}' }},
+            status: {{ status | tojson | safe if status else '{}' }},
+            page: {{ (request.endpoint or 'index') | tojson | safe }}
         };
         
         // Debug log to verify data is available
