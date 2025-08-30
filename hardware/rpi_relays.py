@@ -35,12 +35,28 @@ class RelayController:
 
         # GPIO handle
         self.h = None
+        self._gpio_initialized = False
+        self._initialization_attempts = 0
+        self._max_init_attempts = 3
 
-        # Setup GPIO
-        self.setup_gpio()
+        # Don't setup GPIO immediately - use lazy initialization
+        logger.debug("RelayController created with lazy GPIO initialization")
+    
+    def _ensure_gpio_initialized(self):
+        """Ensure GPIO is initialized with retry logic"""
+        if self._gpio_initialized and self.h is not None:
+            return True
+            
+        if self._initialization_attempts >= self._max_init_attempts:
+            logger.error(f"GPIO initialization failed after {self._max_init_attempts} attempts")
+            return False
+            
+        return self.setup_gpio()
     
     def setup_gpio(self):
         """Setup GPIO pins for relays with ULN2803A"""
+        self._initialization_attempts += 1
+        
         try:
             # Create an lgpio handle
             self.h = lgpio.gpiochip_open(0)
@@ -57,11 +73,18 @@ class RelayController:
                 logger.debug(f"Relay {relay_id} setup on GPIO {pin} ({get_relay_name(relay_id)})")
                 
             logger.info(f"Initialized {len(self.relay_pins)} relay pins with ULN2803A")
+            self._gpio_initialized = True
+            return True
             
         except Exception as e:
-            logger.error(f"Failed to setup GPIO: {e}")
+            logger.error(f"Failed to setup GPIO (attempt {self._initialization_attempts}): {e}")
             self.h = None
-            # Don't re-raise the exception to allow graceful degradation
+            self._gpio_initialized = False
+            
+            # Add small delay before potential retry
+            import time
+            time.sleep(0.1)
+            return False
     
     def set_relay(self, relay_id, state):
         """Set individual relay state
@@ -75,7 +98,8 @@ class RelayController:
             logger.error(f"Invalid relay ID: {relay_id} (available: {available})")
             return False
         
-        if self.h is None:
+        # Ensure GPIO is initialized before use
+        if not self._ensure_gpio_initialized():
             logger.error(f"GPIO not initialized - cannot set relay {relay_id}")
             return False
         
@@ -95,11 +119,13 @@ class RelayController:
             
             state_str = "ON" if state else "OFF"
             relay_name = get_relay_name(relay_id)
-            logger.debug(f"Relay {relay_id} ({relay_name}) set to {state_str}")
+            logger.info(f"Relay {relay_id} ({relay_name}) set to {state_str}")
             return True
             
         except Exception as e:
             logger.error(f"Error setting relay {relay_id}: {e}")
+            # If GPIO operation fails, mark as uninitialized to force retry
+            self._gpio_initialized = False
             return False
     
     def set_all_relays(self, state):
@@ -136,9 +162,12 @@ class RelayController:
     def emergency_stop(self):
         """Emergency stop - turn off all relays"""
         logger.warning("Emergency stop - turning off all relays")
-        if self.h is None:
+        
+        # Ensure GPIO is initialized before emergency stop
+        if not self._ensure_gpio_initialized():
             logger.error("GPIO not initialized - cannot perform emergency stop")
             return False
+            
         return self.set_all_relays(False)
     
     def get_available_relays(self):
