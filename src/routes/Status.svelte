@@ -364,10 +364,11 @@
 </div>
 
 <!-- Floating Refresh Button -->
-<button 
-  class="btn btn-primary btn-lg refresh-btn" 
+<button
+  class="btn btn-primary btn-lg refresh-btn"
   onclick={refreshStatus}
   title="Refresh Status"
+  aria-label="Refresh Status"
   disabled={ui.loading}
 >
   <i class="fas fa-sync-alt {ui.loading ? 'fa-spin' : ''}"></i>

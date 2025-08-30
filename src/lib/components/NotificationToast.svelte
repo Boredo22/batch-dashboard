@@ -23,9 +23,10 @@
           {/if}
           Notification
         </strong>
-        <button 
-          type="button" 
+        <button
+          type="button"
           class="btn-close"
+          aria-label="Close notification"
           onclick={() => hardwareStore.removeNotification(notification.id)}
         ></button>
       </div>

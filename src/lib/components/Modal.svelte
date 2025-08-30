@@ -1,16 +1,19 @@
 <script>
-  export let title = 'Modal';
-  export let onclose = () => {};
+  let { title = 'Modal', onclose = () => {} } = $props();
+  
+  function handleDialogClick(event) {
+    event.stopPropagation();
+  }
 </script>
 
-<!-- svelte-ignore a11y-click-events-have-key-events -->
-<!-- svelte-ignore a11y-no-static-element-interactions -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="modal-backdrop" onclick={onclose}>
-  <div class="modal-dialog" onclick|stopPropagation>
+  <div class="modal-dialog" onclick={handleDialogClick}>
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">{title}</h5>
-        <button type="button" class="btn-close" onclick={onclose}></button>
+        <button type="button" class="btn-close" aria-label="Close modal" onclick={onclose}></button>
       </div>
       <div class="modal-body">
         <slot></slot>
