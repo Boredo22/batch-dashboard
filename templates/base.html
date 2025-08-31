@@ -63,6 +63,11 @@
         {% endwith %}
     </div>
 
+    <!-- Main content area -->
+    <main class="container-fluid py-4">
+        {% block content %}{% endblock %}
+    </main>
+    
     <!-- Svelte app mount point -->
     <div id="app"></div>
 
