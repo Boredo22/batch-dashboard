@@ -26,11 +26,17 @@ from config import (
     validate_pump_id
 )
 
+import platform
+
 try:
     import smbus2
 except ImportError:
-    print("smbus2 not installed. Install with: pip install smbus2")
-    exit(1)
+    if platform.system() == 'Windows':
+        print("Running on Windows - using mock smbus2")
+        from .mock_hardware_libs import smbus2
+    else:
+        print("smbus2 not installed. Install with: pip install smbus2")
+        exit(1)
 
 logger = logging.getLogger(__name__)
 

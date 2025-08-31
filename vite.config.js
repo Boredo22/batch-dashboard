@@ -10,7 +10,8 @@ export default defineConfig({
       input: {
         main: 'src/main.js',
         dashboard: 'src/dashboard.js',
-        status: 'src/status.js'
+        status: 'src/status.js',
+        testing: 'src/testing.js'
       },
       output: {
         entryFileNames: '[name].js',

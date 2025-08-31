@@ -15,11 +15,17 @@ from config import (
     validate_relay_id
 )
 
+import platform
+
 try:
     import lgpio
 except ImportError:
-    print("lgpio not installed. Install with: pip install lgpio")
-    exit(1)
+    if platform.system() == 'Windows':
+        print("Running on Windows - using mock lgpio")
+        from .mock_hardware_libs import lgpio
+    else:
+        print("lgpio not installed. Install with: pip install lgpio")
+        exit(1)
 
 logger = logging.getLogger(__name__)
 

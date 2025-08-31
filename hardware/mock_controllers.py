@@ -306,7 +306,14 @@ class ConnectionManager:
         """Get pooled I2C connection"""
         if bus_id not in self.connection_pool:
             try:
-                import smbus2
+                import platform
+                try:
+                    import smbus2
+                except ImportError:
+                    if platform.system() == 'Windows':
+                        from .mock_hardware_libs import smbus2
+                    else:
+                        raise
                 self.connection_pool[bus_id] = smbus2.SMBus(bus_id)
                 logger.debug(f"Created new I2C connection for bus {bus_id}")
             except Exception as e:

@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Nutrient Mixing System{% endblock %}</title>
     
-    <!-- Bootstrap CSS -->
+    <!-- Bootstrap CSS (Dark theme) -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     
@@ -14,7 +14,7 @@
     
     {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body class="dark-theme">
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
@@ -36,6 +36,11 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('status_page') }}">
                             <i class="fas fa-chart-line me-1"></i>System Status
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('testing_page') }}">
+                            <i class="fas fa-wrench me-1"></i>Hardware Testing
                         </a>
                     </li>
                 </ul>
@@ -90,6 +95,8 @@
     <!-- Load appropriate Svelte bundle - FIXED ENDPOINT NAMES -->
     {% if request.endpoint == 'status_page' %}
         <script type="module" src="{{ url_for('static', filename='dist/status.js') }}"></script>
+    {% elif request.endpoint == 'testing_page' %}
+        <script type="module" src="{{ url_for('static', filename='dist/testing.js') }}"></script>
     {% elif request.endpoint == 'index' %}
         <!-- FIXED: Changed from 'home' to 'index' to match Flask route -->
         <script type="module" src="{{ url_for('static', filename='dist/dashboard.js') }}"></script>

@@ -285,6 +285,66 @@ class HardwareComms:
             return False
     
     # =========================================================================
+    # EC/pH SENSOR CONTROL - Same patterns as simple_gui.py
+    # =========================================================================
+    
+    def start_ec_ph(self) -> bool:
+        """
+        Start EC/pH monitoring using exact same command as simple_gui.py
+        
+        Returns:
+            bool: Success status
+        """
+        sys = self.get_system()
+        if not sys:
+            logger.error("System not available for EC/pH control")
+            return False
+        
+        # Exact same command format as simple_gui.py
+        command = "Start;EcPh;ON;end"
+        
+        try:
+            success = sys.send_command(command)
+            
+            if success:
+                logger.info("EC/pH monitoring started")
+            else:
+                logger.error("Failed to start EC/pH monitoring")
+            
+            return success
+        except Exception as e:
+            logger.error(f"Exception starting EC/pH monitoring: {e}")
+            return False
+    
+    def stop_ec_ph(self) -> bool:
+        """
+        Stop EC/pH monitoring using exact same command as simple_gui.py
+        
+        Returns:
+            bool: Success status
+        """
+        sys = self.get_system()
+        if not sys:
+            logger.error("System not available for EC/pH control")
+            return False
+        
+        # Exact same command format as simple_gui.py
+        command = "Start;EcPh;OFF;end"
+        
+        try:
+            success = sys.send_command(command)
+            
+            if success:
+                logger.info("EC/pH monitoring stopped")
+            else:
+                logger.error("Failed to stop EC/pH monitoring")
+            
+            return success
+        except Exception as e:
+            logger.error(f"Exception stopping EC/pH monitoring: {e}")
+            return False
+
+    # =========================================================================
     # EMERGENCY CONTROLS - Same as simple_gui.py
     # =========================================================================
     
@@ -448,6 +508,14 @@ def get_available_hardware() -> Dict[str, Any]:
 def all_relays_off() -> bool:
     """Turn all relays off - convenience function"""
     return get_hardware_comms().all_relays_off()
+
+def start_ec_ph() -> bool:
+    """Start EC/pH monitoring - convenience function"""
+    return get_hardware_comms().start_ec_ph()
+
+def stop_ec_ph() -> bool:
+    """Stop EC/pH monitoring - convenience function"""
+    return get_hardware_comms().stop_ec_ph()
 
 def cleanup_hardware():
     """Cleanup hardware resources - convenience function"""

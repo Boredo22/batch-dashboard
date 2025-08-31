@@ -19,11 +19,17 @@ from config import (
     EZO_RESPONSE_CODES
 )
 
+import platform
+
 try:
     import smbus2
 except ImportError:
-    print("smbus2 not installed. Install with: pip install smbus2")
-    smbus2 = None
+    if platform.system() == 'Windows':
+        print("Running on Windows - using mock smbus2")
+        from .mock_hardware_libs import smbus2
+    else:
+        print("smbus2 not installed. Install with: pip install smbus2")
+        smbus2 = None
 
 logger = logging.getLogger(__name__)
 
