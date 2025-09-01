@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Flask Application for Nutrient Mixing System - SIMPLIFIED VERSION
+Flask API Server for Nutrient Mixing System
+Provides REST API endpoints for Svelte frontend
 Uses hardware_comms.py for reliable hardware control like simple_gui.py
 """
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import logging
 import atexit
@@ -18,18 +19,14 @@ from hardware.hardware_comms import (
     all_relays_off, cleanup_hardware, start_ec_ph, stop_ec_ph
 )
 
-# Import configuration for tank/formula info (if needed for web interface)
+# Import configuration constants (if needed for validation)
 try:
-    from config import (
-        TANKS, VEG_FORMULA, BLOOM_FORMULA, get_tank_info,
-        MIN_PUMP_VOLUME_ML, MAX_PUMP_VOLUME_ML, MAX_FLOW_GALLONS
-    )
+    from config import MIN_PUMP_VOLUME_ML, MAX_PUMP_VOLUME_ML, MAX_FLOW_GALLONS
 except ImportError:
-    # Fallback if config doesn't have these
-    TANKS = {}
-    VEG_FORMULA = {}
-    BLOOM_FORMULA = {}
-    def get_tank_info(tank_id): return f"Tank {tank_id}"
+    # Fallback constants
+    MIN_PUMP_VOLUME_ML = 1
+    MAX_PUMP_VOLUME_ML = 100
+    MAX_FLOW_GALLONS = 50
 
 # Setup logging
 logging.basicConfig(
@@ -47,98 +44,36 @@ app.secret_key = 'nutrient_mixing_system_2024'
 atexit.register(cleanup_hardware)
 
 # =============================================================================
-# WEB ROUTES - Main Interface
+# STATIC FILE SERVING - Serve Svelte build files
 # =============================================================================
 
 @app.route('/')
-def index():
-    """Main dashboard page"""
-    try:
-        # Get hardware configuration for the interface
-        raw_hardware = get_available_hardware()
-        status = get_system_status()
-        
-        # Transform hardware data to match template expectations
-        hardware = {
-            'pumps': raw_hardware['pumps'],
-            'relays': raw_hardware['relays'],
-            'flow_meters': raw_hardware['flow_meters'],
-            'limits': {
-                'pump_min_ml': raw_hardware['pumps']['volume_limits']['min_ml'],
-                'pump_max_ml': raw_hardware['pumps']['volume_limits']['max_ml'],
-                'flow_max_gallons': raw_hardware['flow_meters']['max_gallons']
-            },
-            'mock_settings': raw_hardware.get('mock_settings', {})
-        }
-        
-        return render_template('index.html',
-                             hardware=hardware,
-                             status=status,
-                             tanks=TANKS)
-    except Exception as e:
-        logger.error(f"Error loading main page: {e}")
-        flash(f"Error loading dashboard: {e}", 'error')
-        return render_template('error.html', error=str(e))
+def serve_dashboard():
+    """Serve Dashboard Svelte app"""
+    return send_from_directory('static/dist', 'dashboard.html')
 
 @app.route('/status')
-def status_page():
-    """System status page"""
-    try:
-        status = get_system_status()
-        raw_hardware = get_available_hardware()
-        
-        # Transform hardware data to match template expectations
-        hardware = {
-            'pumps': raw_hardware['pumps'],
-            'relays': raw_hardware['relays'],
-            'flow_meters': raw_hardware['flow_meters'],
-            'limits': {
-                'pump_min_ml': raw_hardware['pumps']['volume_limits']['min_ml'],
-                'pump_max_ml': raw_hardware['pumps']['volume_limits']['max_ml'],
-                'flow_max_gallons': raw_hardware['flow_meters']['max_gallons']
-            },
-            'mock_settings': raw_hardware.get('mock_settings', {})
-        }
-        
-        return render_template('status.html',
-                             status=status,
-                             hardware=hardware)
-    except Exception as e:
-        logger.error(f"Error loading status page: {e}")
-        return render_template('error.html', error=str(e))
+def serve_status():
+    """Serve Status Svelte app"""  
+    return send_from_directory('static/dist', 'status.html')
 
-@app.route('/testing')
-def testing_page():
-    """Hardware testing page"""
-    try:
-        status = get_system_status()
-        raw_hardware = get_available_hardware()
-        
-        # Transform hardware data to match template expectations
-        hardware = {
-            'pumps': raw_hardware['pumps'],
-            'relays': raw_hardware['relays'],
-            'flow_meters': raw_hardware['flow_meters'],
-            'limits': {
-                'pump_min_ml': raw_hardware['pumps']['volume_limits']['min_ml'],
-                'pump_max_ml': raw_hardware['pumps']['volume_limits']['max_ml'],
-                'flow_max_gallons': raw_hardware['flow_meters']['max_gallons']
-            },
-            'mock_settings': raw_hardware.get('mock_settings', {})
-        }
-        
-        return render_template('testing.html',
-                             status=status,
-                             hardware=hardware)
-    except Exception as e:
-        logger.error(f"Error loading testing page: {e}")
-        return render_template('error.html', error=str(e))
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    """Serve static files (CSS, JS, assets)"""
+    return send_from_directory('static', filename)
+
+@app.route('/dist/<path:filename>')
+def serve_dist(filename):
+    """Serve built Svelte files"""
+    return send_from_directory('static/dist', filename)
 
 # =============================================================================
 # API ENDPOINTS - Hardware Control (same patterns as simple_gui.py)
 # =============================================================================
 
 @app.route('/api/status')
+@app.route('/api/hardware/status')
+@app.route('/api/system/status')
 def api_status():
     """Get current system status"""
     try:
@@ -162,7 +97,18 @@ def api_status():
             'success': True,
             'status': status,
             'hardware': hardware,
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            # Add data in the format expected by Dashboard.svelte  
+            'relays': [{'id': rid, 'name': hardware['relays']['names'].get(rid, f'Relay {rid}'), 'state': status['relays'].get(str(rid), False)} 
+                      for rid in hardware['relays']['ids']],
+            'pumps': [{'id': pid, 'name': hardware['pumps']['names'].get(pid, f'Pump {pid}'), 'status': 'stopped'} 
+                     for pid in hardware['pumps']['ids']],
+            'flow_meters': [{'id': fid, 'name': hardware['flow_meters']['names'].get(fid, f'Flow Meter {fid}'), 
+                           'status': 'stopped', 'flow_rate': 0, 'total_gallons': 0} 
+                          for fid in hardware['flow_meters']['ids']],
+            'ec_value': status.get('ec', 0),
+            'ph_value': status.get('ph', 0),
+            'ec_ph_monitoring': status.get('ec_ph_active', False)
         })
     except Exception as e:
         logger.error(f"Error getting status: {e}")
@@ -175,7 +121,7 @@ def api_status():
 # RELAY CONTROL - Using exact same patterns as simple_gui.py
 # -----------------------------------------------------------------------------
 
-@app.route('/api/relay/<int:relay_id>/<state>')
+@app.route('/api/relay/<int:relay_id>/<state>', methods=['GET', 'POST'])
 def api_control_relay(relay_id, state):
     """Control individual relay"""
     try:
@@ -329,6 +275,7 @@ def api_stop_flow(flow_id):
 # -----------------------------------------------------------------------------
 
 @app.route('/api/sensor/ecph/start', methods=['POST'])
+@app.route('/api/ecph/start', methods=['POST'])
 def api_start_ec_ph():
     """Start EC/pH monitoring"""
     try:
@@ -346,6 +293,7 @@ def api_start_ec_ph():
         }), 500
 
 @app.route('/api/sensor/ecph/stop', methods=['POST'])
+@app.route('/api/ecph/stop', methods=['POST'])
 def api_stop_ec_ph():
     """Stop EC/pH monitoring"""
     try:
@@ -721,109 +669,6 @@ def api_emergency_stop():
             'error': str(e)
         }), 500
 
-# =============================================================================
-# FORM-BASED ENDPOINTS - For traditional form submissions
-# =============================================================================
-
-@app.route('/control/relay', methods=['POST'])
-def form_control_relay():
-    """Form-based relay control"""
-    try:
-        relay_id = int(request.form.get('relay_id', 0))
-        action = request.form.get('action', '').lower()
-        
-        if action == 'on':
-            success = control_relay(relay_id, True)
-            flash(f"Relay {relay_id} turned on" if success else f"Failed to turn on relay {relay_id}")
-        elif action == 'off':
-            success = control_relay(relay_id, False)
-            flash(f"Relay {relay_id} turned off" if success else f"Failed to turn off relay {relay_id}")
-        elif action == 'all_off':
-            success = all_relays_off()
-            flash("All relays turned off" if success else "Failed to turn off all relays")
-        else:
-            flash("Invalid relay action", 'error')
-            
-    except Exception as e:
-        flash(f"Relay control error: {e}", 'error')
-    
-    return redirect(url_for('index'))
-
-@app.route('/control/pump', methods=['POST'])
-def form_control_pump():
-    """Form-based pump control"""
-    try:
-        pump_id = int(request.form.get('pump_id', 1))
-        action = request.form.get('action', '').lower()
-        
-        if action == 'dispense':
-            amount = float(request.form.get('amount', 10.0))
-            success = dispense_pump(pump_id, amount)
-            flash(f"Dispensing {amount}ml from pump {pump_id}" if success else f"Failed to dispense from pump {pump_id}")
-        elif action == 'stop':
-            success = stop_pump(pump_id)
-            flash(f"Pump {pump_id} stopped" if success else f"Failed to stop pump {pump_id}")
-        else:
-            flash("Invalid pump action", 'error')
-            
-    except Exception as e:
-        flash(f"Pump control error: {e}", 'error')
-    
-    return redirect(url_for('index'))
-
-@app.route('/control/flow', methods=['POST'])
-def form_control_flow():
-    """Form-based flow control"""
-    try:
-        flow_id = int(request.form.get('flow_id', 1))
-        action = request.form.get('action', '').lower()
-        
-        if action == 'start':
-            gallons = int(request.form.get('gallons', 5))
-            success = start_flow(flow_id, gallons)
-            flash(f"Flow meter {flow_id} started for {gallons} gallons" if success else f"Failed to start flow meter {flow_id}")
-        elif action == 'stop':
-            success = stop_flow(flow_id)
-            flash(f"Flow meter {flow_id} stopped" if success else f"Failed to stop flow meter {flow_id}")
-        else:
-            flash("Invalid flow action", 'error')
-            
-    except Exception as e:
-        flash(f"Flow control error: {e}", 'error')
-    
-    return redirect(url_for('index'))
-
-@app.route('/control/sensor', methods=['POST'])
-def form_control_sensor():
-    """Form-based sensor control"""
-    try:
-        action = request.form.get('action', '').lower()
-        
-        if action == 'start_ecph':
-            success = start_ec_ph()
-            flash("EC/pH monitoring started" if success else "Failed to start EC/pH monitoring")
-        elif action == 'stop_ecph':
-            success = stop_ec_ph()
-            flash("EC/pH monitoring stopped" if success else "Failed to stop EC/pH monitoring")
-        else:
-            flash("Invalid sensor action", 'error')
-            
-    except Exception as e:
-        flash(f"Sensor control error: {e}", 'error')
-    
-    return redirect(url_for('index'))
-
-@app.route('/control/emergency', methods=['POST'])
-def form_emergency_stop():
-    """Form-based emergency stop"""
-    try:
-        success = emergency_stop()
-        flash("🚨 EMERGENCY STOP ACTIVATED 🚨" if success else "Emergency stop failed", 
-              'warning' if success else 'error')
-    except Exception as e:
-        flash(f"Emergency stop error: {e}", 'error')
-    
-    return redirect(url_for('index'))
 
 # =============================================================================
 # ERROR HANDLERS
@@ -831,64 +676,29 @@ def form_emergency_stop():
 
 @app.errorhandler(404)
 def not_found_error(error):
-    return render_template('error.html', 
-                         error="Page not found",
-                         error_code=404), 404
+    # For API requests, return JSON
+    if request.path.startswith('/api/'):
+        return jsonify({
+            'success': False,
+            'error': 'Endpoint not found',
+            'error_code': 404
+        }), 404
+    # For static files, try to serve from dist
+    else:
+        return send_from_directory('static/dist', 'dashboard.html')
 
 @app.errorhandler(500)
 def internal_error(error):
     logger.error(f"Internal server error: {error}")
-    return render_template('error.html', 
-                         error="Internal server error",
-                         error_code=500), 500
+    if request.path.startswith('/api/'):
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error',
+            'error_code': 500
+        }), 500
+    else:
+        return send_from_directory('static/dist', 'dashboard.html')
 
-# =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
-
-def get_hardware_info():
-    """Get formatted hardware information for templates"""
-    try:
-        hardware = get_available_hardware()
-        return {
-            'pumps': [
-                {
-                    'id': pump_id,
-                    'name': hardware['pumps']['names'].get(pump_id, f'Pump {pump_id}'),
-                    'available': True
-                }
-                for pump_id in hardware['pumps']['ids']
-            ],
-            'relays': [
-                {
-                    'id': relay_id,
-                    'name': hardware['relays']['names'].get(relay_id, f'Relay {relay_id}'),
-                    'available': True
-                }
-                for relay_id in hardware['relays']['ids']
-            ],
-            'flow_meters': [
-                {
-                    'id': flow_id,
-                    'name': hardware['flow_meters']['names'].get(flow_id, f'Flow Meter {flow_id}'),
-                    'available': True
-                }
-                for flow_id in hardware['flow_meters']['ids']
-            ],
-            'limits': {
-                'pump_min_ml': hardware['pumps']['volume_limits']['min_ml'],
-                'pump_max_ml': hardware['pumps']['volume_limits']['max_ml'],
-                'flow_max_gallons': hardware['flow_meters']['max_gallons']
-            }
-        }
-    except Exception as e:
-        logger.error(f"Error getting hardware info: {e}")
-        return {'pumps': [], 'relays': [], 'flow_meters': [], 'limits': {}}
-
-# Add hardware info to template context
-@app.context_processor
-def inject_hardware_info():
-    return {'hardware_info': get_hardware_info()}
 
 # =============================================================================
 # STARTUP AND MAIN

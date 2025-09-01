@@ -29,14 +29,14 @@
             onclick={() => handleRelayControl(relay.id, true)}
             disabled={relay.state}
           >
-            ON
+            ON {relay.state ? '(ON)' : '(OFF)'}
           </button>
           <button 
             class="control-btn off-btn {!relay.state ? 'active' : ''}" 
             onclick={() => handleRelayControl(relay.id, false)}
             disabled={!relay.state}
           >
-            OFF
+            OFF {relay.state ? '(ON)' : '(OFF)'}
           </button>
         </div>
       </div>

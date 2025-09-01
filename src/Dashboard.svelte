@@ -61,7 +61,9 @@
         const data = await response.json();
         // Merge API data with defaults, keeping defaults if API doesn't provide
         if (data.relays && data.relays.length > 0) {
-          relays = data.relays;
+          // Force all relays to start in OFF state for correct UI behavior
+          relays = data.relays.map(relay => ({ ...relay, state: false }));
+          console.log('Loaded relays:', relays);
         }
         if (data.pumps && data.pumps.length > 0) {
           pumps = data.pumps;
@@ -97,6 +99,12 @@
   }
 
   async function controlRelay(relayId, state) {
+    // Handle ALL OFF special case
+    if (relayId === 0 && !state) {
+      await allRelaysOff();
+      return;
+    }
+    
     try {
       const response = await fetch(`/api/relay/${relayId}/${state ? 'on' : 'off'}`, {
         method: 'POST'
@@ -104,15 +112,51 @@
       
       if (response.ok) {
         const result = await response.json();
-        addLog(result.message || `Relay ${relayId} ${state ? 'ON' : 'OFF'}`);
-        await fetchHardwareData();
+        const userMessage = result.message || `Relay ${relayId} ${state ? 'ON' : 'OFF'}`;
+        const rawMessage = `Raw: ${JSON.stringify(result)}`;
+        
+        addLog(userMessage);
+        addLog(rawMessage);
+        
+        // Update local state for responsive UI
+        relays = relays.map(relay => 
+          relay.id === relayId ? { ...relay, state: state } : relay
+        );
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
+        addLog(`Raw Error: ${JSON.stringify(error)}`);
       }
     } catch (error) {
       console.error('Error controlling relay:', error);
       addLog(`Error controlling relay: ${error.message}`);
+    }
+  }
+
+  async function allRelaysOff() {
+    try {
+      const response = await fetch('/api/relay/all/off', {
+        method: 'POST'
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        const userMessage = result.message || 'All relays turned off';
+        const rawMessage = `Raw: ${JSON.stringify(result)}`;
+        
+        addLog(userMessage);
+        addLog(rawMessage);
+        
+        // Update local state to turn all relays off
+        relays = relays.map(relay => ({ ...relay, state: false }));
+      } else {
+        const error = await response.json();
+        addLog(`Error: ${error.error}`);
+        addLog(`Raw Error: ${JSON.stringify(error)}`);
+      }
+    } catch (error) {
+      console.error('Error turning off all relays:', error);
+      addLog(`Error turning off all relays: ${error.message}`);
     }
   }
 
@@ -131,10 +175,15 @@
       
       if (response.ok) {
         const result = await response.json();
-        addLog(result.message || `Dispensing ${pumpAmount}ml from pump ${selectedPump}`);
+        const userMessage = result.message || `Dispensing ${pumpAmount}ml from pump ${selectedPump}`;
+        const rawMessage = `Raw: ${JSON.stringify(result)}`;
+        
+        addLog(userMessage);
+        addLog(rawMessage);
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
+        addLog(`Raw Error: ${JSON.stringify(error)}`);
       }
     } catch (error) {
       console.error('Error dispensing pump:', error);
@@ -155,10 +204,15 @@
       
       if (response.ok) {
         const result = await response.json();
-        addLog(result.message || `Stopped pump ${selectedPump}`);
+        const userMessage = result.message || `Stopped pump ${selectedPump}`;
+        const rawMessage = `Raw: ${JSON.stringify(result)}`;
+        
+        addLog(userMessage);
+        addLog(rawMessage);
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
+        addLog(`Raw Error: ${JSON.stringify(error)}`);
       }
     } catch (error) {
       console.error('Error stopping pump:', error);
@@ -181,10 +235,15 @@
       
       if (response.ok) {
         const result = await response.json();
-        addLog(result.message || `Started flow meter ${selectedFlowMeter} for ${flowGallons} gallons`);
+        const userMessage = result.message || `Started flow meter ${selectedFlowMeter} for ${flowGallons} gallons`;
+        const rawMessage = `Raw: ${JSON.stringify(result)}`;
+        
+        addLog(userMessage);
+        addLog(rawMessage);
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
+        addLog(`Raw Error: ${JSON.stringify(error)}`);
       }
     } catch (error) {
       console.error('Error starting flow meter:', error);
@@ -205,10 +264,15 @@
       
       if (response.ok) {
         const result = await response.json();
-        addLog(result.message || `Stopped flow meter ${selectedFlowMeter}`);
+        const userMessage = result.message || `Stopped flow meter ${selectedFlowMeter}`;
+        const rawMessage = `Raw: ${JSON.stringify(result)}`;
+        
+        addLog(userMessage);
+        addLog(rawMessage);
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
+        addLog(`Raw Error: ${JSON.stringify(error)}`);
       }
     } catch (error) {
       console.error('Error stopping flow meter:', error);
@@ -222,11 +286,16 @@
       
       if (response.ok) {
         const result = await response.json();
-        addLog(result.message || 'Started EC/pH monitoring');
+        const userMessage = result.message || 'Started EC/pH monitoring';
+        const rawMessage = `Raw: ${JSON.stringify(result)}`;
+        
+        addLog(userMessage);
+        addLog(rawMessage);
         ecPhMonitoring = true;
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
+        addLog(`Raw Error: ${JSON.stringify(error)}`);
       }
     } catch (error) {
       console.error('Error starting EC/pH monitoring:', error);
@@ -240,11 +309,16 @@
       
       if (response.ok) {
         const result = await response.json();
-        addLog(result.message || 'Stopped EC/pH monitoring');
+        const userMessage = result.message || 'Stopped EC/pH monitoring';
+        const rawMessage = `Raw: ${JSON.stringify(result)}`;
+        
+        addLog(userMessage);
+        addLog(rawMessage);
         ecPhMonitoring = false;
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
+        addLog(`Raw Error: ${JSON.stringify(error)}`);
       }
     } catch (error) {
       console.error('Error stopping EC/pH monitoring:', error);
