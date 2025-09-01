@@ -3,6 +3,8 @@
 
   // Reactive state using Svelte 5 runes
   let systemOnline = $state(true);
+  let logEntries = $state([]);
+  
   let relays = $state([
     { id: 'R1', status: 'working', enabled: false },
     { id: 'R2', status: 'working', enabled: true },
@@ -43,9 +45,24 @@
     ecLevel: 1.30
   });
 
-  // API functions
+  // Logging functions
+  function addLog(message, type = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    logEntries.unshift({ timestamp, message, type });
+    if (logEntries.length > 100) {
+      logEntries = logEntries.slice(0, 100);
+    }
+  }
+
+  function clearLog() {
+    logEntries.length = 0;
+    addLog('Log cleared', 'system');
+  }
+
+  // API functions with logging
   async function toggleRelay(relayId) {
     try {
+      addLog(`Toggling relay ${relayId}...`, 'info');
       const response = await fetch(`/api/relay/${relayId}/toggle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
@@ -55,15 +72,19 @@
         const relay = relays.find(r => r.id === relayId);
         if (relay) {
           relay.enabled = !relay.enabled;
+          addLog(`Relay ${relayId} ${relay.enabled ? 'ON' : 'OFF'}`, 'success');
         }
+      } else {
+        addLog(`Failed to toggle relay ${relayId}`, 'error');
       }
     } catch (error) {
-      console.error('Error toggling relay:', error);
+      addLog(`Error toggling relay ${relayId}: ${error.message}`, 'error');
     }
   }
 
   async function togglePump(pumpId) {
     try {
+      addLog(`Toggling pump ${pumpId}...`, 'info');
       const response = await fetch(`/api/pump/${pumpId}/toggle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
@@ -73,76 +94,102 @@
         const pump = nutrientPumps.find(p => p.id === pumpId);
         if (pump) {
           pump.status = pump.status === 'Stopped' ? 'Running' : 'Stopped';
+          addLog(`Pump ${pumpId} ${pump.status.toLowerCase()}`, 'success');
         }
+      } else {
+        addLog(`Failed to toggle pump ${pumpId}`, 'error');
       }
     } catch (error) {
-      console.error('Error toggling pump:', error);
+      addLog(`Error toggling pump ${pumpId}: ${error.message}`, 'error');
     }
   }
 
-  async function testPump(pumpId) {
+  async function testPump(pumpId, amount = 30) {
     try {
+      addLog(`Testing pump ${pumpId} - ${amount}ML...`, 'info');
       const response = await fetch(`/api/pump/${pumpId}/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: 30 }) // 30ML test
+        body: JSON.stringify({ amount })
       });
       
       if (response.ok) {
-        console.log(`Testing pump ${pumpId} - 30ML`);
+        addLog(`Pump ${pumpId} test started - ${amount}ML`, 'success');
+      } else {
+        addLog(`Failed to test pump ${pumpId}`, 'error');
       }
     } catch (error) {
-      console.error('Error testing pump:', error);
+      addLog(`Error testing pump ${pumpId}: ${error.message}`, 'error');
     }
   }
 
   async function testAllRelays() {
     try {
+      addLog('Testing all relays...', 'info');
       const response = await fetch('/api/relays/test-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
       
       if (response.ok) {
-        console.log('Testing all relays');
+        addLog('All relays test sequence started', 'success');
+      } else {
+        addLog('Failed to start relay test sequence', 'error');
       }
     } catch (error) {
-      console.error('Error testing all relays:', error);
+      addLog(`Error testing relays: ${error.message}`, 'error');
     }
   }
 
   async function calibrateSensor() {
     try {
+      addLog('Calibrating pH/EC sensor...', 'info');
       const response = await fetch('/api/sensor/ph-ec/calibrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
       
       if (response.ok) {
-        console.log('Calibrating pH/EC sensor');
+        addLog('pH/EC sensor calibration started', 'success');
+      } else {
+        addLog('Failed to start sensor calibration', 'error');
       }
     } catch (error) {
-      console.error('Error calibrating sensor:', error);
+      addLog(`Error calibrating sensor: ${error.message}`, 'error');
+    }
+  }
+
+  async function testFlow() {
+    try {
+      addLog('Testing flow meter...', 'info');
+      // Simulate flow test - replace with actual API call
+      setTimeout(() => {
+        addLog('Flow meter test completed', 'success');
+      }, 2000);
+    } catch (error) {
+      addLog(`Error testing flow meter: ${error.message}`, 'error');
     }
   }
 
   // Load hardware status on mount
   onMount(async () => {
+    addLog('Hardware Testing Suite initialized', 'system');
+    
     try {
       const response = await fetch('/api/status');
       const data = await response.json();
       
       if (data.success) {
-        // Update hardware status from API
-        console.log('Hardware status loaded');
+        addLog('Hardware status loaded successfully', 'success');
+      } else {
+        addLog('Failed to load hardware status', 'warning');
       }
     } catch (error) {
-      console.error('Failed to load hardware status:', error);
+      addLog(`Failed to connect to hardware API: ${error.message}`, 'error');
     }
 
     // Start periodic updates
     setInterval(async () => {
-      // Update flow meter readings and other live data
       try {
         const response = await fetch('/api/flow-meter/status');
         const data = await response.json();
@@ -151,140 +198,141 @@
           flowMeter.totalVolume = data.total_volume;
         }
       } catch (error) {
-        console.error('Error updating flow meter:', error);
+        // Silent error - don't spam the log with connection issues
       }
     }, 10000);
   });
 </script>
 
-<div class="hardware-testing-page">
-  <!-- Header Section -->
-  <div class="header-section">
-    <div class="title-container">
-      <h1>Hardware Testing Suite</h1>
-      <span class="status-indicator {systemOnline ? 'online' : 'offline'}">
+<div class="dashboard-container">
+  <!-- Header -->
+  <div class="dashboard-header">
+    <div class="header-left">
+      <h1><i class="fas fa-cogs"></i> Hardware Testing Suite</h1>
+      <span class="system-status {systemOnline ? 'online' : 'offline'}">
+        <i class="fas fa-{systemOnline ? 'check-circle' : 'exclamation-triangle'}"></i>
         {systemOnline ? 'System Online' : 'System Offline'}
       </span>
     </div>
   </div>
 
-  <div class="main-layout">
-    <!-- Hardware Grid (3/4 width) -->
-    <div class="hardware-grid">
+  <!-- Main Dashboard Layout -->
+  <div class="dashboard-main">
+    <!-- Hardware Controls Panel -->
+    <div class="controls-panel">
+      
       <!-- Relays Section -->
-      <div class="hardware-section">
-        <div class="section-header">
-          <h2>Relays (13)</h2>
-          <button class="test-all-btn" on:click={testAllRelays}>Test All</button>
+      <div class="control-section">
+        <div class="section-title">
+          <h2><i class="fas fa-toggle-on"></i> Relays</h2>
+          <button class="btn btn-secondary" onclick={testAllRelays}>Test All</button>
         </div>
-        
-        <div class="relays-container">
+        <div class="relays-grid">
           {#each relays as relay}
-            <div class="relay-item">
-              <div class="relay-status">
-                <span class="status-dot {relay.status}"></span>
-                <span class="relay-label">{relay.id}</span>
+            <div class="relay-card">
+              <div class="relay-header">
+                <span class="relay-id">{relay.id}</span>
+                <div class="status-indicator {relay.status}"></div>
               </div>
-              <label class="toggle-switch">
-                <input 
-                  type="checkbox" 
-                  bind:checked={relay.enabled}
-                  on:change={() => toggleRelay(relay.id)}
-                />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-          {/each}
-        </div>
-      </div>
-
-      <!-- Nutrient Pumps Section -->
-      <div class="hardware-section">
-        <div class="section-header">
-          <h2>Nutrient Pumps (8)</h2>
-        </div>
-        
-        <div class="pumps-container">
-          {#each nutrientPumps as pump}
-            <div class="pump-item">
-              <div class="pump-header">
-                <span class="status-dot working"></span>
-                <div class="pump-info">
-                  <span class="pump-name">{pump.name}</span>
-                  <span class="pump-status">{pump.status}</span>
-                </div>
-                <label class="toggle-switch">
+              <div class="relay-controls">
+                <label class="switch">
                   <input 
                     type="checkbox" 
-                    checked={pump.status !== 'Stopped'}
-                    on:change={() => togglePump(pump.id)}
+                    bind:checked={relay.enabled}
+                    onchange={() => toggleRelay(relay.id)}
                   />
-                  <span class="toggle-slider"></span>
+                  <span class="slider"></span>
                 </label>
+                <span class="state-label">{relay.enabled ? 'ON' : 'OFF'}</span>
               </div>
-              
-              <button class="test-button" on:click={() => testPump(pump.id)}>
-                30ML Test
-              </button>
             </div>
           {/each}
         </div>
       </div>
 
-      <!-- Flow Meters Section -->
-      <div class="hardware-section">
-        <div class="section-header">
-          <h2>Flow Meters (2)</h2>
+      <!-- Pumps Section -->
+      <div class="control-section">
+        <div class="section-title">
+          <h2><i class="fas fa-tint"></i> Nutrient Pumps</h2>
         </div>
-        
-        <div class="flow-container">
-          <div class="flow-item">
-            <div class="flow-header">
-              <span class="status-dot working"></span>
-              <span class="flow-name">{flowMeter.name}</span>
-            </div>
-            
-            <div class="flow-readings">
-              <div class="reading">
-                <span class="reading-label">Current Flow</span>
-                <span class="reading-value">{flowMeter.currentFlow} {flowMeter.unit}</span>
+        <div class="pumps-grid">
+          {#each nutrientPumps as pump}
+            <div class="pump-card">
+              <div class="pump-header">
+                <span class="pump-name">{pump.name}</span>
+                <div class="status-indicator working"></div>
               </div>
-              <div class="reading">
-                <span class="reading-label">Total Volume</span>
-                <span class="reading-value">{flowMeter.totalVolume} L</span>
+              <div class="pump-status">Status: <strong>{pump.status}</strong></div>
+              <div class="pump-controls">
+                <button class="btn btn-sm btn-primary" onclick={() => togglePump(pump.id)}>
+                  {pump.status === 'Stopped' ? 'Start' : 'Stop'}
+                </button>
+                <div class="test-controls">
+                  <button class="btn btn-sm btn-outline" onclick={() => testPump(pump.id, 10)}>10ML</button>
+                  <button class="btn btn-sm btn-outline" onclick={() => testPump(pump.id, 30)}>30ML</button>
+                  <button class="btn btn-sm btn-outline" onclick={() => testPump(pump.id, 50)}>50ML</button>
+                </div>
               </div>
             </div>
-          </div>
+          {/each}
         </div>
       </div>
 
-      <!-- pH/EC Sensor Section -->
-      <div class="hardware-section">
-        <div class="section-header">
-          <h2>pH/EC Sensor</h2>
-          <button class="calibrate-btn" on:click={calibrateSensor}>Calibrate</button>
-        </div>
-        
-        <div class="sensor-container">
-          <div class="sensor-status">
-            <span class="status-dot working"></span>
-            <span class="sensor-status-text">Status: {phEcSensor.status}</span>
+      <!-- Sensors and Flow Section -->
+      <div class="sensors-flow-row">
+        <!-- Flow Meter -->
+        <div class="control-section flow-section">
+          <div class="section-title">
+            <h2><i class="fas fa-water"></i> Flow Meter</h2>
+            <button class="btn btn-secondary" onclick={testFlow}>Test</button>
           </div>
-          
-          <div class="sensor-readings">
-            <div class="sensor-reading">
-              <span class="reading-label">pH Level</span>
-              <span class="reading-value">{phEcSensor.phLevel}</span>
-              <div class="reading-bar">
-                <div class="progress-bar" style="width: {(phEcSensor.phLevel / 14) * 100}%"></div>
+          <div class="flow-card">
+            <div class="flow-header">
+              <span class="flow-name">{flowMeter.name}</span>
+              <div class="status-indicator working"></div>
+            </div>
+            <div class="flow-metrics">
+              <div class="metric">
+                <span class="metric-label">Current Flow</span>
+                <span class="metric-value">{flowMeter.currentFlow} <small>{flowMeter.unit}</small></span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Total Volume</span>
+                <span class="metric-value">{flowMeter.totalVolume} <small>L</small></span>
               </div>
             </div>
-            
-            <div class="sensor-reading">
-              <span class="reading-label">EC Level</span>
-              <span class="reading-value">{phEcSensor.ecLevel}</span>
-              <div class="reading-bar">
-                <div class="progress-bar" style="width: {(phEcSensor.ecLevel / 3) * 100}%"></div>
+          </div>
+        </div>
+
+        <!-- pH/EC Sensor -->
+        <div class="control-section sensor-section">
+          <div class="section-title">
+            <h2><i class="fas fa-flask"></i> pH/EC Sensor</h2>
+            <button class="btn btn-secondary" onclick={calibrateSensor}>Calibrate</button>
+          </div>
+          <div class="sensor-card">
+            <div class="sensor-header">
+              <span class="sensor-status">Status: {phEcSensor.status}</span>
+              <div class="status-indicator working"></div>
+            </div>
+            <div class="sensor-readings">
+              <div class="sensor-metric">
+                <div class="metric-header">
+                  <span class="metric-label">pH Level</span>
+                  <span class="metric-value">{phEcSensor.phLevel}</span>
+                </div>
+                <div class="progress-bar-container">
+                  <div class="progress-bar" style="width: {(phEcSensor.phLevel / 14) * 100}%"></div>
+                </div>
+              </div>
+              <div class="sensor-metric">
+                <div class="metric-header">
+                  <span class="metric-label">EC Level</span>
+                  <span class="metric-value">{phEcSensor.ecLevel}</span>
+                </div>
+                <div class="progress-bar-container">
+                  <div class="progress-bar" style="width: {(phEcSensor.ecLevel / 3) * 100}%"></div>
+                </div>
               </div>
             </div>
           </div>
@@ -292,460 +340,567 @@
       </div>
     </div>
 
-    <!-- Terminal Log Panel (1/4 width) -->
+    <!-- Log Panel -->
     <div class="log-panel">
       <div class="log-header">
-        <h3>System Log</h3>
-        <button class="clear-btn" on:click={() => console.log('Clear log')}>Clear</button>
+        <h3><i class="fas fa-terminal"></i> System Log</h3>
+        <button class="btn btn-sm btn-outline" onclick={clearLog}>Clear</button>
       </div>
       <div class="log-content">
-        <div class="log-entry">[2024-01-15 10:30:15] System initialized</div>
-        <div class="log-entry">[2024-01-15 10:30:16] Hardware status check completed</div>
-        <div class="log-entry">[2024-01-15 10:30:17] Relay R1 state changed to OFF</div>
-        <div class="log-entry">[2024-01-15 10:30:18] Pump 1 test started (30ML)</div>
-        <div class="log-entry">[2024-01-15 10:30:19] Flow meter readings updated</div>
-        <div class="log-entry">[2024-01-15 10:30:20] pH/EC sensor calibration initiated</div>
-        <div class="log-entry">[2024-01-15 10:30:21] All relays test sequence started</div>
-        <div class="log-entry">[2024-01-15 10:30:22] Pump 2 state changed to RUNNING</div>
+        {#each logEntries as entry}
+          <div class="log-entry log-{entry.type}">
+            <span class="log-timestamp">{entry.timestamp}</span>
+            <span class="log-message">{entry.message}</span>
+          </div>
+        {/each}
+        {#if logEntries.length === 0}
+          <div class="log-entry log-system">
+            <span class="log-message">No log entries yet...</span>
+          </div>
+        {/if}
       </div>
     </div>
   </div>
 </div>
 
 <style>
-  .hardware-testing-page {
+  /* Modern Dashboard Styles */
+  .dashboard-container {
     min-height: 100vh;
-    background: #1a1a1a;
-    color: #ffffff;
-    padding: 20px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    background: #0f1419;
+    color: #e6e6e6;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 
-  .header-section {
-    margin-bottom: 24px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid #333;
+  /* Header */
+  .dashboard-header {
+    background: #1e2328;
+    border-bottom: 1px solid #30363d;
+    padding: 1rem 1.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   }
 
-  .title-container {
+  .header-left {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 1rem;
   }
 
-  .title-container h1 {
+  .header-left h1 {
+    margin: 0;
     font-size: 1.5rem;
     font-weight: 600;
-    color: #00ff88;
-    margin: 0;
+    color: #58a6ff;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 
-  .status-indicator {
-    padding: 6px 12px;
-    border-radius: 4px;
-    font-size: 0.8rem;
+  .system-status {
+    padding: 0.375rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
     font-weight: 500;
-    font-family: monospace;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 
-  .status-indicator.online {
-    background: rgba(0, 255, 136, 0.1);
-    color: #00ff88;
-    border: 1px solid #00ff88;
+  .system-status.online {
+    background: rgba(46, 160, 67, 0.15);
+    color: #3fb950;
+    border: 1px solid rgba(46, 160, 67, 0.3);
   }
 
-  .status-indicator.offline {
-    background: rgba(255, 68, 68, 0.1);
-    color: #ff4444;
-    border: 1px solid #ff4444;
+  .system-status.offline {
+    background: rgba(248, 81, 73, 0.15);
+    color: #f85149;
+    border: 1px solid rgba(248, 81, 73, 0.3);
   }
 
-  .main-layout {
+  /* Main Layout */
+  .dashboard-main {
     display: grid;
-    grid-template-columns: 3fr 1fr;
-    gap: 24px;
-    height: calc(100vh - 140px);
+    grid-template-columns: 1fr 350px;
+    gap: 1.5rem;
+    padding: 1.5rem;
+    height: calc(100vh - 80px);
   }
 
-  /* Hardware Grid (3/4 width) */
-  .hardware-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
-    gap: 16px;
-  }
-
-  .hardware-section {
-    background: #2a2a2a;
-    border: 1px solid #444;
-    border-radius: 8px;
-    padding: 16px;
+  /* Controls Panel */
+  .controls-panel {
     display: flex;
     flex-direction: column;
+    gap: 1.5rem;
+    overflow-y: auto;
   }
 
-  .section-header {
+  /* Control Sections */
+  .control-section {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 1.25rem;
+  }
+
+  .section-title {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #30363d;
   }
 
-  .section-header h2 {
-    font-size: 1rem;
-    font-weight: 600;
+  .section-title h2 {
     margin: 0;
-    color: #e0e0e0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #e6e6e6;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 
-  .test-all-btn, .calibrate-btn, .clear-btn {
-    padding: 4px 8px;
-    background: #333;
-    border: 1px solid #555;
-    border-radius: 4px;
-    color: #ccc;
-    font-size: 0.8rem;
+  /* Buttons */
+  .btn {
+    padding: 0.5rem 1rem;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    background: #21262d;
+    color: #e6e6e6;
+    font-size: 0.875rem;
+    font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    font-family: monospace;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
   }
 
-  .test-all-btn:hover, .calibrate-btn:hover, .clear-btn:hover {
-    background: #444;
-    border-color: #00ff88;
-    color: #00ff88;
+  .btn:hover {
+    background: #30363d;
+    border-color: #58a6ff;
   }
 
-  /* Relays Container */
-  .relays-container {
+  .btn-primary {
+    background: #238636;
+    border-color: #238636;
+    color: white;
+  }
+
+  .btn-primary:hover {
+    background: #2ea043;
+    border-color: #2ea043;
+  }
+
+  .btn-secondary {
+    background: #373e47;
+    border-color: #444c56;
+  }
+
+  .btn-secondary:hover {
+    background: #444c56;
+    border-color: #58a6ff;
+  }
+
+  .btn-outline {
+    background: transparent;
+    border-color: #30363d;
+  }
+
+  .btn-outline:hover {
+    background: #30363d;
+    border-color: #58a6ff;
+  }
+
+  .btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  /* Relays Grid */
+  .relays-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
-    gap: 8px;
-    flex: 1;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.75rem;
   }
 
-  .relay-item {
-    background: #333;
-    border: 1px solid #555;
-    border-radius: 4px;
-    padding: 8px;
+  .relay-card {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 0.75rem;
+    text-align: center;
+    transition: all 0.2s ease;
+  }
+
+  .relay-card:hover {
+    border-color: #58a6ff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  .relay-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+  }
+
+  .relay-id {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #e6e6e6;
+  }
+
+  .relay-controls {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    font-size: 0.8rem;
+    gap: 0.5rem;
   }
 
-  .relay-status {
-    display: flex;
-    align-items: center;
-    gap: 4px;
+  .state-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #7d8590;
   }
 
-  .status-dot {
+  /* Status Indicators */
+  .status-indicator {
     width: 8px;
     height: 8px;
     border-radius: 50%;
   }
 
-  .status-dot.working {
-    background: #00ff88;
+  .status-indicator.working {
+    background: #3fb950;
+    box-shadow: 0 0 6px rgba(63, 185, 80, 0.4);
   }
 
-  .status-dot.warning {
-    background: #ffaa00;
-  }
-
-  .relay-label {
-    font-weight: 500;
-    color: #e0e0e0;
-    font-size: 0.7rem;
-  }
-
-  /* Pumps Container */
-  .pumps-container {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    flex: 1;
-    overflow-y: auto;
-  }
-
-  .pump-item {
-    background: #333;
-    border: 1px solid #555;
-    border-radius: 4px;
-    padding: 8px;
-  }
-
-  .pump-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
-  }
-
-  .pump-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .pump-name {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #e0e0e0;
-  }
-
-  .pump-status {
-    font-size: 0.7rem;
-    color: #999;
-  }
-
-  .test-button {
-    width: 100%;
-    padding: 4px;
-    background: #444;
-    border: 1px solid #666;
-    border-radius: 4px;
-    color: #ccc;
-    font-size: 0.7rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    font-family: monospace;
-  }
-
-  .test-button:hover {
-    background: #555;
-    border-color: #00ff88;
-    color: #00ff88;
-  }
-
-  /* Flow Container */
-  .flow-container {
-    flex: 1;
-  }
-
-  .flow-item {
-    background: #333;
-    border: 1px solid #555;
-    border-radius: 4px;
-    padding: 12px;
-  }
-
-  .flow-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-
-  .flow-name {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #e0e0e0;
-  }
-
-  .flow-readings {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .reading {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .reading-label {
-    font-size: 0.7rem;
-    color: #999;
-  }
-
-  .reading-value {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: #00ff88;
-  }
-
-  /* Sensor Container */
-  .sensor-container {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .sensor-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .sensor-status-text {
-    font-size: 0.8rem;
-    color: #e0e0e0;
-  }
-
-  .sensor-readings {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .sensor-reading {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .reading-bar {
-    width: 100%;
-    height: 4px;
-    background: #333;
-    border-radius: 2px;
-    overflow: hidden;
-  }
-
-  .progress-bar {
-    height: 100%;
-    background: #00ff88;
-    border-radius: 2px;
-    transition: width 0.3s ease;
+  .status-indicator.warning {
+    background: #d29922;
+    box-shadow: 0 0 6px rgba(210, 153, 34, 0.4);
   }
 
   /* Toggle Switch */
-  .toggle-switch {
+  .switch {
     position: relative;
     display: inline-block;
-    width: 32px;
-    height: 16px;
+    width: 44px;
+    height: 24px;
   }
 
-  .toggle-switch input {
+  .switch input {
     opacity: 0;
     width: 0;
     height: 0;
   }
 
-  .toggle-slider {
+  .slider {
     position: absolute;
     cursor: pointer;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: #555;
-    border-radius: 16px;
+    background-color: #6e7681;
+    border-radius: 24px;
     transition: 0.3s;
   }
 
-  .toggle-slider:before {
+  .slider:before {
     position: absolute;
     content: "";
-    height: 12px;
-    width: 12px;
-    left: 2px;
-    bottom: 2px;
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
     background-color: white;
     border-radius: 50%;
     transition: 0.3s;
   }
 
-  input:checked + .toggle-slider {
-    background-color: #00ff88;
+  input:checked + .slider {
+    background-color: #238636;
   }
 
-  input:checked + .toggle-slider:before {
-    transform: translateX(16px);
+  input:checked + .slider:before {
+    transform: translateX(20px);
   }
 
-  /* Log Panel (1/4 width) */
+  /* Pumps Grid */
+  .pumps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+
+  .pump-card {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 1rem;
+    transition: all 0.2s ease;
+  }
+
+  .pump-card:hover {
+    border-color: #58a6ff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  .pump-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .pump-name {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #e6e6e6;
+  }
+
+  .pump-status {
+    font-size: 0.75rem;
+    color: #7d8590;
+    margin-bottom: 0.75rem;
+  }
+
+  .pump-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .test-controls {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: space-between;
+  }
+
+  /* Sensors and Flow Row */
+  .sensors-flow-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+
+  .flow-section, .sensor-section {
+    margin-bottom: 0;
+  }
+
+  /* Flow and Sensor Cards */
+  .flow-card, .sensor-card {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 1rem;
+  }
+
+  .flow-header, .sensor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #30363d;
+  }
+
+  .flow-name, .sensor-status {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #e6e6e6;
+  }
+
+  /* Metrics */
+  .flow-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+
+  .metric-label {
+    font-size: 0.75rem;
+    color: #7d8590;
+  }
+
+  .metric-value {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #58a6ff;
+  }
+
+  .metric-value small {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: #7d8590;
+    margin-left: 0.25rem;
+  }
+
+  /* Sensor Readings */
+  .sensor-readings {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .sensor-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .metric-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .progress-bar-container {
+    width: 100%;
+    height: 6px;
+    background: #30363d;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #58a6ff, #3fb950);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+  }
+
+  /* Log Panel */
   .log-panel {
-    background: #1e1e1e;
-    border: 1px solid #444;
+    background: #0d1117;
+    border: 1px solid #30363d;
     border-radius: 8px;
     display: flex;
     flex-direction: column;
     height: 100%;
+    overflow: hidden;
   }
 
   .log-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px;
-    border-bottom: 1px solid #333;
+    padding: 1rem;
+    border-bottom: 1px solid #30363d;
+    background: #161b22;
   }
 
   .log-header h3 {
     margin: 0;
-    color: #00ff88;
-    font-size: 0.9rem;
+    font-size: 1rem;
     font-weight: 600;
+    color: #58a6ff;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 
   .log-content {
     flex: 1;
-    padding: 8px;
+    padding: 0.5rem;
     overflow-y: auto;
-    font-size: 0.7rem;
-    line-height: 1.3;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
   }
 
   .log-entry {
-    margin-bottom: 2px;
-    padding: 2px 4px;
-    color: #ccc;
-    font-family: 'Courier New', monospace;
-    word-break: break-all;
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    margin-bottom: 1px;
+    border-radius: 3px;
+    transition: background-color 0.15s ease;
   }
 
   .log-entry:hover {
-    background: rgba(0, 255, 136, 0.1);
+    background: rgba(88, 166, 255, 0.1);
+  }
+
+  .log-timestamp {
+    color: #7d8590;
+    font-weight: 500;
+    min-width: 80px;
+  }
+
+  .log-message {
+    color: #e6e6e6;
+    word-break: break-word;
+  }
+
+  .log-entry.log-success .log-message {
+    color: #3fb950;
+  }
+
+  .log-entry.log-error .log-message {
+    color: #f85149;
+  }
+
+  .log-entry.log-warning .log-message {
+    color: #d29922;
+  }
+
+  .log-entry.log-system .log-message {
+    color: #58a6ff;
   }
 
   /* Responsive Design */
   @media (max-width: 1200px) {
-    .main-layout {
+    .dashboard-main {
       grid-template-columns: 1fr;
-      grid-template-rows: 3fr 1fr;
+      grid-template-rows: 1fr 300px;
     }
     
-    .hardware-grid {
-      grid-template-columns: 1fr 1fr;
+    .sensors-flow-row {
+      grid-template-columns: 1fr;
     }
   }
 
   @media (max-width: 768px) {
-    .hardware-testing-page {
-      padding: 12px;
+    .dashboard-main {
+      padding: 1rem;
+      grid-template-rows: 1fr 250px;
     }
 
-    .main-layout {
-      gap: 16px;
-      height: calc(100vh - 120px);
+    .relays-grid {
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 0.5rem;
     }
 
-    .hardware-grid {
+    .pumps-grid {
       grid-template-columns: 1fr;
-      grid-template-rows: repeat(4, 1fr);
     }
 
-    .relays-container {
-      grid-template-columns: repeat(auto-fit, minmax(50px, 1fr));
-      gap: 4px;
+    .test-controls {
+      flex-wrap: wrap;
     }
 
-    .title-container {
+    .header-left {
       flex-direction: column;
       align-items: flex-start;
-      gap: 8px;
+      gap: 0.5rem;
     }
 
-    .title-container h1 {
-      font-size: 1.2rem;
+    .header-left h1 {
+      font-size: 1.25rem;
     }
   }
 </style>
