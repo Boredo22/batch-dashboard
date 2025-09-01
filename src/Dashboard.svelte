@@ -1,5 +1,10 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import RelayGrid from './components/RelayGrid.svelte';
+  import PumpControl from './components/PumpControl.svelte';
+  import FlowMeterControl from './components/FlowMeterControl.svelte';
+  import ECPHMonitor from './components/ECPHMonitor.svelte';
+  import SystemLog from './components/SystemLog.svelte';
 
   // State variables using Svelte 5 runes
   let logs = $state([]);
@@ -239,491 +244,141 @@
   });
 </script>
 
-<div class="dashboard">
-  <header class="header">
-    <h1>Nutrient Mixing System Dashboard</h1>
-    <div class="status">
-      <span class="status-indicator {systemStatus.toLowerCase()}">{systemStatus}</span>
-      {#if errorMessage}
-        <span class="error">{errorMessage}</span>
-      {/if}
+<div class="app">
+  <div class="top-bar">
+    <h1>Hardware Testing Dashboard</h1>
+    <div class="status-badge {systemStatus.toLowerCase()}">
+      {systemStatus}
     </div>
-  </header>
+  </div>
 
-  <main class="main-content">
-    <div class="controls-grid">
-      
-      <!-- Relay Controls -->
-      <section class="control-section">
-        <h2>Relay Controls</h2>
-        <div class="relay-grid">
-          {#each relays as relay}
-            <div class="relay-item">
-              <span class="relay-name">{relay.name}</span>
-              <div class="relay-controls">
-                <button 
-                  class="btn btn-on {relay.state ? 'active' : ''}" 
-                  onclick={() => controlRelay(relay.id, true)}
-                  disabled={relay.state}
-                >
-                  ON
-                </button>
-                <button 
-                  class="btn btn-off {!relay.state ? 'active' : ''}" 
-                  onclick={() => controlRelay(relay.id, false)}
-                  disabled={!relay.state}
-                >
-                  OFF
-                </button>
-              </div>
-            </div>
-          {/each}
-          
-          <!-- All Relays Off Button -->
-          <div class="relay-item all-off">
-            <span class="relay-name">All Relays</span>
-            <button class="btn btn-emergency" onclick={() => controlRelay(0, false)}>
-              ALL OFF
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <!-- Pump Controls -->
-      <section class="control-section">
-        <h2>Pump Testing</h2>
-        <div class="pump-controls">
-          <div class="input-group">
-            <label for="pump-select">Pump:</label>
-            <select id="pump-select" bind:value={selectedPump}>
-              {#each pumps as pump}
-                <option value={pump.id}>{pump.name}</option>
-              {/each}
-            </select>
-          </div>
-          
-          <div class="input-group">
-            <label for="pump-amount">Amount (ml):</label>
-            <input 
-              id="pump-amount" 
-              type="number" 
-              bind:value={pumpAmount} 
-              min="1" 
-              max="1000" 
-              step="1"
-            />
-          </div>
-          
-          <div class="button-group">
-            <button class="btn btn-primary" onclick={dispensePump}>
-              Dispense
-            </button>
-            <button class="btn btn-danger" onclick={stopPump}>
-              Stop
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <!-- Flow Meter Controls -->
-      <section class="control-section">
-        <h2>Flow Meter Testing</h2>
-        <div class="flow-controls">
-          <div class="input-group">
-            <label for="flow-select">Flow Meter:</label>
-            <select id="flow-select" bind:value={selectedFlowMeter}>
-              {#each flowMeters as meter}
-                <option value={meter.id}>{meter.name}</option>
-              {/each}
-            </select>
-          </div>
-          
-          <div class="input-group">
-            <label for="flow-gallons">Gallons:</label>
-            <input 
-              id="flow-gallons" 
-              type="number" 
-              bind:value={flowGallons} 
-              min="1" 
-              max="50" 
-              step="1"
-            />
-          </div>
-          
-          <div class="button-group">
-            <button class="btn btn-primary" onclick={startFlow}>
-              Start
-            </button>
-            <button class="btn btn-danger" onclick={stopFlow}>
-              Stop
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <!-- EC/pH Monitoring -->
-      <section class="control-section">
-        <h2>EC/pH Monitoring</h2>
-        <div class="ecph-controls">
-          <div class="readings">
-            <div class="reading">
-              <span class="reading-label">EC Value:</span>
-              <span class="value">{ecValue.toFixed(2)}</span>
-            </div>
-            <div class="reading">
-              <span class="reading-label">pH Value:</span>
-              <span class="value">{phValue.toFixed(2)}</span>
-            </div>
-          </div>
-          
-          <div class="button-group">
-            <button 
-              class="btn btn-primary {ecPhMonitoring ? 'active' : ''}" 
-              onclick={startEcPhMonitoring}
-              disabled={ecPhMonitoring}
-            >
-              Start Monitoring
-            </button>
-            <button 
-              class="btn btn-danger {!ecPhMonitoring ? 'active' : ''}" 
-              onclick={stopEcPhMonitoring}
-              disabled={!ecPhMonitoring}
-            >
-              Stop Monitoring
-            </button>
-          </div>
-        </div>
-      </section>
+  <div class="main-grid">
+    <div class="left-panel">
+      <RelayGrid {relays} onRelayControl={controlRelay} />
+      <PumpControl {pumps} bind:selectedPump bind:pumpAmount onDispensePump={dispensePump} onStopPump={stopPump} />
+      <FlowMeterControl {flowMeters} bind:selectedFlowMeter bind:flowGallons onStartFlow={startFlow} onStopFlow={stopFlow} />
+      <ECPHMonitor {ecValue} {phValue} {ecPhMonitoring} onStartMonitoring={startEcPhMonitoring} onStopMonitoring={stopEcPhMonitoring} />
     </div>
 
-    <!-- System Log -->
-    <section class="log-section">
-      <h2>System Log</h2>
-      <div class="log-container">
-        {#each logs as log}
-          <div class="log-entry">
-            <span class="log-time">{log.time}</span>
-            <span class="log-message">{log.message}</span>
-          </div>
-        {/each}
-      </div>
-    </section>
-  </main>
+    <div class="right-panel">
+      <SystemLog {logs} />
+    </div>
+  </div>
 </div>
 
 <style>
-  .dashboard {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 20px;
+  .app {
+    width: 100vw;
+    height: 100vh;
+    background: #1a1a1a;
+    color: white;
+    display: flex;
+    flex-direction: column;
   }
 
-  .header {
+  .top-bar {
+    background: #2d3748;
+    padding: 1rem 2rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 30px;
-    padding: 20px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border-radius: 10px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border-bottom: 1px solid #4a5568;
   }
 
-  .header h1 {
+  .top-bar h1 {
     margin: 0;
-    font-size: 2rem;
+    color: white;
+    font-size: 1.5rem;
   }
 
-  .status {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-  }
-
-  .status-indicator {
-    padding: 8px 16px;
-    border-radius: 20px;
+  .status-badge {
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
     font-weight: bold;
     text-transform: uppercase;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
   }
 
-  .status-indicator.connected {
-    background-color: #4CAF50;
+  .status-badge.connected {
+    background: #22c55e;
     color: white;
   }
 
-  .status-indicator.disconnected {
-    background-color: #f44336;
+  .status-badge.disconnected {
+    background: #ef4444;
     color: white;
   }
 
-  .status-indicator.error {
-    background-color: #ff9800;
+  .status-badge.error {
+    background: #f97316;
     color: white;
   }
 
-  .error {
-    color: #ffcdd2;
-    font-size: 0.8rem;
-    margin-top: 5px;
-  }
-
-  .main-content {
-    display: flex;
-    flex-direction: column;
-    gap: 30px;
-  }
-
-  .controls-grid {
+  .main-grid {
+    flex: 1;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 25px;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.5rem;
+    padding: 1.5rem;
+    overflow: hidden;
+    max-width: 100%;
   }
 
-  .control-section {
-    background: white;
-    border-radius: 10px;
-    padding: 25px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    border: 1px solid #e0e0e0;
-  }
-
-  .control-section h2 {
-    margin: 0 0 20px 0;
-    color: #333;
-    font-size: 1.3rem;
-    border-bottom: 2px solid #667eea;
-    padding-bottom: 10px;
-  }
-
-  .relay-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-  }
-
-  .relay-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px;
-    background: #f8f9fa;
-    border-radius: 8px;
-  }
-
-  .relay-item.all-off {
-    background: #fff3cd;
-    border: 1px solid #ffeaa7;
-  }
-
-  .relay-name {
-    font-weight: 500;
-    color: #333;
-  }
-
-  .relay-controls {
-    display: flex;
-    gap: 8px;
-  }
-
-  .btn {
-    padding: 8px 16px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 0.9rem;
-    transition: all 0.2s;
-  }
-
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .btn-on {
-    background-color: #e8f5e8;
-    color: #2e7d2e;
-    border: 1px solid #4CAF50;
-  }
-
-  .btn-on.active {
-    background-color: #4CAF50;
-    color: white;
-  }
-
-  .btn-off {
-    background-color: #fce8e8;
-    color: #c62828;
-    border: 1px solid #f44336;
-  }
-
-  .btn-off.active {
-    background-color: #f44336;
-    color: white;
-  }
-
-  .btn-emergency {
-    background-color: #ff5722;
-    color: white;
-    font-weight: bold;
-  }
-
-  .btn-emergency:hover {
-    background-color: #d84315;
-  }
-
-  .btn-primary {
-    background-color: #2196F3;
-    color: white;
-  }
-
-  .btn-primary:hover {
-    background-color: #1976D2;
-  }
-
-  .btn-primary.active {
-    background-color: #1565C0;
-  }
-
-  .btn-danger {
-    background-color: #f44336;
-    color: white;
-  }
-
-  .btn-danger:hover {
-    background-color: #d32f2f;
-  }
-
-  .pump-controls, .flow-controls, .ecph-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-
-  .input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .input-group label {
-    font-weight: 500;
-    color: #555;
-  }
-
-  .input-group select, .input-group input {
-    padding: 10px;
-    border: 2px solid #ddd;
-    border-radius: 6px;
-    font-size: 1rem;
-  }
-
-  .input-group select:focus, .input-group input:focus {
-    outline: none;
-    border-color: #667eea;
-  }
-
-  .button-group {
-    display: flex;
-    gap: 10px;
-  }
-
-  .readings {
-    display: flex;
-    gap: 20px;
-  }
-
-  .reading {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
-
-  .reading-label {
-    font-weight: 500;
-    color: #555;
-  }
-
-  .reading .value {
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: #333;
-    padding: 8px;
-    background: #f0f0f0;
-    border-radius: 4px;
-    text-align: center;
-  }
-
-  .log-section {
-    background: white;
-    border-radius: 10px;
-    padding: 25px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-    border: 1px solid #e0e0e0;
-  }
-
-  .log-section h2 {
-    margin: 0 0 20px 0;
-    color: #333;
-    font-size: 1.3rem;
-    border-bottom: 2px solid #667eea;
-    padding-bottom: 10px;
-  }
-
-  .log-container {
-    max-height: 300px;
+  .left-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 1.5rem;
     overflow-y: auto;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    padding: 10px;
-    background: #f8f9fa;
+    padding-right: 0.5rem;
   }
 
-  .log-entry {
-    display: flex;
-    gap: 15px;
-    padding: 8px 0;
-    border-bottom: 1px solid #eee;
+  .right-panel {
+    background: #2d3748;
+    border-radius: 0.5rem;
+    border: 1px solid #4a5568;
+    min-height: 0;
   }
 
-  .log-entry:last-child {
-    border-bottom: none;
+  @media (max-width: 1400px) {
+    .main-grid {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr auto;
+      gap: 1rem;
+    }
+    
+    .right-panel {
+      height: 350px;
+    }
+    
+    .left-panel {
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    }
   }
 
-  .log-time {
-    color: #666;
-    font-size: 0.85rem;
-    min-width: 80px;
-    font-family: monospace;
-  }
-
-  .log-message {
-    color: #333;
-    font-size: 0.9rem;
+  @media (max-width: 1000px) {
+    .left-panel {
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
   }
 
   @media (max-width: 768px) {
-    .controls-grid {
+    .top-bar {
+      flex-direction: column;
+      gap: 0.5rem;
+      padding: 1rem;
+    }
+    
+    .main-grid {
+      padding: 1rem;
+    }
+    
+    .left-panel {
       grid-template-columns: 1fr;
+      gap: 1rem;
     }
     
-    .header {
-      flex-direction: column;
-      gap: 15px;
-      text-align: center;
-    }
-    
-    .readings {
-      flex-direction: column;
-      gap: 10px;
-    }
-    
-    .button-group {
-      flex-direction: column;
+    .right-panel {
+      height: 300px;
     }
   }
 </style>
