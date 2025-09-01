@@ -1,7 +1,7 @@
-// src/main.js - Main entry point (FIXED)
-import Dashboard from './routes/Dashboard.svelte';
+import { mount } from 'svelte';
+import Dashboard from './Dashboard.svelte';
 
-const app = new Dashboard({
+const app = mount(Dashboard, {
   target: document.getElementById('app')
 });
 

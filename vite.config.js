@@ -8,10 +8,7 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        main: 'src/main.js',
-        dashboard: 'src/dashboard.js',
-        status: 'src/status.js',
-        testing: 'src/testing.js'
+        main: 'src/main.js'
       },
       output: {
         entryFileNames: '[name].js',

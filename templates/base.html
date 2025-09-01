@@ -29,18 +29,8 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('index') }}">
-                            <i class="fas fa-home me-1"></i>Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('status_page') }}">
-                            <i class="fas fa-chart-line me-1"></i>System Status
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('testing_page') }}">
-                            <i class="fas fa-wrench me-1"></i>Hardware Testing
+                        <a class="nav-link active" href="{{ url_for('index') }}">
+                            <i class="fas fa-home me-1"></i>Hardware Testing Dashboard
                         </a>
                     </li>
                 </ul>
@@ -92,17 +82,8 @@
         console.log('Flask data loaded:', window.flaskData);
     </script>
 
-    <!-- Load appropriate Svelte bundle - FIXED ENDPOINT NAMES -->
-    {% if request.endpoint == 'status_page' %}
-        <script type="module" src="{{ url_for('static', filename='dist/status.js') }}"></script>
-    {% elif request.endpoint == 'testing_page' %}
-        <script type="module" src="{{ url_for('static', filename='dist/testing.js') }}"></script>
-    {% elif request.endpoint == 'index' %}
-        <!-- FIXED: Changed from 'home' to 'index' to match Flask route -->
-        <script type="module" src="{{ url_for('static', filename='dist/dashboard.js') }}"></script>
-    {% else %}
-        <script type="module" src="{{ url_for('static', filename='dist/main.js') }}"></script>
-    {% endif %}
+    <!-- Load main Svelte bundle -->
+    <script type="module" src="{{ url_for('static', filename='dist/main.js') }}"></script>
     
     {% block extra_js %}{% endblock %}
 </body>
