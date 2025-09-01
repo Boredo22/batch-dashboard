@@ -16,53 +16,69 @@
 
 <div class="flow-control-container">
   <div class="section-header">
-    <h3><i class="fas fa-water"></i> Flow Meter Testing</h3>
-  </div>
-  
-  <div class="flow-content">
-    <div class="flow-form">
-      <div class="form-row">
-        <div class="input-group">
-          <label for="flow-select">Flow Meter</label>
-          <select id="flow-select" bind:value={selectedFlowMeter}>
-            <option value="">Select Flow Meter...</option>
-            {#each flowMeters as meter}
-              <option value={meter.id}>{meter.name}</option>
-            {/each}
-          </select>
-        </div>
-        
-        <div class="input-group">
-          <label for="flow-gallons">Gallons</label>
-          <input 
-            id="flow-gallons" 
-            type="number" 
-            bind:value={flowGallons} 
-            min="1" 
-            max="50" 
-            step="1"
-          />
-        </div>
-      </div>
-      
-      <div class="button-group">
-        <button class="action-btn start-btn" onclick={handleStart} disabled={!selectedFlowMeter}>
-          <i class="fas fa-play"></i> Start Flow
-        </button>
-        <button class="action-btn stop-btn" onclick={handleStop} disabled={!selectedFlowMeter}>
-          <i class="fas fa-stop"></i> Stop Flow
-        </button>
+    <h3><i class="fas fa-water"></i> Flow Meter Controls</h3>
+    <div class="controls-header">
+      <div class="input-group">
+        <label for="flow-gallons">Gallons</label>
+        <input 
+          id="flow-gallons" 
+          type="number" 
+          bind:value={flowGallons} 
+          min="1" 
+          max="50" 
+          step="1"
+        />
       </div>
     </div>
-
-    <div class="flow-status">
-      <div class="status-card">
-        <div class="status-label">Selected Meter</div>
-        <div class="status-value">{selectedFlowMeter ? flowMeters.find(f => f.id == selectedFlowMeter)?.name : 'None'}</div>
+  </div>
+  
+  <div class="flow-grid">
+    {#each flowMeters as meter}
+      <div class="flow-card {selectedFlowMeter == meter.id ? 'selected' : ''} {meter.status === 'running' ? 'active' : 'inactive'}">
+        <div class="flow-header">
+          <span class="flow-name">{meter.name}</span>
+          <div class="status-dot {meter.status === 'running' ? 'on' : 'off'}"></div>
+        </div>
+        <div class="flow-info">
+          <div class="info-row">
+            <span class="info-label">Rate:</span>
+            <span class="info-value">{meter.flow_rate || 0} gpm</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Total:</span>
+            <span class="info-value">{meter.total_gallons || 0} gal</span>
+          </div>
+        </div>
+        <div class="flow-controls">
+          <button 
+            class="control-btn start-btn {selectedFlowMeter == meter.id ? 'selected' : ''}" 
+            onclick={() => { selectedFlowMeter = meter.id; handleStart(); }}
+          >
+            <i class="fas fa-play"></i> START
+          </button>
+          <button 
+            class="control-btn stop-btn" 
+            onclick={() => { selectedFlowMeter = meter.id; handleStop(); }}
+            disabled={meter.status !== 'running'}
+          >
+            <i class="fas fa-stop"></i> STOP
+          </button>
+        </div>
       </div>
-      <div class="status-card">
-        <div class="status-label">Target Volume</div>
-        <div class="status-value">{flowGallons} gal</div>
+    {/each}
+  </div>
+  
+  <div class="log-info">
+    <div class="log-info-header">
+      <i class="fas fa-info-circle"></i>
+      Log Messages
+    </div>
+    <div class="log-examples">
+      <div class="log-example success">
+        <span class="log-type">Success:</span> "Started flow meter 1 for 5 gallons" | "Stopped flow meter 2"
+      </div>
+      <div class="log-example error">
+        <span class="log-type">Error:</span> "Flow meter not calibrated" | "Target volume exceeded"
       </div>
     </div>
   </div>
@@ -78,6 +94,9 @@
   }
 
   .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 20px;
     padding-bottom: 12px;
     border-bottom: 2px solid #4a5568;
@@ -95,123 +114,232 @@
     color: #06b6d4;
   }
 
-  .flow-content {
+  .controls-header {
     display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-
-  .form-row {
-    display: grid;
-    grid-template-columns: 1fr 120px;
-    gap: 16px;
+    align-items: center;
+    gap: 12px;
   }
 
   .input-group {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    align-items: center;
+    gap: 8px;
   }
 
   .input-group label {
     font-weight: 500;
     color: #e2e8f0;
     font-size: 0.9rem;
+    white-space: nowrap;
   }
 
-  .input-group select, .input-group input {
-    padding: 12px;
+  .input-group input {
+    padding: 8px 12px;
     border: 2px solid #4a5568;
-    border-radius: 8px;
+    border-radius: 6px;
     font-size: 0.9rem;
     transition: border-color 0.2s;
     background: #1a202c;
     color: #e2e8f0;
+    width: 60px;
   }
 
-  .input-group select:focus, .input-group input:focus {
+  .input-group input:focus {
     outline: none;
     border-color: #06b6d4;
   }
 
-  .button-group {
-    display: flex;
+  .flow-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 12px;
   }
 
-  .action-btn {
-    flex: 1;
-    padding: 12px 16px;
+  .flow-card {
+    background: #1a202c;
+    border: 2px solid #4a5568;
+    border-radius: 10px;
+    padding: 16px;
+    transition: all 0.2s;
+  }
+
+  .flow-card.selected {
+    border-color: #06b6d4;
+    background: #1a2a32;
+  }
+
+  .flow-card.active {
+    background: #1a2e1a;
+    border-color: #22c55e;
+  }
+
+  .flow-card.inactive {
+    background: #1a202c;
+    border-color: #4a5568;
+  }
+
+  .flow-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .flow-name {
+    font-weight: 600;
+    color: #e2e8f0;
+    font-size: 0.9rem;
+  }
+
+  .status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  .status-dot.on {
+    background: #22c55e;
+  }
+
+  .status-dot.off {
+    background: #6b7280;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .flow-info {
+    margin-bottom: 12px;
+  }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
+  .info-label {
+    font-size: 0.8rem;
+    color: #a0aec0;
+    font-weight: 500;
+  }
+
+  .info-value {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #e2e8f0;
+  }
+
+  .flow-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .control-btn {
+    padding: 8px;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
+    font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 4px;
   }
 
-  .action-btn:disabled {
+  .control-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
 
   .start-btn {
+    background: #1a2a32;
+    color: #0fb3d0;
+    border: 1px solid #06b6d4;
+  }
+
+  .start-btn.selected {
     background: #06b6d4;
     color: white;
   }
 
   .start-btn:hover:not(:disabled) {
-    background: #0891b2;
+    background: #06b6d4;
+    color: white;
     transform: translateY(-1px);
   }
 
   .stop-btn {
-    background: #ef4444;
-    color: white;
+    background: #2d1a1a;
+    color: #f87171;
+    border: 1px solid #ef4444;
   }
 
   .stop-btn:hover:not(:disabled) {
-    background: #dc2626;
+    background: #ef4444;
+    color: white;
     transform: translateY(-1px);
   }
 
-  .flow-status {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-
-  .status-card {
-    background: #1a202c;
-    border: 1px solid #4a5568;
-    border-radius: 8px;
-    padding: 12px;
-    text-align: center;
-  }
-
-  .status-label {
-    font-size: 0.8rem;
-    color: #a0aec0;
-    margin-bottom: 4px;
-    font-weight: 500;
-  }
-
-  .status-value {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #e2e8f0;
-  }
-
   @media (max-width: 600px) {
-    .form-row {
-      grid-template-columns: 1fr;
+    .section-header {
+      flex-direction: column;
+      gap: 12px;
+      align-items: flex-start;
     }
     
-    .flow-status {
+    .flow-grid {
       grid-template-columns: 1fr;
     }
+  }
+
+  .log-info {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #4a5568;
+  }
+
+  .log-info-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #a0aec0;
+  }
+
+  .log-info-header i {
+    color: #06b6d4;
+  }
+
+  .log-examples {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .log-example {
+    font-size: 0.8rem;
+    padding: 4px 0;
+    color: #cbd5e0;
+  }
+
+  .log-type {
+    font-weight: 600;
+  }
+
+  .log-example.success .log-type {
+    color: #22c55e;
+  }
+
+  .log-example.error .log-type {
+    color: #ef4444;
   }
 </style>

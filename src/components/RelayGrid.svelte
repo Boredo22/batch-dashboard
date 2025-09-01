@@ -42,6 +42,21 @@
       </div>
     {/each}
   </div>
+  
+  <div class="log-info">
+    <div class="log-info-header">
+      <i class="fas fa-info-circle"></i>
+      Log Messages
+    </div>
+    <div class="log-examples">
+      <div class="log-example success">
+        <span class="log-type">Success:</span> "Relay 5 ON" | "All relays OFF"
+      </div>
+      <div class="log-example error">
+        <span class="log-type">Error:</span> "Invalid relay ID" | "Hardware communication failed"
+      </div>
+    </div>
+  </div>
 </div>
 
 <style>
@@ -96,8 +111,8 @@
 
   .relay-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 16px;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
   }
 
   .relay-card {
@@ -196,5 +211,52 @@
 
   .control-btn:hover:not(:disabled) {
     transform: translateY(-1px);
+  }
+
+  .log-info {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #4a5568;
+  }
+
+  .log-info-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #a0aec0;
+  }
+
+  .log-info-header i {
+    color: #f59e0b;
+  }
+
+  .log-examples {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .log-example {
+    font-size: 0.8rem;
+    padding: 4px 0;
+  }
+
+  .log-type {
+    font-weight: 600;
+  }
+
+  .log-example.success .log-type {
+    color: #22c55e;
+  }
+
+  .log-example.error .log-type {
+    color: #ef4444;
+  }
+
+  .log-example {
+    color: #cbd5e0;
   }
 </style>

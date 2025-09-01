@@ -11,10 +11,36 @@
   let systemStatus = $state('Disconnected');
   let errorMessage = $state('');
   
-  // Hardware data
-  let relays = $state([]);
-  let pumps = $state([]);
-  let flowMeters = $state([]);
+  // Hardware data with defaults to show all hardware
+  let relays = $state([
+    { id: 1, name: 'Relay 1', state: false },
+    { id: 2, name: 'Relay 2', state: false },
+    { id: 3, name: 'Relay 3', state: false },
+    { id: 4, name: 'Relay 4', state: false },
+    { id: 5, name: 'Relay 5', state: false },
+    { id: 6, name: 'Relay 6', state: false },
+    { id: 7, name: 'Relay 7', state: false },
+    { id: 8, name: 'Relay 8', state: false },
+    { id: 9, name: 'Relay 9', state: false },
+    { id: 10, name: 'Relay 10', state: false },
+    { id: 11, name: 'Relay 11', state: false },
+    { id: 12, name: 'Relay 12', state: false },
+    { id: 13, name: 'Relay 13', state: false }
+  ]);
+  let pumps = $state([
+    { id: 1, name: 'Pump 1', status: 'stopped' },
+    { id: 2, name: 'Pump 2', status: 'stopped' },
+    { id: 3, name: 'Pump 3', status: 'stopped' },
+    { id: 4, name: 'Pump 4', status: 'stopped' },
+    { id: 5, name: 'Pump 5', status: 'stopped' },
+    { id: 6, name: 'Pump 6', status: 'stopped' },
+    { id: 7, name: 'Pump 7', status: 'stopped' },
+    { id: 8, name: 'Pump 8', status: 'stopped' }
+  ]);
+  let flowMeters = $state([
+    { id: 1, name: 'Flow Meter 1', status: 'stopped', flow_rate: 0, total_gallons: 0 },
+    { id: 2, name: 'Flow Meter 2', status: 'stopped', flow_rate: 0, total_gallons: 0 }
+  ]);
   let ecPhMonitoring = $state(false);
   let ecValue = $state(0);
   let phValue = $state(0);
@@ -33,9 +59,16 @@
       const response = await fetch('/api/hardware/status');
       if (response.ok) {
         const data = await response.json();
-        relays = data.relays || [];
-        pumps = data.pumps || [];
-        flowMeters = data.flow_meters || [];
+        // Merge API data with defaults, keeping defaults if API doesn't provide
+        if (data.relays && data.relays.length > 0) {
+          relays = data.relays;
+        }
+        if (data.pumps && data.pumps.length > 0) {
+          pumps = data.pumps;
+        }
+        if (data.flow_meters && data.flow_meters.length > 0) {
+          flowMeters = data.flow_meters;
+        }
         systemStatus = 'Connected';
         errorMessage = '';
       } else {
@@ -43,8 +76,9 @@
       }
     } catch (error) {
       console.error('Error fetching hardware data:', error);
-      systemStatus = 'Error';
+      systemStatus = 'Disconnected';
       errorMessage = error.message;
+      // Keep default hardware data visible even when API fails
     }
   }
 
@@ -244,9 +278,12 @@
   });
 </script>
 
-<div class="app">
-  <div class="top-bar">
-    <h1>Hardware Testing Dashboard</h1>
+<div class="dashboard-container">
+  <div class="dashboard-header">
+    <div class="header-info">
+      <h2>Hardware Testing Dashboard</h2>
+      <p>Individual component testing and control</p>
+    </div>
     <div class="status-badge {systemStatus.toLowerCase()}">
       {systemStatus}
     </div>
@@ -267,8 +304,8 @@
 </div>
 
 <style>
-  .app {
-    width: 100vw;
+  .dashboard-container {
+    width: 100%;
     height: 100vh;
     background: #1a1a1a;
     color: white;
@@ -276,19 +313,26 @@
     flex-direction: column;
   }
 
-  .top-bar {
+  .dashboard-header {
     background: #2d3748;
-    padding: 1rem 2rem;
+    padding: 1.5rem 2rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
     border-bottom: 1px solid #4a5568;
   }
 
-  .top-bar h1 {
-    margin: 0;
+  .header-info h2 {
+    margin: 0 0 4px 0;
     color: white;
-    font-size: 1.5rem;
+    font-size: 1.4rem;
+    font-weight: 600;
+  }
+
+  .header-info p {
+    margin: 0;
+    color: #a0aec0;
+    font-size: 0.9rem;
   }
 
   .status-badge {
@@ -362,7 +406,7 @@
   }
 
   @media (max-width: 768px) {
-    .top-bar {
+    .dashboard-header {
       flex-direction: column;
       gap: 0.5rem;
       padding: 1rem;

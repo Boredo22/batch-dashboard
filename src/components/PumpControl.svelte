@@ -16,53 +16,59 @@
 
 <div class="pump-control-container">
   <div class="section-header">
-    <h3><i class="fas fa-pump-medical"></i> Pump Testing</h3>
-  </div>
-  
-  <div class="pump-content">
-    <div class="pump-form">
-      <div class="form-row">
-        <div class="input-group">
-          <label for="pump-select">Pump</label>
-          <select id="pump-select" bind:value={selectedPump}>
-            <option value="">Select Pump...</option>
-            {#each pumps as pump}
-              <option value={pump.id}>{pump.name}</option>
-            {/each}
-          </select>
-        </div>
-        
-        <div class="input-group">
-          <label for="pump-amount">Amount (ml)</label>
-          <input 
-            id="pump-amount" 
-            type="number" 
-            bind:value={pumpAmount} 
-            min="1" 
-            max="1000" 
-            step="1"
-          />
-        </div>
-      </div>
-      
-      <div class="button-group">
-        <button class="action-btn dispense-btn" onclick={handleDispense} disabled={!selectedPump}>
-          <i class="fas fa-play"></i> Dispense
-        </button>
-        <button class="action-btn stop-btn" onclick={handleStop} disabled={!selectedPump}>
-          <i class="fas fa-stop"></i> Stop
-        </button>
+    <h3><i class="fas fa-pump-medical"></i> Pump Controls</h3>
+    <div class="controls-header">
+      <div class="input-group">
+        <label for="pump-amount">Amount (ml)</label>
+        <input 
+          id="pump-amount" 
+          type="number" 
+          bind:value={pumpAmount} 
+          min="1" 
+          max="1000" 
+          step="1"
+        />
       </div>
     </div>
-
-    <div class="pump-status">
-      <div class="status-card">
-        <div class="status-label">Selected Pump</div>
-        <div class="status-value">{selectedPump ? pumps.find(p => p.id == selectedPump)?.name : 'None'}</div>
+  </div>
+  
+  <div class="pump-grid">
+    {#each pumps as pump}
+      <div class="pump-card {selectedPump == pump.id ? 'selected' : ''} {pump.status === 'running' ? 'active' : 'inactive'}">
+        <div class="pump-header">
+          <span class="pump-name">{pump.name}</span>
+          <div class="status-dot {pump.status === 'running' ? 'on' : 'off'}"></div>
+        </div>
+        <div class="pump-controls">
+          <button 
+            class="control-btn dispense-btn {selectedPump == pump.id ? 'selected' : ''}" 
+            onclick={() => { selectedPump = pump.id; handleDispense(); }}
+          >
+            <i class="fas fa-play"></i> DISPENSE
+          </button>
+          <button 
+            class="control-btn stop-btn" 
+            onclick={() => { selectedPump = pump.id; handleStop(); }}
+            disabled={pump.status !== 'running'}
+          >
+            <i class="fas fa-stop"></i> STOP
+          </button>
+        </div>
       </div>
-      <div class="status-card">
-        <div class="status-label">Volume</div>
-        <div class="status-value">{pumpAmount} ml</div>
+    {/each}
+  </div>
+  
+  <div class="log-info">
+    <div class="log-info-header">
+      <i class="fas fa-info-circle"></i>
+      Log Messages
+    </div>
+    <div class="log-examples">
+      <div class="log-example success">
+        <span class="log-type">Success:</span> "Dispensing 50ml from pump 3" | "Stopped pump 1"
+      </div>
+      <div class="log-example error">
+        <span class="log-type">Error:</span> "Invalid pump amount" | "Pump communication timeout"
       </div>
     </div>
   </div>
@@ -78,6 +84,9 @@
   }
 
   .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 20px;
     padding-bottom: 12px;
     border-bottom: 2px solid #4a5568;
@@ -95,123 +104,210 @@
     color: #3b82f6;
   }
 
-  .pump-content {
+  .controls-header {
     display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-
-  .form-row {
-    display: grid;
-    grid-template-columns: 1fr 120px;
-    gap: 16px;
+    align-items: center;
+    gap: 12px;
   }
 
   .input-group {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    align-items: center;
+    gap: 8px;
   }
 
   .input-group label {
     font-weight: 500;
     color: #e2e8f0;
     font-size: 0.9rem;
+    white-space: nowrap;
   }
 
-  .input-group select, .input-group input {
-    padding: 12px;
+  .input-group input {
+    padding: 8px 12px;
     border: 2px solid #4a5568;
-    border-radius: 8px;
+    border-radius: 6px;
     font-size: 0.9rem;
     transition: border-color 0.2s;
     background: #1a202c;
     color: #e2e8f0;
+    width: 80px;
   }
 
-  .input-group select:focus, .input-group input:focus {
+  .input-group input:focus {
     outline: none;
     border-color: #3b82f6;
   }
 
-  .button-group {
-    display: flex;
+  .pump-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 12px;
   }
 
-  .action-btn {
-    flex: 1;
-    padding: 12px 16px;
+  .pump-card {
+    background: #1a202c;
+    border: 2px solid #4a5568;
+    border-radius: 10px;
+    padding: 16px;
+    transition: all 0.2s;
+  }
+
+  .pump-card.selected {
+    border-color: #3b82f6;
+    background: #1a2332;
+  }
+
+  .pump-card.active {
+    background: #1a2e1a;
+    border-color: #22c55e;
+  }
+
+  .pump-card.inactive {
+    background: #1a202c;
+    border-color: #4a5568;
+  }
+
+  .pump-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .pump-name {
+    font-weight: 600;
+    color: #e2e8f0;
+    font-size: 0.9rem;
+  }
+
+  .status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  .status-dot.on {
+    background: #22c55e;
+  }
+
+  .status-dot.off {
+    background: #6b7280;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .pump-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .control-btn {
+    padding: 8px;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
+    font-size: 0.8rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 4px;
   }
 
-  .action-btn:disabled {
+  .control-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
 
   .dispense-btn {
-    background: #10b981;
+    background: #1a2e1a;
+    color: #4ade80;
+    border: 1px solid #22c55e;
+  }
+
+  .dispense-btn.selected {
+    background: #22c55e;
     color: white;
   }
 
   .dispense-btn:hover:not(:disabled) {
-    background: #059669;
+    background: #22c55e;
+    color: white;
     transform: translateY(-1px);
   }
 
   .stop-btn {
-    background: #ef4444;
-    color: white;
+    background: #2d1a1a;
+    color: #f87171;
+    border: 1px solid #ef4444;
   }
 
   .stop-btn:hover:not(:disabled) {
-    background: #dc2626;
+    background: #ef4444;
+    color: white;
     transform: translateY(-1px);
   }
 
-  .pump-status {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-
-  .status-card {
-    background: #1a202c;
-    border: 1px solid #4a5568;
-    border-radius: 8px;
-    padding: 12px;
-    text-align: center;
-  }
-
-  .status-label {
-    font-size: 0.8rem;
-    color: #a0aec0;
-    margin-bottom: 4px;
-    font-weight: 500;
-  }
-
-  .status-value {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #e2e8f0;
-  }
-
   @media (max-width: 600px) {
-    .form-row {
-      grid-template-columns: 1fr;
+    .section-header {
+      flex-direction: column;
+      gap: 12px;
+      align-items: flex-start;
     }
     
-    .pump-status {
+    .pump-grid {
       grid-template-columns: 1fr;
     }
+  }
+
+  .log-info {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #4a5568;
+  }
+
+  .log-info-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #a0aec0;
+  }
+
+  .log-info-header i {
+    color: #3b82f6;
+  }
+
+  .log-examples {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .log-example {
+    font-size: 0.8rem;
+    padding: 4px 0;
+    color: #cbd5e0;
+  }
+
+  .log-type {
+    font-weight: 600;
+  }
+
+  .log-example.success .log-type {
+    color: #22c55e;
+  }
+
+  .log-example.error .log-type {
+    color: #ef4444;
   }
 </style>

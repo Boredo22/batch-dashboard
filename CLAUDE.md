@@ -157,3 +157,39 @@ system.emergency_stop()
 3. **Use threading** for system initialization to avoid blocking the UI
 4. **Commands are case-sensitive** - "ON"/"OFF" must be uppercase
 5. **The hardware_comms.py module** implements these exact patterns and should be used for all hardware communication
+
+## Complete Command Reference
+
+See `HARDWARE_COMMANDS.md` for the comprehensive command reference including:
+- All Stage 1 individual hardware commands
+- All Stage 2 job process command sequences  
+- Hardware mapping and configuration
+- Expected responses and error messages
+- Emergency procedures and recovery steps
+
+### Quick Command Summary
+
+**Relay Control:**
+```bash
+"Start;Relay;{id};ON;end"    # Single relay on
+"Start;Relay;{id};OFF;end"   # Single relay off  
+"Start;Relay;0;OFF;end"      # All relays off (emergency)
+```
+
+**Pump Control:**
+```bash
+"Start;Dispense;{id};{ml};end"  # Dispense volume
+"Start;Pump;{id};X;end"         # Stop pump
+```
+
+**Flow Meter Control:**
+```bash
+"Start;StartFlow;{id};{gal};220;end"  # Start flow
+"Start;StartFlow;{id};0;end"          # Stop flow
+```
+
+**EC/pH Control:**
+```bash
+"Start;EcPh;ON;end"   # Start monitoring
+"Start;EcPh;OFF;end"  # Stop monitoring
+```
