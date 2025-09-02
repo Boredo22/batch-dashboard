@@ -55,14 +55,14 @@ RELAY_ACTIVE_HIGH = True  # GPIO HIGH = Relay ON (due to ULN2803A inversion)
 
 # EZO Pump I2C addresses
 PUMP_ADDRESSES = {
-    1: 5,    # Pump 1 at I2C address 1
-    2: 8,    # Pump 2 at I2C address 2
-    3: 9,    # Pump 3 at I2C address 3
-    4: 10,    # Pump 4 at I2C address 4
-    5: 11,    # Pump 5 at I2C address 5
-    6: 12,    # Pump 6 at I2C address 6
-    7: 13,    # Pump 7 at I2C address 7
-    8: 103,    # Pump 8 at I2C address 8
+    1: 11,    # Pump 1 at I2C address 1
+    2: 12,    # Pump 2 at I2C address 2
+    3: 13,    # Pump 3 at I2C address 3
+    4: 14,    # Pump 4 at I2C address 4
+    5: 15,    # Pump 5 at I2C address 5
+    6: 16,    # Pump 6 at I2C address 6
+    7: 17,    # Pump 7 at I2C address 7
+    8: 18,    # Pump 8 at I2C address 8
 }
 
 # Pump names/descriptions
