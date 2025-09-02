@@ -1,6 +1,7 @@
 <script>
   import Dashboard from './Dashboard.svelte';
   import Stage2Testing from './Stage2Testing.svelte';
+  import Settings from './Settings.svelte';
   
   let currentPage = $state('stage1');
   
@@ -29,6 +30,13 @@
         <i class="fas fa-cogs"></i>
         Stage 2: Job Testing
       </button>
+      <button 
+        class="nav-tab {currentPage === 'settings' ? 'active' : ''}"
+        onclick={() => navigateTo('settings')}
+      >
+        <i class="fas fa-sliders-h"></i>
+        Settings
+      </button>
     </div>
   </nav>
 
@@ -37,6 +45,8 @@
       <Dashboard />
     {:else if currentPage === 'stage2'}
       <Stage2Testing />
+    {:else if currentPage === 'settings'}
+      <Settings />
     {/if}
   </div>
 </div>
