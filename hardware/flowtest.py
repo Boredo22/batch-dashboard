@@ -16,6 +16,10 @@ import time
 import signal
 import logging
 from datetime import datetime
+import os
+
+# Add parent directory to Python path so we can import config
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import your flow meter controller
 try:
@@ -25,7 +29,10 @@ try:
 except ImportError as e:
     print(f"Import error: {e}")
     print("Using mock mode for testing...")
-    from hardware.rpi_flow import MockFlowMeterController as FlowMeterController
+    try:
+        from hardware.rpi_flow import MockFlowMeterController as FlowMeterController
+    except ImportError:
+        from rpi_flow import MockFlowMeterController as FlowMeterController
     from config import get_flow_meter_name, get_available_flow_meters
     MOCK_MODE = True
 
