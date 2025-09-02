@@ -37,7 +37,12 @@
       <div class="pump-card {selectedPump == pump.id ? 'selected' : ''} {pump.status === 'running' ? 'active' : 'inactive'}">
         <div class="pump-header">
           <span class="pump-name">{pump.name}</span>
-          <div class="status-dot {pump.status === 'running' ? 'on' : 'off'}"></div>
+          <div class="pump-status-info">
+            <div class="voltage-display">
+              <span class="voltage-value {pump.voltage >= 5.0 && pump.voltage <= 12.0 ? 'voltage-normal' : 'voltage-warning'}">{pump.voltage?.toFixed(1) || '0.0'}V</span>
+            </div>
+            <div class="status-dot {pump.status === 'running' ? 'on' : 'off'}"></div>
+          </div>
         </div>
         <div class="pump-controls">
           <button 
@@ -179,6 +184,36 @@
     font-weight: 600;
     color: #e2e8f0;
     font-size: 0.9rem;
+  }
+
+  .pump-status-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .voltage-display {
+    display: flex;
+    align-items: center;
+  }
+
+  .voltage-value {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid;
+  }
+
+  .voltage-normal {
+    color: #22c55e;
+    border-color: #22c55e;
+  }
+
+  .voltage-warning {
+    color: #f59e0b;
+    border-color: #f59e0b;
   }
 
   .status-dot {

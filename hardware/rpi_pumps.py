@@ -59,15 +59,22 @@ class EZOPumpController:
                 'target_volume': 0.0,
                 'is_dispensing': False,
                 'last_check': 0,
+                'last_voltage_check': 0,
                 'last_error': '',
                 'connected': False
             }
         
+        # Voltage polling control
+        self.voltage_poll_interval = 60.0  # Poll voltage every minute
+        self.startup_voltage_poll_complete = False
+        
         # Initialize I2C bus
         self.initialize_bus()
         
-        # Initialize pumps
+        # Initialize pumps and poll voltage on startup
         self.initialize_pumps()
+        self.poll_all_pump_voltages()
+        self.startup_voltage_poll_complete = True
     
     def initialize_bus(self):
         """Initialize I2C bus connection"""
@@ -303,6 +310,72 @@ class EZOPumpController:
             return None
         
         return self.pump_info[pump_id].copy()
+    
+    def poll_pump_voltage(self, pump_id):
+        """Poll voltage from a specific pump"""
+        if not validate_pump_id(pump_id):
+            return False
+        
+        if not self.pump_info[pump_id]['connected']:
+            return False
+        
+        try:
+            # Get voltage using PV,? command
+            voltage_response = self.send_command(pump_id, "PV,?")
+            if voltage_response and voltage_response.startswith("?PV,"):
+                voltage_str = voltage_response.split(",")[1] if "," in voltage_response else "0"
+                voltage_value = float(voltage_str)
+                
+                # Update pump info with new voltage
+                self.pump_info[pump_id]['voltage'] = voltage_value
+                self.pump_info[pump_id]['last_voltage_check'] = time.time()
+                
+                # Check if voltage is in acceptable range
+                if voltage_value < PUMP_VOLTAGE_MIN or voltage_value > PUMP_VOLTAGE_MAX:
+                    logger.warning(f"Pump {pump_id} voltage {voltage_value:.1f}V outside normal range ({PUMP_VOLTAGE_MIN}-{PUMP_VOLTAGE_MAX}V)")
+                
+                logger.debug(f"Pump {pump_id} voltage: {voltage_value:.1f}V")
+                return True
+            else:
+                logger.warning(f"Failed to get voltage from pump {pump_id}: {voltage_response}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error polling voltage from pump {pump_id}: {e}")
+            return False
+    
+    def poll_all_pump_voltages(self):
+        """Poll voltage from all connected pumps"""
+        success_count = 0
+        total_pumps = 0
+        
+        for pump_id in PUMP_ADDRESSES.keys():
+            if self.pump_info[pump_id]['connected']:
+                total_pumps += 1
+                if self.poll_pump_voltage(pump_id):
+                    success_count += 1
+        
+        if total_pumps > 0:
+            logger.info(f"Voltage polling complete: {success_count}/{total_pumps} pumps")
+        
+        return success_count == total_pumps
+    
+    def check_voltage_polling_needed(self):
+        """Check if any pumps need voltage polling and perform it"""
+        current_time = time.time()
+        
+        for pump_id in PUMP_ADDRESSES.keys():
+            pump_info = self.pump_info[pump_id]
+            
+            # Skip if pump is not connected
+            if not pump_info['connected']:
+                continue
+            
+            # Check if voltage polling is needed
+            time_since_last_voltage_check = current_time - pump_info['last_voltage_check']
+            
+            if time_since_last_voltage_check >= self.voltage_poll_interval:
+                self.poll_pump_voltage(pump_id)
     
     def get_all_pumps_status(self):
         """Get status of all pumps"""

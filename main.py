@@ -363,6 +363,9 @@ class FeedControlSystem:
             self.last_pump_check = current_time
             
             if self.pump_controller:
+                # Check for voltage polling needed (periodic voltage checks)
+                self.pump_controller.check_voltage_polling_needed()
+                
                 for pump_addr in get_available_pumps():
                     pump_info = self.pump_controller.get_pump_info(pump_addr)
                     if pump_info and pump_info['is_dispensing']:

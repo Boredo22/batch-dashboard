@@ -223,18 +223,34 @@ def api_status():
             'mock_settings': raw_hardware.get('mock_settings', {})
         }
         
+        # Transform pump data to include voltage and actual status
+        pumps_list = []
+        for pid in hardware['pumps']['ids']:
+            pump_info = status.get('pumps', {}).get(pid, {})
+            pump_data = {
+                'id': pid,
+                'name': hardware['pumps']['names'].get(pid, f'Pump {pid}'),
+                'status': 'running' if pump_info.get('is_dispensing', False) else 'stopped',
+                'voltage': pump_info.get('voltage', 0.0),
+                'connected': pump_info.get('connected', False),
+                'calibrated': pump_info.get('calibrated', False),
+                'current_volume': pump_info.get('current_volume', 0.0),
+                'target_volume': pump_info.get('target_volume', 0.0),
+                'last_error': pump_info.get('last_error', '')
+            }
+            pumps_list.append(pump_data)
+
         return jsonify({
             'success': True,
             'status': status,
             'hardware': hardware,
             'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            # Add data in the format expected by Dashboard.svelte  
-            'relays': [{'id': rid, 'name': hardware['relays']['names'].get(rid, f'Relay {rid}'), 'state': status['relays'].get(str(rid), False)} 
+            # Add data in the format expected by Dashboard.svelte
+            'relays': [{'id': rid, 'name': hardware['relays']['names'].get(rid, f'Relay {rid}'), 'state': status['relays'].get(str(rid), False)}
                       for rid in hardware['relays']['ids']],
-            'pumps': [{'id': pid, 'name': hardware['pumps']['names'].get(pid, f'Pump {pid}'), 'status': 'stopped'} 
-                     for pid in hardware['pumps']['ids']],
-            'flow_meters': [{'id': fid, 'name': hardware['flow_meters']['names'].get(fid, f'Flow Meter {fid}'), 
-                           'status': 'stopped', 'flow_rate': 0, 'total_gallons': 0} 
+            'pumps': pumps_list,
+            'flow_meters': [{'id': fid, 'name': hardware['flow_meters']['names'].get(fid, f'Flow Meter {fid}'),
+                           'status': 'stopped', 'flow_rate': 0, 'total_gallons': 0}
                           for fid in hardware['flow_meters']['ids']],
             'ec_value': status.get('ec', 0),
             'ph_value': status.get('ph', 0),

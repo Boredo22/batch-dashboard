@@ -30,6 +30,16 @@
       max_flow_gallons: 100
     }
   });
+
+  // Available nutrients from pump names
+  let availableNutrients = $derived(() => {
+    return Object.keys(userSettings.pumps.names || {}).map(id => userSettings.pumps.names[id]);
+  });
+
+  // Available relays for mix relay selection
+  let availableRelays = $derived(() => {
+    return Object.keys(devSettings.gpio.relay_pins || {}).map(Number).sort((a, b) => a - b);
+  });
   
   // Dev settings - technical configurations
   let devSettings = $state({
@@ -170,29 +180,38 @@
   
   function addNutrient(formulaType) {
     const formula = formulaType === 'veg' ? userSettings.nutrients.veg_formula : userSettings.nutrients.bloom_formula;
-    formula['New Nutrient'] = 0.0;
+    // Find the first available nutrient that's not already in the formula
+    const availableOptions = availableNutrients.filter(nutrient => !formula.hasOwnProperty(nutrient));
+    if (availableOptions.length > 0) {
+      formula[availableOptions[0]] = 0.0;
+    }
   }
   
   function removeNutrient(formulaType, nutrientName) {
     const formula = formulaType === 'veg' ? userSettings.nutrients.veg_formula : userSettings.nutrients.bloom_formula;
     delete formula[nutrientName];
   }
-  
-  function renameNutrient(formulaType, oldName, newName) {
-    if (oldName === newName) return;
-    
-    const formula = formulaType === 'veg' ? userSettings.nutrients.veg_formula : userSettings.nutrients.bloom_formula;
-    
-    // Don't rename if new name already exists
-    if (formula.hasOwnProperty(newName)) return;
-    
-    // Store the value, delete old key, create new key
-    const value = formula[oldName];
-    delete formula[oldName];
-    formula[newName] = value;
-    
-    // Trigger reactivity
-    userSettings.nutrients = { ...userSettings.nutrients };
+
+  function addMixRelay(tankId) {
+    const tank = userSettings.tanks[tankId];
+    if (!tank.mix_relays) {
+      tank.mix_relays = [];
+    }
+    // Find the first available relay that's not already used
+    const usedRelays = tank.mix_relays;
+    const availableOptions = availableRelays.filter(relay => !usedRelays.includes(relay));
+    if (availableOptions.length > 0) {
+      tank.mix_relays.push(availableOptions[0]);
+    }
+  }
+
+  function removeMixRelay(tankId, index) {
+    const tank = userSettings.tanks[tankId];
+    if (tank.mix_relays) {
+      tank.mix_relays.splice(index, 1);
+      // Trigger reactivity
+      userSettings.tanks = { ...userSettings.tanks };
+    }
   }
 </script>
 
@@ -263,6 +282,30 @@
                   <label for="tank-{tankId}-send-relay">Send Relay:</label>
                   <input id="tank-{tankId}-send-relay" type="number" bind:value={tank.send_relay} />
                 </div>
+                <div class="form-row">
+                  <label>Mix Relays:</label>
+                  <div class="mix-relays-container">
+                    {#if tank.mix_relays && tank.mix_relays.length > 0}
+                      {#each tank.mix_relays as relay, index}
+                        <div class="mix-relay-item">
+                          <select bind:value={tank.mix_relays[index]}>
+                            {#each availableRelays as relayOption}
+                              <option value={relayOption}>{relayOption}</option>
+                            {/each}
+                          </select>
+                          <button class="btn-remove" onclick={() => removeMixRelay(tankId, index)} aria-label="Remove mix relay">
+                            <i class="fas fa-times"></i>
+                          </button>
+                        </div>
+                      {/each}
+                    {:else}
+                      <div class="no-mix-relays">No mix relays configured</div>
+                    {/if}
+                    <button class="btn btn-secondary btn-sm" onclick={() => addMixRelay(tankId)}>
+                      <i class="fas fa-plus"></i> Add Mix Relay
+                    </button>
+                  </div>
+                </div>
               </div>
             {/each}
           </div>
@@ -301,13 +344,14 @@
               </div>
               {#each Object.entries(userSettings.nutrients.veg_formula) as [nutrient, amount]}
                 <div class="nutrient-row">
-                  <input
-                    type="text"
-                    value={nutrient}
-                    placeholder="Nutrient name"
-                    onblur={(e) => renameNutrient('veg', nutrient, e.target.value)}
-                  />
+                  <select bind:value={userSettings.nutrients.veg_formula[nutrient]} style="display: none;">
+                    {#each availableNutrients as nutrientOption}
+                      <option value={nutrientOption}>{nutrientOption}</option>
+                    {/each}
+                  </select>
+                  <span class="nutrient-name">{nutrient}</span>
                   <input type="number" step="0.1" bind:value={userSettings.nutrients.veg_formula[nutrient]} />
+                  <span class="nutrient-unit">ml/gal</span>
                   <button class="btn-remove" onclick={() => removeNutrient('veg', nutrient)} aria-label="Remove {nutrient} from VEG formula">
                     <i class="fas fa-times"></i>
                   </button>
@@ -325,13 +369,14 @@
               </div>
               {#each Object.entries(userSettings.nutrients.bloom_formula) as [nutrient, amount]}
                 <div class="nutrient-row">
-                  <input
-                    type="text"
-                    value={nutrient}
-                    placeholder="Nutrient name"
-                    onblur={(e) => renameNutrient('bloom', nutrient, e.target.value)}
-                  />
+                  <select bind:value={userSettings.nutrients.bloom_formula[nutrient]} style="display: none;">
+                    {#each availableNutrients as nutrientOption}
+                      <option value={nutrientOption}>{nutrientOption}</option>
+                    {/each}
+                  </select>
+                  <span class="nutrient-name">{nutrient}</span>
                   <input type="number" step="0.1" bind:value={userSettings.nutrients.bloom_formula[nutrient]} />
+                  <span class="nutrient-unit">ml/gal</span>
                   <button class="btn-remove" onclick={() => removeNutrient('bloom', nutrient)} aria-label="Remove {nutrient} from BLOOM formula">
                     <i class="fas fa-times"></i>
                   </button>
@@ -679,12 +724,52 @@
     margin-bottom: 0.5rem;
   }
   
-  .nutrient-row input[type="text"] {
+  .nutrient-row .nutrient-name {
     flex: 1;
+    color: #e2e8f0;
+    font-weight: 500;
+    padding: 0.5rem;
+    background: #475569;
+    border-radius: 0.25rem;
+    border: 1px solid #64748b;
   }
   
   .nutrient-row input[type="number"] {
     width: 80px;
+  }
+
+  .nutrient-row .nutrient-unit {
+    color: #94a3b8;
+    font-size: 0.85rem;
+    min-width: 40px;
+  }
+
+  .mix-relays-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 1;
+  }
+
+  .mix-relay-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .mix-relay-item select {
+    flex: 1;
+  }
+
+  .no-mix-relays {
+    color: #94a3b8;
+    font-style: italic;
+    padding: 0.5rem;
+  }
+
+  .btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
   }
   
   .timing-grid, .limits-grid, .i2c-grid, .debug-grid {
