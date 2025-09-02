@@ -68,6 +68,38 @@ The system supports both real hardware and mock mode for development without phy
 
 **Error Handling**: Comprehensive error handling with user notifications through toast system and Flask flash messages.
 
+## Svelte 5 Development Rules
+
+**CRITICAL**: Svelte components are single `.svelte` files that contain HTML, CSS, and JavaScript together. NEVER create separate HTML and JS files for Svelte components.
+
+**File Structure**: Every Svelte component follows this pattern:
+```svelte
+<script>
+  // All JavaScript logic goes here
+</script>
+
+<!-- HTML template -->
+<div>Content here</div>
+
+<style>
+  /* CSS styles scoped to this component */
+</style>
+```
+
+**Svelte 5 Runes** (required patterns):
+- Use `$state()` for reactive variables instead of `let`
+- Use `$derived()` for computed values instead of `$:`  
+- Use `$effect()` for side effects instead of `$:`
+- Use `$props()` for component props destructuring
+
+**Component Creation**: When adding new Svelte pages/components:
+1. Create a single `.svelte` file in appropriate directory (`src/routes/` or `src/lib/components/`)
+2. Add corresponding entry point in root directory (e.g., `newpage.js`)
+3. Update `vite.config.js` to include new entry point
+4. Create Flask template in `templates/` directory to mount the component
+
+See `SVELTE_REFERENCE.md` for complete syntax guide.
+
 ## Hardware Communication Protocols (PROVEN WORKING)
 
 These protocols are extracted from `simple_gui.py` and are proven to work correctly with the Pi4B hardware. **All future hardware communication must follow these exact patterns.**
