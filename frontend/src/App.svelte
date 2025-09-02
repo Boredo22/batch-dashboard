@@ -117,7 +117,8 @@
 
   .page-content {
     flex: 1;
-    overflow: hidden;
+    overflow-y: auto;
+    height: 0; /* This forces flex item to respect overflow */
   }
 
   @media (max-width: 768px) {

@@ -9,20 +9,50 @@
   // User settings - organized for easy editing
   let userSettings = $state({
     tanks: {},
-    pumps: {},
-    nutrients: {},
+    pumps: {
+      names: {},
+      addresses: {}
+    },
+    nutrients: {
+      veg_formula: {},
+      bloom_formula: {},
+      pump_name_to_id: {}
+    },
     formulas: {},
-    timing: {},
-    limits: {}
+    timing: {
+      status_update_interval: 2.0,
+      pump_check_interval: 1.0,
+      flow_update_interval: 0.5
+    },
+    limits: {
+      max_pump_volume_ml: 2500.0,
+      min_pump_volume_ml: 0.5,
+      max_flow_gallons: 100
+    }
   });
   
-  // Dev settings - technical configurations  
+  // Dev settings - technical configurations
   let devSettings = $state({
-    gpio: {},
-    i2c: {},
-    communication: {},
+    gpio: {
+      relay_pins: {},
+      flow_meter_pins: {}
+    },
+    i2c: {
+      bus_number: 1,
+      pump_addresses: {},
+      command_delay: 0.3
+    },
+    communication: {
+      command_start: "Start",
+      command_end: "end",
+      arduino_baudrate: 115200
+    },
     mock: {},
-    debug: {}
+    debug: {
+      debug_mode: false,
+      verbose_logging: false,
+      log_level: "INFO"
+    }
   });
 
   onMount(async () => {
@@ -147,6 +177,23 @@
     const formula = formulaType === 'veg' ? userSettings.nutrients.veg_formula : userSettings.nutrients.bloom_formula;
     delete formula[nutrientName];
   }
+  
+  function renameNutrient(formulaType, oldName, newName) {
+    if (oldName === newName) return;
+    
+    const formula = formulaType === 'veg' ? userSettings.nutrients.veg_formula : userSettings.nutrients.bloom_formula;
+    
+    // Don't rename if new name already exists
+    if (formula.hasOwnProperty(newName)) return;
+    
+    // Store the value, delete old key, create new key
+    const value = formula[oldName];
+    delete formula[oldName];
+    formula[newName] = value;
+    
+    // Trigger reactivity
+    userSettings.nutrients = { ...userSettings.nutrients };
+  }
 </script>
 
 <div class="settings-container">
@@ -196,25 +243,25 @@
               <div class="tank-card">
                 <div class="tank-header">
                   <h4>Tank {tankId}</h4>
-                  <button class="btn-remove" onclick={() => removeTank(tankId)}>
+                  <button class="btn-remove" onclick={() => removeTank(tankId)} aria-label="Remove Tank {tankId}">
                     <i class="fas fa-times"></i>
                   </button>
                 </div>
                 <div class="form-row">
-                  <label>Name:</label>
-                  <input type="text" bind:value={tank.name} />
+                  <label for="tank-{tankId}-name">Name:</label>
+                  <input id="tank-{tankId}-name" type="text" bind:value={tank.name} />
                 </div>
                 <div class="form-row">
-                  <label>Capacity (gallons):</label>
-                  <input type="number" bind:value={tank.capacity_gallons} />
+                  <label for="tank-{tankId}-capacity">Capacity (gallons):</label>
+                  <input id="tank-{tankId}-capacity" type="number" bind:value={tank.capacity_gallons} />
                 </div>
                 <div class="form-row">
-                  <label>Fill Relay:</label>
-                  <input type="number" bind:value={tank.fill_relay} />
+                  <label for="tank-{tankId}-fill-relay">Fill Relay:</label>
+                  <input id="tank-{tankId}-fill-relay" type="number" bind:value={tank.fill_relay} />
                 </div>
                 <div class="form-row">
-                  <label>Send Relay:</label>
-                  <input type="number" bind:value={tank.send_relay} />
+                  <label for="tank-{tankId}-send-relay">Send Relay:</label>
+                  <input id="tank-{tankId}-send-relay" type="number" bind:value={tank.send_relay} />
                 </div>
               </div>
             {/each}
@@ -230,8 +277,8 @@
             {#each Object.entries(userSettings.pumps.names) as [pumpId, name]}
               <div class="pump-card">
                 <div class="form-row">
-                  <label>Pump {pumpId}:</label>
-                  <input type="text" bind:value={userSettings.pumps.names[pumpId]} />
+                  <label for="pump-{pumpId}-name">Pump {pumpId}:</label>
+                  <input id="pump-{pumpId}-name" type="text" bind:value={userSettings.pumps.names[pumpId]} />
                 </div>
               </div>
             {/each}
@@ -254,9 +301,14 @@
               </div>
               {#each Object.entries(userSettings.nutrients.veg_formula) as [nutrient, amount]}
                 <div class="nutrient-row">
-                  <input type="text" bind:value={nutrient} placeholder="Nutrient name" />
+                  <input
+                    type="text"
+                    value={nutrient}
+                    placeholder="Nutrient name"
+                    onblur={(e) => renameNutrient('veg', nutrient, e.target.value)}
+                  />
                   <input type="number" step="0.1" bind:value={userSettings.nutrients.veg_formula[nutrient]} />
-                  <button class="btn-remove" onclick={() => removeNutrient('veg', nutrient)}>
+                  <button class="btn-remove" onclick={() => removeNutrient('veg', nutrient)} aria-label="Remove {nutrient} from VEG formula">
                     <i class="fas fa-times"></i>
                   </button>
                 </div>
@@ -273,9 +325,14 @@
               </div>
               {#each Object.entries(userSettings.nutrients.bloom_formula) as [nutrient, amount]}
                 <div class="nutrient-row">
-                  <input type="text" bind:value={nutrient} placeholder="Nutrient name" />
+                  <input
+                    type="text"
+                    value={nutrient}
+                    placeholder="Nutrient name"
+                    onblur={(e) => renameNutrient('bloom', nutrient, e.target.value)}
+                  />
                   <input type="number" step="0.1" bind:value={userSettings.nutrients.bloom_formula[nutrient]} />
-                  <button class="btn-remove" onclick={() => removeNutrient('bloom', nutrient)}>
+                  <button class="btn-remove" onclick={() => removeNutrient('bloom', nutrient)} aria-label="Remove {nutrient} from BLOOM formula">
                     <i class="fas fa-times"></i>
                   </button>
                 </div>
@@ -291,16 +348,16 @@
           </div>
           <div class="timing-grid">
             <div class="form-row">
-              <label>Status Update Interval (seconds):</label>
-              <input type="number" step="0.1" bind:value={userSettings.timing.status_update_interval} />
+              <label for="status-update-interval">Status Update Interval (seconds):</label>
+              <input id="status-update-interval" type="number" step="0.1" bind:value={userSettings.timing.status_update_interval} />
             </div>
             <div class="form-row">
-              <label>Pump Check Interval (seconds):</label>
-              <input type="number" step="0.1" bind:value={userSettings.timing.pump_check_interval} />
+              <label for="pump-check-interval">Pump Check Interval (seconds):</label>
+              <input id="pump-check-interval" type="number" step="0.1" bind:value={userSettings.timing.pump_check_interval} />
             </div>
             <div class="form-row">
-              <label>Flow Update Interval (seconds):</label>
-              <input type="number" step="0.1" bind:value={userSettings.timing.flow_update_interval} />
+              <label for="flow-update-interval">Flow Update Interval (seconds):</label>
+              <input id="flow-update-interval" type="number" step="0.1" bind:value={userSettings.timing.flow_update_interval} />
             </div>
           </div>
         </div>
@@ -312,16 +369,16 @@
           </div>
           <div class="limits-grid">
             <div class="form-row">
-              <label>Max Pump Volume (ml):</label>
-              <input type="number" step="0.1" bind:value={userSettings.limits.max_pump_volume_ml} />
+              <label for="max-pump-volume">Max Pump Volume (ml):</label>
+              <input id="max-pump-volume" type="number" step="0.1" bind:value={userSettings.limits.max_pump_volume_ml} />
             </div>
             <div class="form-row">
-              <label>Min Pump Volume (ml):</label>
-              <input type="number" step="0.1" bind:value={userSettings.limits.min_pump_volume_ml} />
+              <label for="min-pump-volume">Min Pump Volume (ml):</label>
+              <input id="min-pump-volume" type="number" step="0.1" bind:value={userSettings.limits.min_pump_volume_ml} />
             </div>
             <div class="form-row">
-              <label>Max Flow (gallons):</label>
-              <input type="number" bind:value={userSettings.limits.max_flow_gallons} />
+              <label for="max-flow-gallons">Max Flow (gallons):</label>
+              <input id="max-flow-gallons" type="number" bind:value={userSettings.limits.max_flow_gallons} />
             </div>
           </div>
         </div>
@@ -342,8 +399,8 @@
               <h4>Relay GPIO Pins</h4>
               {#each Object.entries(devSettings.gpio.relay_pins) as [relayId, pin]}
                 <div class="gpio-row">
-                  <label>Relay {relayId}:</label>
-                  <input type="number" bind:value={devSettings.gpio.relay_pins[relayId]} />
+                  <label for="relay-{relayId}-pin">Relay {relayId}:</label>
+                  <input id="relay-{relayId}-pin" type="number" bind:value={devSettings.gpio.relay_pins[relayId]} />
                 </div>
               {/each}
             </div>
@@ -352,8 +409,8 @@
               <h4>Flow Meter GPIO Pins</h4>
               {#each Object.entries(devSettings.gpio.flow_meter_pins) as [meterId, pin]}
                 <div class="gpio-row">
-                  <label>Flow Meter {meterId}:</label>
-                  <input type="number" bind:value={devSettings.gpio.flow_meter_pins[meterId]} />
+                  <label for="flow-meter-{meterId}-pin">Flow Meter {meterId}:</label>
+                  <input id="flow-meter-{meterId}-pin" type="number" bind:value={devSettings.gpio.flow_meter_pins[meterId]} />
                 </div>
               {/each}
             </div>
@@ -367,12 +424,12 @@
           </div>
           <div class="i2c-grid">
             <div class="form-row">
-              <label>I2C Bus Number:</label>
-              <input type="number" bind:value={devSettings.i2c.bus_number} />
+              <label for="i2c-bus-number">I2C Bus Number:</label>
+              <input id="i2c-bus-number" type="number" bind:value={devSettings.i2c.bus_number} />
             </div>
             <div class="form-row">
-              <label>EZO Command Delay (seconds):</label>
-              <input type="number" step="0.01" bind:value={devSettings.i2c.command_delay} />
+              <label for="ezo-command-delay">EZO Command Delay (seconds):</label>
+              <input id="ezo-command-delay" type="number" step="0.01" bind:value={devSettings.i2c.command_delay} />
             </div>
           </div>
         </div>
@@ -413,8 +470,8 @@
               </label>
             </div>
             <div class="form-row">
-              <label>Log Level:</label>
-              <select bind:value={devSettings.debug.log_level}>
+              <label for="log-level">Log Level:</label>
+              <select id="log-level" bind:value={devSettings.debug.log_level}>
                 <option value="DEBUG">DEBUG</option>
                 <option value="INFO">INFO</option>
                 <option value="WARNING">WARNING</option>
@@ -452,7 +509,9 @@
     margin: 0 auto;
     background: #1a1a1a;
     color: white;
-    min-height: 100vh;
+    min-height: calc(100vh - 4rem);
+    overflow-y: auto;
+    position: relative;
   }
   
   .settings-header {

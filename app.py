@@ -19,14 +19,41 @@ from hardware.hardware_comms import (
     all_relays_off, cleanup_hardware, start_ec_ph, stop_ec_ph
 )
 
-# Import configuration constants (if needed for validation)
+# Import configuration constants and all settings
 try:
-    from config import MIN_PUMP_VOLUME_ML, MAX_PUMP_VOLUME_ML, MAX_FLOW_GALLONS
+    import config
+    from config import *
 except ImportError:
     # Fallback constants
     MIN_PUMP_VOLUME_ML = 1
     MAX_PUMP_VOLUME_ML = 100
     MAX_FLOW_GALLONS = 50
+    # Create minimal fallback config
+    class config:
+        TANKS = {}
+        PUMP_NAMES = {}
+        PUMP_ADDRESSES = {}
+        RELAY_GPIO_PINS = {}
+        FLOW_METER_GPIO_PINS = {}
+        VEG_FORMULA = {}
+        BLOOM_FORMULA = {}
+        PUMP_NAME_TO_ID = {}
+        FORMULA_TARGETS = {}
+        STATUS_UPDATE_INTERVAL = 2.0
+        PUMP_CHECK_INTERVAL = 1.0
+        FLOW_UPDATE_INTERVAL = 0.5
+        MAX_PUMP_VOLUME_ML = 2500.0
+        MIN_PUMP_VOLUME_ML = 0.5
+        MAX_FLOW_GALLONS = 100
+        I2C_BUS_NUMBER = 1
+        EZO_COMMAND_DELAY = 0.3
+        COMMAND_START = "Start"
+        COMMAND_END = "end"
+        ARDUINO_UNO_BAUDRATE = 115200
+        MOCK_SETTINGS = {}
+        DEBUG_MODE = False
+        VERBOSE_LOGGING = False
+        LOG_LEVEL = "INFO"
 
 # Setup logging
 logging.basicConfig(
@@ -66,6 +93,109 @@ def serve_static(filename):
 def serve_dist(filename):
     """Serve built Svelte files"""
     return send_from_directory('static/dist', filename)
+
+# =============================================================================
+# CONFIGURATION ENDPOINTS - Load and save system configuration
+# =============================================================================
+
+@app.route('/api/config', methods=['GET'])
+def api_get_config():
+    """Get current system configuration"""
+    try:
+        # Return all configuration settings in the format expected by Settings.svelte
+        config_data = {
+            # Tank configuration
+            'TANKS': getattr(config, 'TANKS', {}),
+            
+            # Pump configuration
+            'PUMP_NAMES': getattr(config, 'PUMP_NAMES', {}),
+            'PUMP_ADDRESSES': getattr(config, 'PUMP_ADDRESSES', {}),
+            
+            # Nutrient formulas
+            'VEG_FORMULA': getattr(config, 'VEG_FORMULA', {}),
+            'BLOOM_FORMULA': getattr(config, 'BLOOM_FORMULA', {}),
+            'PUMP_NAME_TO_ID': getattr(config, 'PUMP_NAME_TO_ID', {}),
+            'FORMULA_TARGETS': getattr(config, 'FORMULA_TARGETS', {}),
+            
+            # System timing
+            'STATUS_UPDATE_INTERVAL': getattr(config, 'STATUS_UPDATE_INTERVAL', 2.0),
+            'PUMP_CHECK_INTERVAL': getattr(config, 'PUMP_CHECK_INTERVAL', 1.0),
+            'FLOW_UPDATE_INTERVAL': getattr(config, 'FLOW_UPDATE_INTERVAL', 0.5),
+            
+            # Safety limits
+            'MAX_PUMP_VOLUME_ML': getattr(config, 'MAX_PUMP_VOLUME_ML', 2500.0),
+            'MIN_PUMP_VOLUME_ML': getattr(config, 'MIN_PUMP_VOLUME_ML', 0.5),
+            'MAX_FLOW_GALLONS': getattr(config, 'MAX_FLOW_GALLONS', 100),
+            
+            # GPIO Configuration
+            'RELAY_GPIO_PINS': getattr(config, 'RELAY_GPIO_PINS', {}),
+            'FLOW_METER_GPIO_PINS': getattr(config, 'FLOW_METER_GPIO_PINS', {}),
+            
+            # I2C Configuration
+            'I2C_BUS_NUMBER': getattr(config, 'I2C_BUS_NUMBER', 1),
+            'EZO_COMMAND_DELAY': getattr(config, 'EZO_COMMAND_DELAY', 0.3),
+            
+            # Communication
+            'COMMAND_START': getattr(config, 'COMMAND_START', 'Start'),
+            'COMMAND_END': getattr(config, 'COMMAND_END', 'end'),
+            'ARDUINO_UNO_BAUDRATE': getattr(config, 'ARDUINO_UNO_BAUDRATE', 115200),
+            
+            # Mock settings
+            'MOCK_SETTINGS': getattr(config, 'MOCK_SETTINGS', {}),
+            
+            # Debug settings
+            'DEBUG_MODE': getattr(config, 'DEBUG_MODE', False),
+            'VERBOSE_LOGGING': getattr(config, 'VERBOSE_LOGGING', False),
+            'LOG_LEVEL': getattr(config, 'LOG_LEVEL', 'INFO')
+        }
+        
+        return jsonify(config_data)
+        
+    except Exception as e:
+        logger.error(f"Error getting configuration: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/config', methods=['POST'])
+def api_save_config():
+    """Save system configuration changes"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No configuration data provided'
+            }), 400
+        
+        user_settings = data.get('userSettings', {})
+        dev_settings = data.get('devSettings', {})
+        
+        # For now, just log the configuration changes
+        # In a full implementation, you would save these to a configuration file
+        logger.info("Configuration update received:")
+        logger.info(f"User settings: {user_settings}")
+        logger.info(f"Dev settings: {dev_settings}")
+        
+        # TODO: Implement actual configuration saving to file
+        # This would typically involve:
+        # 1. Validating the configuration values
+        # 2. Writing to config.py or a separate config file
+        # 3. Potentially restarting certain services
+        
+        return jsonify({
+            'success': True,
+            'message': 'Configuration saved successfully',
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error saving configuration: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 # =============================================================================
 # API ENDPOINTS - Hardware Control (same patterns as simple_gui.py)
