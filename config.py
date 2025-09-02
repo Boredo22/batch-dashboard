@@ -99,9 +99,12 @@ EZO_RESPONSE_CODES = {
 # =============================================================================
 
 # Flow meter GPIO pin mappings
+# Note: These pins correspond to Arduino Mega pins 2,3 from the old system
+# Arduino Pin 2 -> Pi GPIO Pin 2
+# Arduino Pin 3 -> Pi GPIO Pin 3  
 FLOW_METER_GPIO_PINS = {
-    1: 23,    # Flow meter 1 on GPIO 23
-    2: 24,    # Flow meter 2 on GPIO 24
+    1: 3,     # Flow meter 1 on GPIO 3 (was Arduino pin 3)
+    2: 2,     # Flow meter 2 on GPIO 2 (was Arduino pin 2)
 }
 
 # Flow meter names
