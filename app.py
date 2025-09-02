@@ -35,10 +35,6 @@ except ImportError:
         PUMP_ADDRESSES = {}
         RELAY_GPIO_PINS = {}
         FLOW_METER_GPIO_PINS = {}
-        VEG_FORMULA = {}
-        BLOOM_FORMULA = {}
-        PUMP_NAME_TO_ID = {}
-        FORMULA_TARGETS = {}
         STATUS_UPDATE_INTERVAL = 2.0
         PUMP_CHECK_INTERVAL = 1.0
         FLOW_UPDATE_INTERVAL = 0.5
@@ -110,12 +106,6 @@ def api_get_config():
             # Pump configuration
             'PUMP_NAMES': getattr(config, 'PUMP_NAMES', {}),
             'PUMP_ADDRESSES': getattr(config, 'PUMP_ADDRESSES', {}),
-            
-            # Nutrient formulas
-            'VEG_FORMULA': getattr(config, 'VEG_FORMULA', {}),
-            'BLOOM_FORMULA': getattr(config, 'BLOOM_FORMULA', {}),
-            'PUMP_NAME_TO_ID': getattr(config, 'PUMP_NAME_TO_ID', {}),
-            'FORMULA_TARGETS': getattr(config, 'FORMULA_TARGETS', {}),
             
             # System timing
             'STATUS_UPDATE_INTERVAL': getattr(config, 'STATUS_UPDATE_INTERVAL', 2.0),
@@ -192,6 +182,112 @@ def api_save_config():
         
     except Exception as e:
         logger.error(f"Error saving configuration: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# =============================================================================
+# NUTRIENTS CONFIGURATION ENDPOINTS - Separate nutrients management
+# =============================================================================
+
+@app.route('/api/nutrients', methods=['GET'])
+def api_get_nutrients():
+    """Get nutrients configuration"""
+    try:
+        import json
+        import os
+        
+        nutrients_file = 'nutrients.json'
+        if os.path.exists(nutrients_file):
+            with open(nutrients_file, 'r') as f:
+                nutrients_data = json.load(f)
+        else:
+            # Create default nutrients configuration if file doesn't exist
+            nutrients_data = {
+                "available_nutrients": [
+                    {"name": "Veg A", "defaultDosage": 4.0},
+                    {"name": "Veg B", "defaultDosage": 4.0},
+                    {"name": "Bloom A", "defaultDosage": 4.0},
+                    {"name": "Bloom B", "defaultDosage": 4.0},
+                    {"name": "Cake", "defaultDosage": 2.0},
+                    {"name": "PK Synergy", "defaultDosage": 2.0},
+                    {"name": "Runclean", "defaultDosage": 1.0},
+                    {"name": "pH Down", "defaultDosage": 0.5}
+                ],
+                "veg_formula": {
+                    "Veg A": 4.0,
+                    "Veg B": 4.0,
+                    "Cake": 2.0,
+                    "pH Down": 0.5
+                },
+                "bloom_formula": {
+                    "Bloom A": 4.0,
+                    "Bloom B": 4.0,
+                    "PK Synergy": 2.0,
+                    "Cake": 1.0,
+                    "pH Down": 0.5
+                },
+                "pump_name_to_id": {
+                    "Veg A": 1,
+                    "Veg B": 2,
+                    "Bloom A": 3,
+                    "Bloom B": 4,
+                    "Cake": 5,
+                    "PK Synergy": 6,
+                    "Runclean": 7,
+                    "pH Down": 8
+                }
+            }
+            # Save default configuration
+            with open(nutrients_file, 'w') as f:
+                json.dump(nutrients_data, f, indent=2)
+        
+        return jsonify(nutrients_data)
+        
+    except Exception as e:
+        logger.error(f"Error loading nutrients configuration: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/nutrients', methods=['POST'])
+def api_save_nutrients():
+    """Save nutrients configuration"""
+    try:
+        import json
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No nutrients data provided'
+            }), 400
+        
+        # Validate required fields
+        required_fields = ['available_nutrients', 'veg_formula', 'bloom_formula', 'pump_name_to_id']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    'success': False,
+                    'error': f'Missing required field: {field}'
+                }), 400
+        
+        # Save to nutrients.json
+        with open('nutrients.json', 'w') as f:
+            json.dump(data, f, indent=2)
+        
+        logger.info("Nutrients configuration saved successfully")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Nutrients configuration saved successfully',
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error saving nutrients configuration: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

@@ -1,9 +1,12 @@
 <script>
   import { onMount } from 'svelte';
+  import PumpCalibration from './components/PumpCalibration.svelte';
+  import Nutrients from './components/Nutrients.svelte';
   
   let config = $state({});
   let loading = $state(true);
   let saving = $state(false);
+  let savingFormulas = $state(false);
   let activeSection = $state('user');
   
   // User settings - organized for easy editing
@@ -13,12 +16,6 @@
       names: {},
       addresses: {}
     },
-    nutrients: {
-      veg_formula: {},
-      bloom_formula: {},
-      pump_name_to_id: {}
-    },
-    formulas: {},
     timing: {
       status_update_interval: 2.0,
       pump_check_interval: 1.0,
@@ -30,11 +27,27 @@
       max_flow_gallons: 100
     }
   });
-
-  // Available nutrients from pump names
-  let availableNutrients = $derived(() => {
-    return Object.keys(userSettings.pumps.names || {}).map(id => userSettings.pumps.names[id]);
+  
+  // Separate nutrients configuration
+  let nutrientsConfig = $state({
+    available_nutrients: [],
+    veg_formula: {},
+    bloom_formula: {},
+    pump_name_to_id: {}
   });
+
+  // Available nutrients for formulas
+  let availableNutrients = $derived(() => {
+    return (nutrientsConfig.available_nutrients || []).map(n => n.name || n);
+  });
+  
+  // Get default dosage for a nutrient
+  function getDefaultDosage(nutrientName) {
+    const nutrient = (nutrientsConfig.available_nutrients || []).find(n => 
+      (n.name || n) === nutrientName
+    );
+    return nutrient?.defaultDosage || 1.0;
+  }
 
   // Available relays for mix relay selection
   let availableRelays = $derived(() => {
@@ -73,13 +86,40 @@
     } finally {
       loading = false;
     }
+    
+    // Listen for nutrient updates from the Nutrients component
+    const handleNutrientsUpdate = async (event) => {
+      const { nutrients } = event.detail;
+      // Reload nutrients config after changes
+      await loadNutrientsConfig();
+    };
+    
+    window.addEventListener('nutrients-updated', handleNutrientsUpdate);
+    
+    return () => {
+      window.removeEventListener('nutrients-updated', handleNutrientsUpdate);
+    };
   });
   
+  async function loadNutrientsConfig() {
+    try {
+      const response = await fetch('/api/nutrients');
+      if (response.ok) {
+        nutrientsConfig = await response.json();
+      } else {
+        console.error('Failed to load nutrients configuration');
+      }
+    } catch (error) {
+      console.error('Error loading nutrients configuration:', error);
+    }
+  }
+
   async function loadConfig() {
     const response = await fetch('/api/config');
     if (response.ok) {
       config = await response.json();
       organizeSettings();
+      await loadNutrientsConfig(); // Load nutrients separately
     } else {
       throw new Error('Failed to load configuration');
     }
@@ -92,12 +132,6 @@
       names: config.PUMP_NAMES || {},
       addresses: config.PUMP_ADDRESSES || {}
     };
-    userSettings.nutrients = {
-      veg_formula: config.VEG_FORMULA || {},
-      bloom_formula: config.BLOOM_FORMULA || {},
-      pump_name_to_id: config.PUMP_NAME_TO_ID || {}
-    };
-    userSettings.formulas = config.FORMULA_TARGETS || {};
     userSettings.timing = {
       status_update_interval: config.STATUS_UPDATE_INTERVAL || 2.0,
       pump_check_interval: config.PUMP_CHECK_INTERVAL || 1.0,
@@ -132,6 +166,31 @@
     };
   }
   
+  async function saveFormulas() {
+    if (savingFormulas) return;
+    savingFormulas = true;
+    
+    try {
+      const response = await fetch('/api/nutrients', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(nutrientsConfig)
+      });
+      
+      if (response.ok) {
+        console.log('Formulas saved successfully');
+      } else {
+        throw new Error('Failed to save formulas');
+      }
+    } catch (error) {
+      console.error('Error saving formulas:', error);
+    } finally {
+      savingFormulas = false;
+    }
+  }
+
   async function saveConfig() {
     if (saving) return;
     saving = true;
@@ -179,17 +238,35 @@
   }
   
   function addNutrient(formulaType) {
-    const formula = formulaType === 'veg' ? userSettings.nutrients.veg_formula : userSettings.nutrients.bloom_formula;
-    // Find the first available nutrient that's not already in the formula
-    const availableOptions = availableNutrients.filter(nutrient => !formula.hasOwnProperty(nutrient));
+    const availableOptions = availableNutrients().filter(nutrient => {
+      const formula = formulaType === 'veg' ? nutrientsConfig.veg_formula : nutrientsConfig.bloom_formula;
+      return !formula.hasOwnProperty(nutrient);
+    });
+    
     if (availableOptions.length > 0) {
-      formula[availableOptions[0]] = 0.0;
+      const defaultDosage = getDefaultDosage(availableOptions[0]);
+      if (formulaType === 'veg') {
+        nutrientsConfig.veg_formula[availableOptions[0]] = defaultDosage;
+        // Trigger reactivity
+        nutrientsConfig.veg_formula = { ...nutrientsConfig.veg_formula };
+      } else {
+        nutrientsConfig.bloom_formula[availableOptions[0]] = defaultDosage;
+        // Trigger reactivity
+        nutrientsConfig.bloom_formula = { ...nutrientsConfig.bloom_formula };
+      }
     }
   }
   
   function removeNutrient(formulaType, nutrientName) {
-    const formula = formulaType === 'veg' ? userSettings.nutrients.veg_formula : userSettings.nutrients.bloom_formula;
-    delete formula[nutrientName];
+    if (formulaType === 'veg') {
+      delete nutrientsConfig.veg_formula[nutrientName];
+      // Trigger reactivity
+      nutrientsConfig.veg_formula = { ...nutrientsConfig.veg_formula };
+    } else {
+      delete nutrientsConfig.bloom_formula[nutrientName];
+      // Trigger reactivity
+      nutrientsConfig.bloom_formula = { ...nutrientsConfig.bloom_formula };
+    }
   }
 
   function addMixRelay(tankId) {
@@ -328,8 +405,24 @@
           </div>
         </div>
         
-        <!-- Nutrient Formulas -->
+        <!-- Pump Calibration -->
         <div class="settings-group">
+          <div class="group-header">
+            <h3><i class="fas fa-ruler"></i> Pump Calibration</h3>
+          </div>
+          <PumpCalibration pumps={userSettings.pumps} />
+        </div>
+        
+        <!-- Nutrients Management -->
+        <div class="settings-group">
+          <div class="group-header">
+            <h3><i class="fas fa-seedling"></i> Nutrients Library</h3>
+          </div>
+          <Nutrients nutrients={nutrientsConfig.available_nutrients || []} />
+        </div>
+        
+        <!-- Nutrient Formulas -->
+        <div class="settings-group full-width">
           <div class="group-header">
             <h3><i class="fas fa-flask"></i> Nutrient Formulas</h3>
           </div>
@@ -342,15 +435,15 @@
                   <i class="fas fa-plus"></i> Add Nutrient
                 </button>
               </div>
-              {#each Object.entries(userSettings.nutrients.veg_formula) as [nutrient, amount]}
+              {#each Object.entries(nutrientsConfig.veg_formula) as [nutrient, amount]}
                 <div class="nutrient-row">
-                  <select bind:value={userSettings.nutrients.veg_formula[nutrient]} style="display: none;">
+                  <select bind:value={nutrientsConfig.veg_formula[nutrient]} style="display: none;">
                     {#each availableNutrients as nutrientOption}
                       <option value={nutrientOption}>{nutrientOption}</option>
                     {/each}
                   </select>
                   <span class="nutrient-name">{nutrient}</span>
-                  <input type="number" step="0.1" bind:value={userSettings.nutrients.veg_formula[nutrient]} />
+                  <input type="number" step="0.1" bind:value={nutrientsConfig.veg_formula[nutrient]} />
                   <span class="nutrient-unit">ml/gal</span>
                   <button class="btn-remove" onclick={() => removeNutrient('veg', nutrient)} aria-label="Remove {nutrient} from VEG formula">
                     <i class="fas fa-times"></i>
@@ -367,15 +460,15 @@
                   <i class="fas fa-plus"></i> Add Nutrient
                 </button>
               </div>
-              {#each Object.entries(userSettings.nutrients.bloom_formula) as [nutrient, amount]}
+              {#each Object.entries(nutrientsConfig.bloom_formula) as [nutrient, amount]}
                 <div class="nutrient-row">
-                  <select bind:value={userSettings.nutrients.bloom_formula[nutrient]} style="display: none;">
+                  <select bind:value={nutrientsConfig.bloom_formula[nutrient]} style="display: none;">
                     {#each availableNutrients as nutrientOption}
                       <option value={nutrientOption}>{nutrientOption}</option>
                     {/each}
                   </select>
                   <span class="nutrient-name">{nutrient}</span>
-                  <input type="number" step="0.1" bind:value={userSettings.nutrients.bloom_formula[nutrient]} />
+                  <input type="number" step="0.1" bind:value={nutrientsConfig.bloom_formula[nutrient]} />
                   <span class="nutrient-unit">ml/gal</span>
                   <button class="btn-remove" onclick={() => removeNutrient('bloom', nutrient)} aria-label="Remove {nutrient} from BLOOM formula">
                     <i class="fas fa-times"></i>
@@ -383,6 +476,23 @@
                 </div>
               {/each}
             </div>
+          </div>
+          
+          <!-- Save Formulas Button -->
+          <div class="formula-actions">
+            <button 
+              class="btn btn-primary" 
+              onclick={saveFormulas}
+              disabled={savingFormulas}
+            >
+              {#if savingFormulas}
+                <i class="fas fa-spinner fa-spin"></i>
+                Saving Formulas...
+              {:else}
+                <i class="fas fa-save"></i>
+                Save Formulas
+              {/if}
+            </button>
           </div>
         </div>
         
@@ -529,7 +639,7 @@
     {/if}
     
     <!-- Save Button -->
-    <div class="save-section">
+    <div class="save-section full-width">
       <button 
         class="btn btn-primary save-btn {saving ? 'saving' : ''}" 
         onclick={saveConfig}
@@ -550,8 +660,7 @@
 <style>
   .settings-container {
     padding: 2rem;
-    max-width: 1200px;
-    margin: 0 auto;
+    width: 95%;
     background: #1a1a1a;
     color: white;
     min-height: calc(100vh - 4rem);
@@ -613,9 +722,13 @@
   }
   
   .settings-section {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 2rem;
+  }
+  
+  .settings-section .full-width {
+    grid-column: 1 / -1;
   }
   
   .settings-group {
@@ -676,16 +789,19 @@
     min-width: 120px;
     color: #cbd5e1;
     font-size: 0.9rem;
+    flex-shrink: 0;
   }
   
   input[type="text"], input[type="number"], select {
     flex: 1;
+    min-width: 0;
     padding: 0.5rem;
     border: 1px solid #475569;
     border-radius: 0.25rem;
     background: #334155;
     color: white;
     font-size: 0.9rem;
+    box-sizing: border-box;
   }
   
   input:focus, select:focus {
@@ -742,6 +858,14 @@
     color: #94a3b8;
     font-size: 0.85rem;
     min-width: 40px;
+  }
+  
+  .formula-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #475569;
   }
 
   .mix-relays-container {
@@ -911,6 +1035,10 @@
     .section-tab {
       width: 200px;
       justify-content: center;
+    }
+    
+    .settings-section {
+      grid-template-columns: 1fr;
     }
     
     .formulas-container,

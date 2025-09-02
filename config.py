@@ -169,28 +169,28 @@ MOCK_PULSES_PER_INTERVAL = 2      # Pulses to add per interval
 # TANK CONFIGURATION
 # =============================================================================
 
-# Tank definitions
+# Tank definitions  
 TANKS = {
     1: {
         "name": "Tank 1 - Grow 1",
         "capacity_gallons": 100,
-        "fill_relay": 1,        # Tank 1 Nute Dispense
+        "fill_relay": 1,        # Tank 1 Fill
         "mix_relays": [4, 7],   # Tank 1 Mix Relays
-        "send_relay": 10,        # Tank 1 Dispense Send
+        "send_relay": 10,       # Tank 1 Dispense Send
     },
     2: {
         "name": "Tank 2 - Grow 2", 
         "capacity_gallons": 100,
         "fill_relay": 2,        # Tank 2 Fill
-        "mix_relays": [5, 8],   # Tank 2 Mix Relays
-        "send_relay": 11,        # Tank 2 Dispense Send
+        "mix_relays": [5, 8],   # Tank 2 Mix Relays  
+        "send_relay": 11,       # Tank 2 Dispense Send
     },
     3: {
         "name": "Tank 3 - Nursery",
         "capacity_gallons": 35,
         "fill_relay": 3,        # Tank 3 Fill
         "mix_relays": [6, 9],   # Tank 3 Mix Relays
-        "send_relay": 12,        # Tank 3 Dispense Send
+        "send_relay": 12,       # Tank 3 Dispense Send
     }
 }
 
@@ -312,50 +312,11 @@ def validate_flow_meter_id(meter_id):
     return meter_id in FLOW_METER_GPIO_PINS
 
 # =============================================================================
-# NUTRIENT FORMULAS
+# NUTRIENT FORMULAS - MOVED TO nutrients.json
 # =============================================================================
-
-# Nutrient formulas (ml per gallon)
-VEG_FORMULA = {
-    "Veg A": 4.0,      # ml per gallon
-    "Veg B": 4.0,      # ml per gallon
-    "Cake": 2.0,       # ml per gallon
-    "pH Down": 0.5     # ml per gallon (adjust as needed)
-}
-
-BLOOM_FORMULA = {
-    "Bloom A": 4.0,    # ml per gallon
-    "Bloom B": 4.0,    # ml per gallon
-    "PK Synergy": 2.0, # ml per gallon
-    "Cake": 1.0,       # ml per gallon
-    "pH Down": 0.5     # ml per gallon (adjust as needed)
-}
-
-# Formula targets
-FORMULA_TARGETS = {
-    "VEG": {
-        "ph_target": 6.0,
-        "ec_target": 1.4,
-        "formula": VEG_FORMULA
-    },
-    "BLOOM": {
-        "ph_target": 6.2,
-        "ec_target": 1.6,
-        "formula": BLOOM_FORMULA
-    }
-}
-
-# Pump name to ID mapping for formulas
-PUMP_NAME_TO_ID = {
-    "Veg A": 1,
-    "Veg B": 2,
-    "Bloom A": 3,
-    "Bloom B": 4,
-    "Cake": 5,
-    "PK Synergy": 6,
-    "Runclean": 7,
-    "pH Down": 8
-}
+# Note: Nutrient formulas, available nutrients, and pump mappings are now 
+# stored in nutrients.json and managed via the /api/nutrients endpoints.
+# This provides better separation of concerns and easier management.
 
 # Job configuration
 JOB_SETTINGS = {

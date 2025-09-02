@@ -1,0 +1,58 @@
+{
+  "available_nutrients": [
+    {
+      "defaultDosage": 30,
+      "name": "Veg A"
+    },
+    {
+      "defaultDosage": 30,
+      "name": "Veg B"
+    },
+    {
+      "defaultDosage": 30,
+      "name": "Bloom A"
+    },
+    {
+      "defaultDosage": 30,
+      "name": "Bloom B"
+    },
+    {
+      "defaultDosage": 30,
+      "name": "Cake"
+    },
+    {
+      "defaultDosage": 1,
+      "name": "PK Synergy"
+    },
+    {
+      "defaultDosage": 0.2,
+      "name": "Runclean"
+    },
+    {
+      "defaultDosage": 0.5,
+      "name": "pH Down"
+    }
+  ],
+  "bloom_formula": {
+    "Bloom A": 30,
+    "Bloom B": 30,
+    "pH Down": 0.5,
+    "Runclean": 0.2
+  },
+  "pump_name_to_id": {
+    "Bloom A": 3,
+    "Bloom B": 4,
+    "Cake": 5,
+    "PK Synergy": 6,
+    "Runclean": 7,
+    "Veg A": 1,
+    "Veg B": 2,
+    "pH Down": 8
+  },
+  "veg_formula": {
+    "Veg A": 30,
+    "Veg B": 30,
+    "pH Down": 0.5,
+    "Runclean": 0.2
+  }
+}

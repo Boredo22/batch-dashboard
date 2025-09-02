@@ -4,43 +4,56 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture Overview
 
-This is a **Nutrient Mixing System** with dual architecture:
-- **Backend**: Flask web server (`app.py`) that provides REST API endpoints and serves templates
-- **Frontend**: Svelte 5 components with Vite build system for modern JavaScript UI
+This is a **Nutrient Mixing System** with a modern web-based architecture:
+- **Backend**: Flask web server (`app.py`) that provides REST API endpoints for hardware control
+- **Frontend**: Standalone Svelte 5 application with Vite build system in the `frontend/` directory
 
-The system controls physical hardware (pumps, relays, flow meters) through a hardware abstraction layer in the `hardware/` directory.
+The system controls physical hardware (pumps, relays, flow meters, EC/pH sensors) through a comprehensive hardware abstraction layer.
 
 ### Key Components
 
 **Backend (Python)**:
-- `app.py` - Main Flask application with API endpoints and template routes
-- `hardware/hardware_comms.py` - Hardware abstraction layer providing unified interface
-- `hardware/rpi_*.py` - Hardware-specific modules for Raspberry Pi GPIO control
-- `config.py` - System configuration including tank definitions and formulas
+- `app.py` - Flask REST API server with comprehensive endpoints for all hardware control
+- `main.py` - Core feed control system with proven hardware communication patterns
+- `hardware/hardware_comms.py` - Hardware abstraction layer using exact patterns from working `simple_gui.py`
+- `hardware/rpi_*.py` - Hardware-specific controllers for Raspberry Pi GPIO control
+- `config.py` - Centralized system configuration with all hardware mappings and settings
 
 **Frontend (Svelte 5)**:
-- `src/routes/Dashboard.svelte` - Main control interface
-- `src/routes/Status.svelte` - System status monitoring
-- `src/lib/stores/hardware.svelte.js` - Reactive state management using Svelte 5 runes
-- Three separate entry points: `main.js`, `dashboard.js`, `status.js`
+- `frontend/src/App.svelte` - Main application with navigation between three pages
+- `frontend/src/Dashboard.svelte` - Stage 1 hardware testing interface
+- `frontend/src/Stage2Testing.svelte` - Stage 2 job process testing interface
+- `frontend/src/Settings.svelte` - System configuration management
+- `frontend/src/components/` - Modular UI components for each hardware type
+- `frontend/src/main.js` - Single entry point for the Svelte application
 
-**Templates**: Flask Jinja2 templates in `templates/` provide the HTML structure with embedded Svelte mounting points.
+**Hardware Control System**:
+- `FeedControlSystem` class in `main.py` - Core system with proven command processing
+- Direct hardware controllers for pumps, relays, flow meters, and Arduino communication
+- Uses exact same command protocols as the working `simple_gui.py` implementation
 
 ## Development Commands
 
 ### Frontend Development
 ```bash
-npm run dev          # Start Vite dev server with hot reload
-npm run build        # Build for production (outputs to static/dist/)
+cd frontend
+npm run dev          # Start Vite dev server with hot reload on port 5173
+npm run build        # Build for production (outputs to frontend/static/dist/)
 npm run preview      # Preview production build
 npm run watch        # Build and watch for changes
 ```
 
 ### Backend Development
 ```bash
-python app.py        # Start Flask development server
-python simple_gui.py # Alternative GUI interface
+python app.py        # Start Flask REST API server on port 5000
+python main.py       # Start standalone feed control system with CLI
+python simple_gui.py # Original working GUI (reference implementation)
 ```
+
+### Full Stack Development
+1. Start Flask backend: `python app.py`
+2. Start Vite dev server: `cd frontend && npm run dev`
+3. Access frontend at `http://localhost:5173` (proxies API calls to Flask)
 
 ### Hardware Testing
 The system supports both real hardware and mock mode for development without physical devices.
@@ -48,25 +61,33 @@ The system supports both real hardware and mock mode for development without phy
 ## Build System
 
 **Vite Configuration**: 
-- Multiple entry points for different pages (main, dashboard, status)
-- Builds to `static/dist/` for Flask to serve
+- Single entry point in `frontend/src/main.js`
+- Builds to `frontend/static/dist/` directory
 - Proxy setup redirects `/api` calls to Flask backend on port 5000
-- Uses Svelte 5 with runes enabled
+- Uses Svelte 5 with runes enabled for reactive state management
 
-**Important**: The frontend builds JavaScript bundles that Flask serves via templates. Each page has its own entry point and Svelte component.
+**Flask Static Serving**: 
+- Flask serves built Svelte files from `static/dist/` endpoints
+- Main dashboard at `/` serves the built Svelte app
+- All static assets served through Flask for production deployment
 
 ## Key Patterns
 
-**State Management**: Uses Svelte 5 runes (`$state`, `$derived`) in `hardware.svelte.js` for reactive hardware state management.
+**State Management**: Uses Svelte 5 runes (`$state`, `$derived`, `$effect`) for reactive state management directly in components.
 
 **API Communication**: 
 - REST endpoints follow pattern `/api/{hardware_type}/{id}/{action}`
-- Hardware control methods in store handle both API calls and UI state updates
-- Polling system updates hardware status every 10 seconds
+- Direct fetch calls from Svelte components to Flask API endpoints
+- Real-time status updates through periodic polling
 
-**Hardware Abstraction**: All hardware control goes through `hardware_comms.py` which provides a consistent interface regardless of whether using real hardware or mocks.
+**Hardware Abstraction**: All hardware control goes through `hardware_comms.py` which provides a consistent interface using proven working patterns from `simple_gui.py`.
 
-**Error Handling**: Comprehensive error handling with user notifications through toast system and Flask flash messages.
+**Multi-Stage Testing Architecture**:
+- **Stage 1**: Individual hardware component testing (relays, pumps, flow meters, EC/pH)
+- **Stage 2**: Complete job process testing (fill, mix, send operations)
+- **Settings**: System configuration management with user and developer settings
+
+**Error Handling**: Comprehensive error handling with user notifications and detailed logging throughout the system.
 
 ## Svelte 5 Development Rules
 
@@ -93,10 +114,10 @@ The system supports both real hardware and mock mode for development without phy
 - Use `$props()` for component props destructuring
 
 **Component Creation**: When adding new Svelte pages/components:
-1. Create a single `.svelte` file in appropriate directory (`src/routes/` or `src/lib/components/`)
-2. Add corresponding entry point in root directory (e.g., `newpage.js`)
-3. Update `vite.config.js` to include new entry point
-4. Create Flask template in `templates/` directory to mount the component
+1. Create a single `.svelte` file in appropriate directory (`frontend/src/` for pages or `frontend/src/components/` for reusable components)
+2. Import and use the component in the relevant parent component or page
+3. No need to update build configuration - Vite handles imports automatically
+4. Flask serves the built frontend as static files
 
 See `SVELTE_REFERENCE.md` for complete syntax guide.
 
