@@ -2,8 +2,9 @@
   import Dashboard from './Dashboard.svelte';
   import Stage2Testing from './Stage2Testing.svelte';
   import Settings from './Settings.svelte';
+  import HeadGrower from './HeadGrower.svelte';
   
-  let currentPage = $state('stage1');
+  let currentPage = $state('headgrower');
   
   function navigateTo(page) {
     currentPage = page;
@@ -16,6 +17,13 @@
       <h2>Nutrient System Dashboard</h2>
     </div>
     <div class="nav-tabs">
+      <button 
+        class="nav-tab {currentPage === 'headgrower' ? 'active' : ''}"
+        onclick={() => navigateTo('headgrower')}
+      >
+        <i class="fas fa-leaf"></i>
+        Head Grower
+      </button>
       <button 
         class="nav-tab {currentPage === 'stage1' ? 'active' : ''}"
         onclick={() => navigateTo('stage1')}
@@ -41,7 +49,9 @@
   </nav>
 
   <div class="page-content">
-    {#if currentPage === 'stage1'}
+    {#if currentPage === 'headgrower'}
+      <HeadGrower />
+    {:else if currentPage === 'stage1'}
       <Dashboard />
     {:else if currentPage === 'stage2'}
       <Stage2Testing />
