@@ -75,9 +75,11 @@ class FlowMeterController:
                 # Determine interrupt edge
                 edge = lgpio.FALLING_EDGE if FLOW_METER_INTERRUPT_EDGE == "FALLING" else lgpio.RISING_EDGE
                 
-                # Add callback for interrupt
-                callback_id = lgpio.callback(self.h, pin, edge,
-                                           lambda chip, gpio, level, tick, mid=meter_id: self.pulse_interrupt(mid))
+                # Add callback for interrupt (fix lambda closure issue)
+                def make_callback(m_id):
+                    return lambda chip, gpio, level, tick: self.pulse_interrupt(m_id)
+                
+                callback_id = lgpio.callback(self.h, pin, edge, make_callback(meter_id))
                 
                 # Store the callback info
                 self.flow_pins[meter_id] = {
@@ -98,7 +100,16 @@ class FlowMeterController:
         """Handle pulse interrupt from flow meter"""
         if meter_id in self.flow_meters:
             self.flow_meters[meter_id]['pulse_count'] += 1
-            logger.debug(f"Pulse on {get_flow_meter_name(meter_id)}: {self.flow_meters[meter_id]['pulse_count']}")
+            meter_name = get_flow_meter_name(meter_id)
+            pulse_count = self.flow_meters[meter_id]['pulse_count']
+            
+            # Log every pulse for debugging (can be reduced later)
+            logger.info(f"PULSE DETECTED: {meter_name} (ID:{meter_id}) - Count: {pulse_count}")
+            
+            # Also print to console for immediate feedback
+            print(f"🌊 PULSE: {meter_name} - Count: {pulse_count}")
+        else:
+            logger.error(f"Pulse received for unknown meter ID: {meter_id}")
     
     def start_flow(self, meter_id, target_gallons, pulses_per_gallon=None):
         """Start flow monitoring"""
