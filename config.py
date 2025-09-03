@@ -100,8 +100,8 @@ EZO_RESPONSE_CODES = {
 
 # Flow meter GPIO pin mappings
 FLOW_METER_GPIO_PINS = {
-    1: 23,    # Flow meter 1 on GPIO 23
-    2: 24,    # Flow meter 2 on GPIO 24
+    1: 24,    # Flow meter 1 on GPIO 24
+    2: 23,    # Flow meter 2 on GPIO 23
 }
 
 # Flow meter names
