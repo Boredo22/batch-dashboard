@@ -385,6 +385,28 @@ def api_control_relay(relay_id, state):
             'error': str(e)
         }), 500
 
+@app.route('/api/relays/<int:relay_id>/control', methods=['POST'])
+def api_control_relay_json(relay_id):
+    """Control individual relay (JSON format for HeadGrower)"""
+    try:
+        data = request.get_json() or {}
+        relay_state = data.get('state', False)
+        
+        success = control_relay(relay_id, relay_state)
+        
+        return jsonify({
+            'success': success,
+            'relay_id': relay_id,
+            'state': 'ON' if relay_state else 'OFF',
+            'message': f"Relay {relay_id} {'turned on' if relay_state else 'turned off'}" if success else "Command failed"
+        })
+    except Exception as e:
+        logger.error(f"Error controlling relay {relay_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/api/relay/all/off', methods=['POST'])
 def api_all_relays_off():
     """Turn all relays off"""
@@ -431,6 +453,39 @@ def api_dispense_pump(pump_id):
         return jsonify({
             'success': False,
             'error': f'Invalid amount: {e}'
+        }), 400
+    except Exception as e:
+        logger.error(f"Error dispensing from pump {pump_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/pumps/<int:pump_id>/dispense', methods=['POST'])
+def api_dispense_pump_plural(pump_id):
+    """Start pump dispensing (plural endpoint for HeadGrower)"""
+    try:
+        data = request.get_json() or {}
+        amount = float(data.get('volume_ml', data.get('amount', request.args.get('amount', 0))))
+        
+        if not amount:
+            return jsonify({
+                'success': False,
+                'error': 'Volume_ml parameter required'
+            }), 400
+        
+        success = dispense_pump(pump_id, amount)
+        
+        return jsonify({
+            'success': success,
+            'pump_id': pump_id,
+            'volume_ml': amount,
+            'message': f"Dispensing {amount}ml from pump {pump_id}" if success else "Dispense command failed"
+        })
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': f'Invalid volume_ml: {e}'
         }), 400
     except Exception as e:
         logger.error(f"Error dispensing from pump {pump_id}: {e}")
