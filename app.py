@@ -16,13 +16,16 @@ from typing import Dict, Any
 from hardware.hardware_comms import (
     control_relay, dispense_pump, stop_pump, start_flow, stop_flow,
     emergency_stop, get_system_status, get_available_hardware,
-    all_relays_off, cleanup_hardware, start_ec_ph, stop_ec_ph
+    all_relays_off, cleanup_hardware, start_ec_ph, stop_ec_ph,
+    calibrate_pump, clear_pump_calibration, check_pump_calibration_status,
+    pause_pump, get_pump_voltage, get_current_dispensed_volume
 )
 
 # Import configuration constants and all settings
 try:
     import config
     from config import *
+    from config import get_pump_name
 except ImportError:
     # Fallback constants
     MIN_PUMP_VOLUME_ML = 1
@@ -532,19 +535,14 @@ def api_calibrate_pump(pump_id):
                 'error': 'Volumes must be greater than 0'
             }), 400
         
-        # Calculate calibration factor
+        # Calculate calibration factor for logging
         calibration_factor = actual_volume / target_volume
         
         # Log the calibration for debugging
         logger.info(f"Calibrating pump {pump_id}: target={target_volume}ml, actual={actual_volume}ml, factor={calibration_factor:.4f}")
         
-        # TODO: In a full implementation, this would:
-        # 1. Store the calibration factor in pump configuration
-        # 2. Update pump settings to use the new calibration
-        # 3. Save calibration to persistent storage
-        
-        # For now, we'll simulate successful calibration
-        success = True
+        # FIXED: Actually calibrate the pump using hardware_comms
+        success = calibrate_pump(pump_id, actual_volume)
         
         return jsonify({
             'success': success,
@@ -552,7 +550,7 @@ def api_calibrate_pump(pump_id):
             'target_volume': target_volume,
             'actual_volume': actual_volume,
             'calibration_factor': calibration_factor,
-            'message': f"Pump {pump_id} calibrated successfully (factor: {calibration_factor:.4f})" if success else "Calibration failed"
+            'message': f"Pump {pump_id} calibrated successfully (factor: {calibration_factor:.4f})" if success else "Calibration failed - check logs"
         })
         
     except ValueError as e:
@@ -562,6 +560,101 @@ def api_calibrate_pump(pump_id):
         }), 400
     except Exception as e:
         logger.error(f"Error calibrating pump {pump_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/pumps/<int:pump_id>/calibration/clear', methods=['POST'])
+def api_clear_pump_calibration(pump_id):
+    """Clear pump calibration data"""
+    try:
+        success = clear_pump_calibration(pump_id)
+        
+        return jsonify({
+            'success': success,
+            'pump_id': pump_id,
+            'message': f"Pump {pump_id} calibration cleared" if success else "Failed to clear calibration"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error clearing pump {pump_id} calibration: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/pumps/<int:pump_id>/calibration/status', methods=['GET'])
+def api_check_pump_calibration_status(pump_id):
+    """Check pump calibration status"""
+    try:
+        result = check_pump_calibration_status(pump_id)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error checking pump {pump_id} calibration status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/pumps/<int:pump_id>/pause', methods=['POST'])
+def api_pause_pump(pump_id):
+    """Pause pump during dispensing"""
+    try:
+        success = pause_pump(pump_id)
+        
+        return jsonify({
+            'success': success,
+            'pump_id': pump_id,
+            'message': f"Pump {pump_id} paused" if success else "Failed to pause pump"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error pausing pump {pump_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/pumps/<int:pump_id>/status', methods=['GET'])
+def api_get_pump_status(pump_id):
+    """Get comprehensive pump status including voltage, calibration, and current volume"""
+    try:
+        # Get all status info
+        voltage_info = get_pump_voltage(pump_id)
+        calibration_info = check_pump_calibration_status(pump_id)
+        volume_info = get_current_dispensed_volume(pump_id)
+        
+        pump_name = get_pump_name(pump_id)
+        
+        return jsonify({
+            'success': True,
+            'pump_id': pump_id,
+            'pump_name': pump_name,
+            'voltage': voltage_info,
+            'calibration': calibration_info,
+            'current_volume': volume_info
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting pump {pump_id} status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/pumps/<int:pump_id>/volume', methods=['GET'])
+def api_get_current_volume(pump_id):
+    """Get current dispensed volume from pump"""
+    try:
+        result = get_current_dispensed_volume(pump_id)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error getting pump {pump_id} current volume: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
