@@ -61,19 +61,21 @@
         {/if}
 
         <div class="pump-controls">
-          <button 
-            class="control-btn dispense-btn {selectedPump == pump.id ? 'selected' : ''}" 
+          <button
+            class="control-btn dispense-btn {selectedPump == pump.id ? 'selected' : ''}"
             onclick={() => { selectedPump = pump.id; handleDispense(); }}
             disabled={pump.is_dispensing}
+            aria-label="Dispense from {pump.name}"
           >
-            <i class="fas fa-play"></i> DISPENSE
+            <i class="fas fa-play" aria-hidden="true"></i> DISPENSE
           </button>
-          <button 
-            class="control-btn stop-btn" 
+          <button
+            class="control-btn stop-btn"
             onclick={() => { selectedPump = pump.id; handleStop(); }}
             disabled={!pump.is_dispensing}
+            aria-label="Stop {pump.name}"
           >
-            <i class="fas fa-stop"></i> STOP
+            <i class="fas fa-stop" aria-hidden="true"></i> STOP
           </button>
         </div>
       </div>

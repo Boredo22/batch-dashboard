@@ -466,8 +466,8 @@
   <!-- Emergency Controls -->
   <div class="emergency-section">
     <h3>Emergency Controls</h3>
-    <button class="emergency-btn" onclick={emergencyStop}>
-      <i class="fas fa-stop"></i>
+    <button class="emergency-btn" onclick={emergencyStop} aria-label="Emergency stop - turn off all relays immediately">
+      <i class="fas fa-stop" aria-hidden="true"></i>
       STOP ALL RELAYS
     </button>
   </div>

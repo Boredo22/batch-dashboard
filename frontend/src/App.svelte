@@ -17,32 +17,40 @@
       <h2>Nutrient System Dashboard</h2>
     </div>
     <div class="nav-tabs">
-      <button 
+      <button
         class="nav-tab {currentPage === 'headgrower' ? 'active' : ''}"
         onclick={() => navigateTo('headgrower')}
+        aria-label="Navigate to Head Grower operations"
+        aria-current={currentPage === 'headgrower' ? 'page' : false}
       >
-        <i class="fas fa-leaf"></i>
+        <i class="fas fa-leaf" aria-hidden="true"></i>
         Head Grower
       </button>
-      <button 
+      <button
         class="nav-tab {currentPage === 'stage1' ? 'active' : ''}"
         onclick={() => navigateTo('stage1')}
+        aria-label="Navigate to Stage 1 Hardware Testing"
+        aria-current={currentPage === 'stage1' ? 'page' : false}
       >
-        <i class="fas fa-tools"></i>
+        <i class="fas fa-tools" aria-hidden="true"></i>
         Stage 1: Hardware Testing
       </button>
-      <button 
+      <button
         class="nav-tab {currentPage === 'stage2' ? 'active' : ''}"
         onclick={() => navigateTo('stage2')}
+        aria-label="Navigate to Stage 2 Job Testing"
+        aria-current={currentPage === 'stage2' ? 'page' : false}
       >
-        <i class="fas fa-cogs"></i>
+        <i class="fas fa-cogs" aria-hidden="true"></i>
         Stage 2: Job Testing
       </button>
-      <button 
+      <button
         class="nav-tab {currentPage === 'settings' ? 'active' : ''}"
         onclick={() => navigateTo('settings')}
+        aria-label="Navigate to System Settings"
+        aria-current={currentPage === 'settings' ? 'page' : false}
       >
-        <i class="fas fa-sliders-h"></i>
+        <i class="fas fa-sliders-h" aria-hidden="true"></i>
         Settings
       </button>
     </div>

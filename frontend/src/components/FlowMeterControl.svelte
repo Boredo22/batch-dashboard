@@ -50,18 +50,20 @@
           </div>
         </div>
         <div class="flow-controls">
-          <button 
-            class="control-btn start-btn {selectedFlowMeter == meter.id ? 'selected' : ''}" 
+          <button
+            class="control-btn start-btn {selectedFlowMeter == meter.id ? 'selected' : ''}"
             onclick={() => { selectedFlowMeter = meter.id; handleStart(); }}
+            aria-label="Start {meter.name}"
           >
-            <i class="fas fa-play"></i> START
+            <i class="fas fa-play" aria-hidden="true"></i> START
           </button>
-          <button 
-            class="control-btn stop-btn" 
+          <button
+            class="control-btn stop-btn"
             onclick={() => { selectedFlowMeter = meter.id; handleStop(); }}
             disabled={meter.status !== 'running'}
+            aria-label="Stop {meter.name}"
           >
-            <i class="fas fa-stop"></i> STOP
+            <i class="fas fa-stop" aria-hidden="true"></i> STOP
           </button>
         </div>
       </div>

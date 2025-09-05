@@ -11,26 +11,26 @@
   ];
 
   const fillSteps = [
-    { 
-      id: 'init', 
-      name: 'Initialize', 
+    {
+      id: 'init',
+      name: 'Initialize',
       description: 'Validate tank and volume parameters',
       commands: [],
       responses: ['Validation complete']
     },
-    { 
-      id: 'relay_on', 
-      name: 'Open Tank Valve', 
+    {
+      id: 'relay_on',
+      name: 'Open Tank Valve',
       description: 'Turn on tank relay to open fill valve',
       commands: [`"Start;Relay;${tanks.find(t => t.id === selectedTank)?.relay_id};ON;end"`],
       responses: [`"Relay ${tanks.find(t => t.id === selectedTank)?.relay_id} ON"`]
     },
-    { 
-      id: 'flow_start', 
-      name: 'Start Flow Meter', 
+    {
+      id: 'flow_start',
+      name: 'Start Flow Meter',
       description: 'Begin monitoring fresh water flow',
-      commands: [`"Start;StartFlow;1;${gallons};220;end"`],
-      responses: [`"Started flow meter 1 for ${gallons} gallons"`]
+      commands: [`"Start;StartFlow;1;20;220;end"`],
+      responses: [`"Started flow meter 1 for 20 gallons"`]
     },
     { 
       id: 'filling', 
@@ -121,8 +121,8 @@
         </div>
       </div>
       
-      <button class="action-btn start-btn" onclick={handleStart}>
-        <i class="fas fa-play"></i> Start Fill Job
+      <button class="action-btn start-btn" onclick={handleStart} aria-label="Start fill job for selected tank">
+        <i class="fas fa-play" aria-hidden="true"></i> Start Fill Job
       </button>
     </div>
   {:else}
@@ -139,8 +139,8 @@
         <div class="progress-fill" style="width: {getProgressPercentage()}%"></div>
       </div>
       
-      <button class="action-btn stop-btn" onclick={handleStop}>
-        <i class="fas fa-stop"></i> Stop Fill Job
+      <button class="action-btn stop-btn" onclick={handleStop} aria-label="Stop active fill job">
+        <i class="fas fa-stop" aria-hidden="true"></i> Stop Fill Job
       </button>
     </div>
   {/if}

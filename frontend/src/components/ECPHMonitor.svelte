@@ -49,19 +49,21 @@
     </div>
     
     <div class="control-buttons">
-      <button 
-        class="action-btn start-btn {ecPhMonitoring ? 'active' : ''}" 
+      <button
+        class="action-btn start-btn {ecPhMonitoring ? 'active' : ''}"
         onclick={handleStart}
         disabled={ecPhMonitoring}
+        aria-label="Start EC/pH monitoring"
       >
-        <i class="fas fa-play"></i> Start Monitoring
+        <i class="fas fa-play" aria-hidden="true"></i> Start Monitoring
       </button>
-      <button 
-        class="action-btn stop-btn {!ecPhMonitoring ? 'active' : ''}" 
+      <button
+        class="action-btn stop-btn {!ecPhMonitoring ? 'active' : ''}"
         onclick={handleStop}
         disabled={!ecPhMonitoring}
+        aria-label="Stop EC/pH monitoring"
       >
-        <i class="fas fa-stop"></i> Stop Monitoring
+        <i class="fas fa-stop" aria-hidden="true"></i> Stop Monitoring
       </button>
     </div>
     

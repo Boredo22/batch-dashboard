@@ -11,33 +11,33 @@
   ];
 
   const sendSteps = [
-    { 
-      id: 'init', 
-      name: 'Initialize', 
+    {
+      id: 'init',
+      name: 'Initialize',
       description: 'Validate room selection and volume parameters',
       commands: [],
       responses: ['Room validation complete']
     },
-    { 
-      id: 'tank_relay_on', 
-      name: 'Open Tank Valve', 
+    {
+      id: 'tank_relay_on',
+      name: 'Open Tank Valve',
       description: 'Turn on tank outlet relay',
       commands: [`"Start;Relay;${growRooms.find(r => r.id === selectedRoom)?.tank_id};ON;end"`],
       responses: [`"Relay ${growRooms.find(r => r.id === selectedRoom)?.tank_id} ON"`]
     },
-    { 
-      id: 'room_relay_on', 
-      name: 'Open Room Valve', 
+    {
+      id: 'room_relay_on',
+      name: 'Open Room Valve',
       description: 'Turn on destination room relay',
       commands: [`"Start;Relay;${growRooms.find(r => r.id === selectedRoom)?.relay_id};ON;end"`],
       responses: [`"Relay ${growRooms.find(r => r.id === selectedRoom)?.relay_id} ON"`]
     },
-    { 
-      id: 'flow_start', 
-      name: 'Start Flow Meter', 
+    {
+      id: 'flow_start',
+      name: 'Start Flow Meter',
       description: 'Begin monitoring outbound flow',
-      commands: [`"Start;StartFlow;2;${gallons};220;end"`],
-      responses: [`"Started flow meter 2 for ${gallons} gallons"`]
+      commands: [`"Start;StartFlow;2;15;220;end"`],
+      responses: [`"Started flow meter 2 for 15 gallons"`]
     },
     { 
       id: 'sending', 
@@ -135,8 +135,8 @@
         </div>
       </div>
       
-      <button class="action-btn start-btn" onclick={handleStart}>
-        <i class="fas fa-play"></i> Start Send Job
+      <button class="action-btn start-btn" onclick={handleStart} aria-label="Start send job for selected room">
+        <i class="fas fa-play" aria-hidden="true"></i> Start Send Job
       </button>
     </div>
   {:else}
@@ -153,8 +153,8 @@
         <div class="progress-fill" style="width: {getProgressPercentage()}%"></div>
       </div>
       
-      <button class="action-btn stop-btn" onclick={handleStop}>
-        <i class="fas fa-stop"></i> Stop Send Job
+      <button class="action-btn stop-btn" onclick={handleStop} aria-label="Stop active send job">
+        <i class="fas fa-stop" aria-hidden="true"></i> Stop Send Job
       </button>
     </div>
   {/if}

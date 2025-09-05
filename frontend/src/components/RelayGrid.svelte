@@ -11,8 +11,8 @@
 <div class="relay-grid-container">
   <div class="section-header">
     <h3><i class="fas fa-toggle-on"></i> Relay Controls</h3>
-    <button class="emergency-btn" onclick={() => handleRelayControl(0, false)}>
-      <i class="fas fa-power-off"></i> ALL OFF
+    <button class="emergency-btn" onclick={() => handleRelayControl(0, false)} aria-label="Turn off all relays">
+      <i class="fas fa-power-off" aria-hidden="true"></i> ALL OFF
     </button>
   </div>
   
@@ -24,17 +24,19 @@
           <div class="status-dot {relay.state ? 'on' : 'off'}"></div>
         </div>
         <div class="relay-controls">
-          <button 
-            class="control-btn on-btn {relay.state ? 'active' : ''}" 
+          <button
+            class="control-btn on-btn {relay.state ? 'active' : ''}"
             onclick={() => handleRelayControl(relay.id, true)}
             disabled={relay.state}
+            aria-label="Turn on {relay.name}"
           >
             ON {relay.state ? '(ON)' : '(OFF)'}
           </button>
-          <button 
-            class="control-btn off-btn {!relay.state ? 'active' : ''}" 
+          <button
+            class="control-btn off-btn {!relay.state ? 'active' : ''}"
             onclick={() => handleRelayControl(relay.id, false)}
             disabled={!relay.state}
+            aria-label="Turn off {relay.name}"
           >
             OFF {relay.state ? '(ON)' : '(OFF)'}
           </button>

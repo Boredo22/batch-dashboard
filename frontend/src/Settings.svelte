@@ -340,7 +340,7 @@
                 <div class="tank-header">
                   <h4>Tank {tankId}</h4>
                   <button class="btn-remove" onclick={() => removeTank(tankId)} aria-label="Remove Tank {tankId}">
-                    <i class="fas fa-times"></i>
+                    <i class="fas fa-times" aria-hidden="true"></i>
                   </button>
                 </div>
                 <div class="form-row">
@@ -360,6 +360,7 @@
                   <input id="tank-{tankId}-send-relay" type="number" bind:value={tank.send_relay} />
                 </div>
                 <div class="form-row">
+                  <!-- svelte-ignore a11y_label_has_associated_control -->
                   <label>Mix Relays:</label>
                   <div class="mix-relays-container">
                     {#if tank.mix_relays && tank.mix_relays.length > 0}
@@ -370,8 +371,8 @@
                               <option value={relayOption}>{relayOption}</option>
                             {/each}
                           </select>
-                          <button class="btn-remove" onclick={() => removeMixRelay(tankId, index)} aria-label="Remove mix relay">
-                            <i class="fas fa-times"></i>
+                          <button class="btn-remove" onclick={() => removeMixRelay(tankId, index)} aria-label="Remove mix relay {relay}">
+                            <i class="fas fa-times" aria-hidden="true"></i>
                           </button>
                         </div>
                       {/each}
@@ -446,7 +447,7 @@
                   <input type="number" step="0.1" bind:value={nutrientsConfig.veg_formula[nutrient]} />
                   <span class="nutrient-unit">ml/gal</span>
                   <button class="btn-remove" onclick={() => removeNutrient('veg', nutrient)} aria-label="Remove {nutrient} from VEG formula">
-                    <i class="fas fa-times"></i>
+                    <i class="fas fa-times" aria-hidden="true"></i>
                   </button>
                 </div>
               {/each}
@@ -471,7 +472,7 @@
                   <input type="number" step="0.1" bind:value={nutrientsConfig.bloom_formula[nutrient]} />
                   <span class="nutrient-unit">ml/gal</span>
                   <button class="btn-remove" onclick={() => removeNutrient('bloom', nutrient)} aria-label="Remove {nutrient} from BLOOM formula">
-                    <i class="fas fa-times"></i>
+                    <i class="fas fa-times" aria-hidden="true"></i>
                   </button>
                 </div>
               {/each}

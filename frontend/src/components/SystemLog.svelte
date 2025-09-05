@@ -55,8 +55,8 @@
   </div>
   
   <div class="log-footer">
-    <button class="clear-btn" onclick={() => logs.length = 0}>
-      <i class="fas fa-trash"></i> Clear Log
+    <button class="clear-btn" onclick={() => logs.length = 0} aria-label="Clear all log entries">
+      <i class="fas fa-trash" aria-hidden="true"></i> Clear Log
     </button>
   </div>
 </div>

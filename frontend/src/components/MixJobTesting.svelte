@@ -171,8 +171,8 @@
         </select>
       </div>
       
-      <button class="action-btn start-btn" onclick={handleStart}>
-        <i class="fas fa-play"></i> Start Mix Job
+      <button class="action-btn start-btn" onclick={handleStart} aria-label="Start mix job for selected tank">
+        <i class="fas fa-play" aria-hidden="true"></i> Start Mix Job
       </button>
     </div>
   {:else}
@@ -209,8 +209,8 @@
         </div>
       {/if}
       
-      <button class="action-btn stop-btn" onclick={handleStop}>
-        <i class="fas fa-stop"></i> Stop Mix Job
+      <button class="action-btn stop-btn" onclick={handleStop} aria-label="Stop active mix job">
+        <i class="fas fa-stop" aria-hidden="true"></i> Stop Mix Job
       </button>
     </div>
   {/if}

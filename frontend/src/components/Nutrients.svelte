@@ -150,12 +150,13 @@
         step="0.1"
         title="Default dosage in ml per gallon"
       />
-      <button 
+      <button
         class="btn btn-primary"
         onclick={addNutrient}
         disabled={!newNutrientName.trim() || newNutrientDosage <= 0}
+        aria-label="Add new nutrient to library"
       >
-        <i class="fas fa-plus"></i>
+        <i class="fas fa-plus" aria-hidden="true"></i>
         Add Nutrient
       </button>
     </div>
@@ -167,6 +168,7 @@
       <div class="nutrient-item">
         {#if editingIndex === index}
           <div class="edit-inputs">
+            <!-- svelte-ignore a11y_autofocus -->
             <input 
               type="text" 
               bind:value={editingName}
@@ -187,20 +189,20 @@
             />
           </div>
           <div class="edit-actions">
-            <button 
+            <button
               class="btn-save"
               onclick={saveEdit}
               disabled={!editingName.trim() || editingDosage <= 0}
-              title="Save changes"
+              aria-label="Save nutrient changes"
             >
-              <i class="fas fa-check"></i>
+              <i class="fas fa-check" aria-hidden="true"></i>
             </button>
-            <button 
+            <button
               class="btn-cancel"
               onclick={cancelEdit}
-              title="Cancel editing"
+              aria-label="Cancel nutrient editing"
             >
-              <i class="fas fa-times"></i>
+              <i class="fas fa-times" aria-hidden="true"></i>
             </button>
           </div>
         {:else}
@@ -209,19 +211,19 @@
             <span class="nutrient-dosage">{nutrient.defaultDosage} ml/gal</span>
           </div>
           <div class="nutrient-actions">
-            <button 
+            <button
               class="btn-edit"
               onclick={() => startEdit(index)}
-              title="Edit nutrient"
+              aria-label="Edit {nutrient.name} nutrient"
             >
-              <i class="fas fa-edit"></i>
+              <i class="fas fa-edit" aria-hidden="true"></i>
             </button>
-            <button 
+            <button
               class="btn-remove"
               onclick={() => removeNutrient(index)}
-              title="Remove nutrient"
+              aria-label="Remove {nutrient.name} nutrient"
             >
-              <i class="fas fa-trash"></i>
+              <i class="fas fa-trash" aria-hidden="true"></i>
             </button>
           </div>
         {/if}
@@ -238,12 +240,12 @@
   
   <!-- Actions -->
   <div class="nutrients-actions">
-    <button 
+    <button
       class="btn btn-secondary"
       onclick={resetToDefaults}
-      title="Reset to default nutrients"
+      aria-label="Reset nutrients to default list"
     >
-      <i class="fas fa-undo"></i>
+      <i class="fas fa-undo" aria-hidden="true"></i>
       Reset to Defaults
     </button>
     <div class="nutrient-count">

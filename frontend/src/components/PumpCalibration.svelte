@@ -111,17 +111,24 @@
   <div class="calibration-form">
     <!-- Pump Selection -->
     <div class="form-row">
-      <label for="pump-select">Select Pump:</label>
-      <select 
-        id="pump-select" 
-        bind:value={selectedPump}
-        disabled={calibrationStatus !== 'idle'}
-      >
-        <option value="">Choose a pump...</option>
+      <!-- svelte-ignore a11y_label_has_associated_control -->
+      <label>Select Pump:</label>
+      <div class="pump-radio-group">
         {#each availablePumps as pump}
-          <option value={pump.id}>{pump.name} (ID: {pump.id})</option>
+          <label class="pump-radio-option">
+            <input
+              type="radio"
+              bind:group={selectedPump}
+              value={pump.id}
+              disabled={calibrationStatus !== 'idle'}
+            />
+            <span class="pump-radio-label">
+              <span class="pump-name">{pump.name}</span>
+              <span class="pump-id">ID: {pump.id}</span>
+            </span>
+          </label>
         {/each}
-      </select>
+      </div>
     </div>
     
     <!-- Target Volume -->
@@ -156,12 +163,13 @@
         <p>Measure the actual amount dispensed and enter it below</p>
         {#if calibrationStatus === 'measuring'}
           <div class="measurement-input">
-            <input 
-              type="number" 
-              step="0.1" 
-              min="0" 
+            <input
+              type="number"
+              step="0.1"
+              min="0"
               bind:value={actualML}
               placeholder="Actual ml dispensed"
+              aria-label="Enter actual volume dispensed in milliliters"
             />
             <span class="unit">ml</span>
           </div>
@@ -189,33 +197,36 @@
   <!-- Action Buttons -->
   <div class="calibration-actions">
     {#if calibrationStatus === 'idle'}
-      <button 
+      <button
         class="btn btn-primary"
         onclick={startCalibration}
         disabled={!selectedPump || !targetML}
+        aria-label="Start pump calibration process"
       >
-        <i class="fas fa-play"></i>
+        <i class="fas fa-play" aria-hidden="true"></i>
         Start Calibration
       </button>
     {:else if calibrationStatus === 'measuring'}
-      <button 
+      <button
         class="btn btn-success"
         onclick={completeCalibration}
         disabled={!actualML}
+        aria-label="Complete calibration with measured volume"
       >
-        <i class="fas fa-check"></i>
+        <i class="fas fa-check" aria-hidden="true"></i>
         Complete Calibration
       </button>
-      <button 
+      <button
         class="btn btn-secondary"
         onclick={cancelCalibration}
+        aria-label="Cancel calibration process"
       >
-        <i class="fas fa-times"></i>
+        <i class="fas fa-times" aria-hidden="true"></i>
         Cancel
       </button>
     {:else if calibrationStatus === 'dispensing' || calibrationStatus === 'calibrating'}
-      <button class="btn btn-secondary" disabled>
-        <i class="fas fa-spinner fa-spin"></i>
+      <button class="btn btn-secondary" disabled aria-label="Calibration in progress">
+        <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
         Processing...
       </button>
     {/if}
@@ -279,7 +290,7 @@
     font-size: 0.9rem;
   }
   
-  input[type="number"], select {
+  input[type="number"] {
     flex: 1;
     padding: 0.5rem;
     border: 1px solid #475569;
@@ -289,14 +300,73 @@
     font-size: 0.9rem;
   }
   
-  input:focus, select:focus {
+  input[type="number"]:focus {
     outline: none;
     border-color: #06b6d4;
   }
   
-  input:disabled, select:disabled {
+  input[type="number"]:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+  
+  .pump-radio-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.75rem;
+    flex: 1;
+  }
+  
+  .pump-radio-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid #475569;
+    border-radius: 0.375rem;
+    background: #334155;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin: 0;
+  }
+  
+  .pump-radio-option:hover:not(:has(input:disabled)) {
+    border-color: #06b6d4;
+    background: #3f4d5f;
+  }
+  
+  .pump-radio-option:has(input:checked) {
+    border-color: #06b6d4;
+    background: #0f2419;
+    box-shadow: 0 0 0 1px #06b6d4;
+  }
+  
+  .pump-radio-option:has(input:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  .pump-radio-option input[type="radio"] {
+    margin: 0;
+    accent-color: #06b6d4;
+  }
+  
+  .pump-radio-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    flex: 1;
+  }
+  
+  .pump-name {
+    color: #e2e8f0;
+    font-weight: 500;
+    font-size: 0.9rem;
+  }
+  
+  .pump-id {
+    color: #94a3b8;
+    font-size: 0.75rem;
   }
   
   .calibration-steps {
@@ -484,6 +554,15 @@
     
     .form-row label {
       min-width: auto;
+    }
+    
+    .pump-radio-group {
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.5rem;
+    }
+    
+    .pump-radio-option {
+      padding: 0.5rem;
     }
     
     .calibration-actions {
