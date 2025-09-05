@@ -44,17 +44,34 @@
             <div class="status-dot {pump.status === 'running' ? 'on' : 'off'}"></div>
           </div>
         </div>
+        <!-- Progress bar for active dispensing -->
+        {#if pump.is_dispensing && pump.current_volume !== undefined && pump.target_volume !== undefined}
+          <div class="progress-container">
+            <div class="progress-header">
+              <span class="progress-text">Dispensing: {pump.current_volume?.toFixed(1)}ml / {pump.target_volume?.toFixed(1)}ml</span>
+              <span class="progress-percentage">{((pump.current_volume / pump.target_volume) * 100).toFixed(1)}%</span>
+            </div>
+            <div class="progress-bar">
+              <div 
+                class="progress-fill" 
+                style="width: {Math.min((pump.current_volume / pump.target_volume) * 100, 100)}%"
+              ></div>
+            </div>
+          </div>
+        {/if}
+
         <div class="pump-controls">
           <button 
             class="control-btn dispense-btn {selectedPump == pump.id ? 'selected' : ''}" 
             onclick={() => { selectedPump = pump.id; handleDispense(); }}
+            disabled={pump.is_dispensing}
           >
             <i class="fas fa-play"></i> DISPENSE
           </button>
           <button 
             class="control-btn stop-btn" 
             onclick={() => { selectedPump = pump.id; handleStop(); }}
-            disabled={pump.status !== 'running'}
+            disabled={!pump.is_dispensing}
           >
             <i class="fas fa-stop"></i> STOP
           </button>
@@ -344,5 +361,58 @@
 
   .log-example.error .log-type {
     color: #ef4444;
+  }
+
+  .progress-container {
+    margin: 12px 0;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    border: 1px solid #4a5568;
+  }
+
+  .progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .progress-text {
+    font-size: 0.8rem;
+    color: #e2e8f0;
+    font-weight: 500;
+  }
+
+  .progress-percentage {
+    font-size: 0.75rem;
+    color: #22c55e;
+    font-weight: 600;
+  }
+
+  .progress-bar {
+    height: 8px;
+    background: #1a202c;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #4a5568;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #22c55e, #4ade80);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.3);
+    animation: pulse-progress 2s infinite;
+  }
+
+  @keyframes pulse-progress {
+    0%, 100% { 
+      box-shadow: 0 0 6px rgba(34, 197, 94, 0.3);
+    }
+    50% { 
+      box-shadow: 0 0 12px rgba(34, 197, 94, 0.6);
+    }
   }
 </style>

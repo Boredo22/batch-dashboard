@@ -5,14 +5,18 @@
   let calibrationStatus = $state('idle'); // idle, dispensing, measuring, calibrating, complete
   let statusMessage = $state('');
   
-  // Available pumps from props
-  let { pumps = {} } = $props();
-  
+  // Hardcoded pumps 1-8 with i2c addresses 11-18
   let availablePumps = $derived(() => {
-    return Object.entries(pumps.names || {}).map(([id, name]) => ({
-      id: id,
-      name: name
-    }));
+    return [
+      { id: '11', name: 'Pump 1' },
+      { id: '12', name: 'Pump 2' },
+      { id: '13', name: 'Pump 3' },
+      { id: '14', name: 'Pump 4' },
+      { id: '15', name: 'Pump 5' },
+      { id: '16', name: 'Pump 6' },
+      { id: '17', name: 'Pump 7' },
+      { id: '18', name: 'Pump 8' }
+    ];
   });
   
   async function startCalibration() {
@@ -22,7 +26,8 @@
     }
     
     calibrationStatus = 'dispensing';
-    statusMessage = `Dispensing ${targetML}ml from ${pumps.names[selectedPump]}...`;
+    const pumpName = availablePumps.find(p => p.id === selectedPump)?.name || `Pump ${selectedPump}`;
+    statusMessage = `Dispensing ${targetML}ml from ${pumpName}...`;
     
     try {
       const response = await fetch(`/api/pumps/${selectedPump}/dispense`, {
@@ -70,7 +75,8 @@
       
       if (response.ok) {
         calibrationStatus = 'complete';
-        statusMessage = `Calibration complete! Pump ${pumps.names[selectedPump]} is now calibrated.`;
+        const pumpName = availablePumps.find(p => p.id === selectedPump)?.name || `Pump ${selectedPump}`;
+        statusMessage = `Calibration complete! ${pumpName} is now calibrated.`;
         setTimeout(resetCalibration, 3000);
       } else {
         throw new Error('Failed to calibrate');

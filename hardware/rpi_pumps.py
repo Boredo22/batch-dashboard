@@ -371,6 +371,10 @@ class EZOPumpController:
             if not pump_info['connected']:
                 continue
             
+            # Skip if pump is currently dispensing to avoid interfering with operation
+            if pump_info['is_dispensing']:
+                continue
+            
             # Check if voltage polling is needed
             time_since_last_voltage_check = current_time - pump_info['last_voltage_check']
             

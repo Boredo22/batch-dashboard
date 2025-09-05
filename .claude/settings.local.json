@@ -10,6 +10,13 @@
       "Bash(curl:*)",
       "Bash(wsl:*)",
       "Read(/C:\\Users\\bored\\batch-dashboard\\frontend\\src/**)",
+      "Read(/C:\\Users\\bored\\batch-dashboard/**)",
+      "Read(/C:\\Users\\bored\\batch-dashboard\\hardware/**)",
+      "Read(/C:\\Users\\bored\\batch-dashboard/**)",
+      "Read(/C:\\Users\\bored\\batch-dashboard\\frontend\\src/**)",
+      "Read(/C:\\Users\\bored\\batch-dashboard\\frontend\\src\\components/**)",
+      "Read(/C:\\Users\\bored\\batch-dashboard/**)",
+      "Read(/C:\\Users\\bored\\batch-dashboard/**)",
       "Read(/C:\\Users\\bored\\batch-dashboard/**)"
     ],
     "deny": [],

@@ -51,6 +51,9 @@
   let selectedFlowMeter = $state('');
   let flowGallons = $state(1);
   
+  // Progress tracking for log messages
+  let lastProgressReported = $state(new Map()); // pump_id -> last_percentage
+  
   let statusInterval;
 
   // API functions
@@ -92,6 +95,43 @@
         ecValue = data.ec_value || 0;
         phValue = data.ph_value || 0;
         ecPhMonitoring = data.ec_ph_monitoring || false;
+        
+        // Update pump progress information from detailed status
+        if (data.pumps) {
+          pumps = pumps.map(pump => {
+            const statusInfo = data.pumps[pump.id];
+            if (statusInfo) {
+              // Add progress log message for dispensing pumps (every 10% progress)
+              if (statusInfo.is_dispensing && statusInfo.current_volume > 0 && statusInfo.target_volume > 0) {
+                const currentPercent = Math.floor((statusInfo.current_volume / statusInfo.target_volume) * 100 / 10) * 10; // Round to nearest 10%
+                const lastPercent = lastProgressReported.get(pump.id) || -10;
+                
+                if (currentPercent > lastPercent && currentPercent >= 10) {
+                  const progressMsg = `Pump ${pump.id} (${pump.name}): ${statusInfo.current_volume.toFixed(1)}ml / ${statusInfo.target_volume.toFixed(1)}ml (${currentPercent}% complete)`;
+                  addLog(progressMsg);
+                  lastProgressReported.set(pump.id, currentPercent);
+                }
+              }
+              
+              // Check if pump just finished dispensing
+              if (!statusInfo.is_dispensing && pump.is_dispensing) {
+                const completionMsg = `Pump ${pump.id} (${pump.name}) completed dispensing: ${statusInfo.current_volume?.toFixed(1) || 0}ml dispensed`;
+                addLog(completionMsg);
+                lastProgressReported.delete(pump.id); // Clean up tracking
+              }
+              
+              return {
+                ...pump,
+                status: statusInfo.is_dispensing ? 'running' : 'stopped',
+                voltage: statusInfo.voltage || 0,
+                is_dispensing: statusInfo.is_dispensing || false,
+                current_volume: statusInfo.current_volume || 0,
+                target_volume: statusInfo.target_volume || 0
+              };
+            }
+            return pump;
+          });
+        }
       }
     } catch (error) {
       console.error('Error fetching system status:', error);
@@ -180,6 +220,9 @@
         
         addLog(userMessage);
         addLog(rawMessage);
+        
+        // Reset progress tracking for this pump
+        lastProgressReported.set(parseInt(selectedPump), -10);
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
