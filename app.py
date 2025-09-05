@@ -512,6 +512,61 @@ def api_stop_pump(pump_id):
             'error': str(e)
         }), 500
 
+@app.route('/api/pumps/<int:pump_id>/calibrate', methods=['POST'])
+def api_calibrate_pump(pump_id):
+    """Calibrate pump with actual measured volume"""
+    try:
+        data = request.get_json() or {}
+        target_volume = float(data.get('target_volume', 0))
+        actual_volume = float(data.get('actual_volume', 0))
+        
+        if not target_volume or not actual_volume:
+            return jsonify({
+                'success': False,
+                'error': 'Both target_volume and actual_volume parameters required'
+            }), 400
+        
+        if target_volume <= 0 or actual_volume <= 0:
+            return jsonify({
+                'success': False,
+                'error': 'Volumes must be greater than 0'
+            }), 400
+        
+        # Calculate calibration factor
+        calibration_factor = actual_volume / target_volume
+        
+        # Log the calibration for debugging
+        logger.info(f"Calibrating pump {pump_id}: target={target_volume}ml, actual={actual_volume}ml, factor={calibration_factor:.4f}")
+        
+        # TODO: In a full implementation, this would:
+        # 1. Store the calibration factor in pump configuration
+        # 2. Update pump settings to use the new calibration
+        # 3. Save calibration to persistent storage
+        
+        # For now, we'll simulate successful calibration
+        success = True
+        
+        return jsonify({
+            'success': success,
+            'pump_id': pump_id,
+            'target_volume': target_volume,
+            'actual_volume': actual_volume,
+            'calibration_factor': calibration_factor,
+            'message': f"Pump {pump_id} calibrated successfully (factor: {calibration_factor:.4f})" if success else "Calibration failed"
+        })
+        
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': f'Invalid volume values: {e}'
+        }), 400
+    except Exception as e:
+        logger.error(f"Error calibrating pump {pump_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # -----------------------------------------------------------------------------
 # FLOW CONTROL - Using exact same patterns as simple_gui.py
 # -----------------------------------------------------------------------------

@@ -1,36 +1,31 @@
 <script>
-  let selectedPump = $state('');
+  let selectedPumpNumber = $state(1);
   let targetML = $state(10);
   let actualML = $state('');
   let calibrationStatus = $state('idle'); // idle, dispensing, measuring, calibrating, complete
   let statusMessage = $state('');
   
-  // Hardcoded pumps 1-8 with i2c addresses 11-18
-  let availablePumps = $derived(() => {
-    return [
-      { id: '11', name: 'Pump 1' },
-      { id: '12', name: 'Pump 2' },
-      { id: '13', name: 'Pump 3' },
-      { id: '14', name: 'Pump 4' },
-      { id: '15', name: 'Pump 5' },
-      { id: '16', name: 'Pump 6' },
-      { id: '17', name: 'Pump 7' },
-      { id: '18', name: 'Pump 8' }
-    ];
+  // Convert pump number (1-8) to i2c address (11-18)
+  let selectedPump = $derived(() => {
+    return (selectedPumpNumber + 10).toString();
+  });
+  
+  // Get pump name for display
+  let selectedPumpName = $derived(() => {
+    return `Pump ${selectedPumpNumber}`;
   });
   
   async function startCalibration() {
-    if (!selectedPump || !targetML) {
-      statusMessage = 'Please select a pump and target volume';
+    if (!selectedPumpNumber || selectedPumpNumber < 1 || selectedPumpNumber > 8 || !targetML) {
+      statusMessage = 'Please select a pump (1-8) and target volume';
       return;
     }
     
     calibrationStatus = 'dispensing';
-    const pumpName = availablePumps.find(p => p.id === selectedPump)?.name || `Pump ${selectedPump}`;
-    statusMessage = `Dispensing ${targetML}ml from ${pumpName}...`;
+    statusMessage = `Dispensing ${targetML}ml from ${selectedPumpName}...`;
     
     try {
-      const response = await fetch(`/api/pumps/${selectedPump}/dispense`, {
+      const response = await fetch(`/api/pumps/${selectedPumpNumber}/dispense`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -62,7 +57,7 @@
     statusMessage = `Calibrating pump with actual volume: ${actualML}ml...`;
     
     try {
-      const response = await fetch(`/api/pumps/${selectedPump}/calibrate`, {
+      const response = await fetch(`/api/pumps/${selectedPumpNumber}/calibrate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,8 +70,7 @@
       
       if (response.ok) {
         calibrationStatus = 'complete';
-        const pumpName = availablePumps.find(p => p.id === selectedPump)?.name || `Pump ${selectedPump}`;
-        statusMessage = `Calibration complete! ${pumpName} is now calibrated.`;
+        statusMessage = `Calibration complete! ${selectedPumpName} is now calibrated.`;
         setTimeout(resetCalibration, 3000);
       } else {
         throw new Error('Failed to calibrate');
@@ -111,24 +105,22 @@
   <div class="calibration-form">
     <!-- Pump Selection -->
     <div class="form-row">
-      <!-- svelte-ignore a11y_label_has_associated_control -->
-      <label>Select Pump:</label>
-      <div class="pump-radio-group">
-        {#each availablePumps as pump}
-          <label class="pump-radio-option">
-            <input
-              type="radio"
-              bind:group={selectedPump}
-              value={pump.id}
-              disabled={calibrationStatus !== 'idle'}
-            />
-            <span class="pump-radio-label">
-              <span class="pump-name">{pump.name}</span>
-              <span class="pump-id">ID: {pump.id}</span>
-            </span>
-          </label>
-        {/each}
-      </div>
+      <label for="pump-number">Select Pump (1-8):</label>
+      <input
+        id="pump-number"
+        type="number"
+        min="1"
+        max="8"
+        step="1"
+        bind:value={selectedPumpNumber}
+        disabled={calibrationStatus !== 'idle'}
+        placeholder="Enter pump number"
+      />
+      <span class="pump-info">
+        {#if selectedPumpNumber >= 1 && selectedPumpNumber <= 8}
+          → {selectedPumpName} (I2C: {selectedPump})
+        {/if}
+      </span>
     </div>
     
     <!-- Target Volume -->
@@ -200,7 +192,7 @@
       <button
         class="btn btn-primary"
         onclick={startCalibration}
-        disabled={!selectedPump || !targetML}
+        disabled={!selectedPumpNumber || selectedPumpNumber < 1 || selectedPumpNumber > 8 || !targetML}
         aria-label="Start pump calibration process"
       >
         <i class="fas fa-play" aria-hidden="true"></i>
@@ -310,63 +302,11 @@
     cursor: not-allowed;
   }
   
-  .pump-radio-group {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 0.75rem;
-    flex: 1;
-  }
-  
-  .pump-radio-option {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem;
-    border: 1px solid #475569;
-    border-radius: 0.375rem;
-    background: #334155;
-    cursor: pointer;
-    transition: all 0.2s;
-    margin: 0;
-  }
-  
-  .pump-radio-option:hover:not(:has(input:disabled)) {
-    border-color: #06b6d4;
-    background: #3f4d5f;
-  }
-  
-  .pump-radio-option:has(input:checked) {
-    border-color: #06b6d4;
-    background: #0f2419;
-    box-shadow: 0 0 0 1px #06b6d4;
-  }
-  
-  .pump-radio-option:has(input:disabled) {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-  
-  .pump-radio-option input[type="radio"] {
-    margin: 0;
-    accent-color: #06b6d4;
-  }
-  
-  .pump-radio-label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-    flex: 1;
-  }
-  
-  .pump-name {
-    color: #e2e8f0;
-    font-weight: 500;
-    font-size: 0.9rem;
-  }
-  
-  .pump-id {
+  .pump-info {
     color: #94a3b8;
-    font-size: 0.75rem;
+    font-size: 0.85rem;
+    margin-left: 0.5rem;
+    white-space: nowrap;
   }
   
   .calibration-steps {
@@ -556,13 +496,9 @@
       min-width: auto;
     }
     
-    .pump-radio-group {
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 0.5rem;
-    }
-    
-    .pump-radio-option {
-      padding: 0.5rem;
+    .pump-info {
+      margin-left: 0;
+      margin-top: 0.25rem;
     }
     
     .calibration-actions {
