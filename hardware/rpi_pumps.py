@@ -64,16 +64,17 @@ class EZOPumpController:
                 'connected': False
             }
         
-        # Voltage polling control
+        # Voltage polling control - DISABLED to prevent interference with dispenses
         self.voltage_poll_interval = 60.0  # Poll voltage every minute
+        self.voltage_polling_enabled = False  # DISABLED - causing dispense interference
         self.startup_voltage_poll_complete = False
         
         # Initialize I2C bus
         self.initialize_bus()
         
-        # Initialize pumps and poll voltage on startup
+        # Initialize pumps but skip voltage polling on startup
         self.initialize_pumps()
-        self.poll_all_pump_voltages()
+        # self.poll_all_pump_voltages()  # DISABLED - voltage polling causes dispense issues
         self.startup_voltage_poll_complete = True
     
     def initialize_bus(self):
@@ -361,7 +362,11 @@ class EZOPumpController:
         return success_count == total_pumps
     
     def check_voltage_polling_needed(self):
-        """Check if any pumps need voltage polling and perform it"""
+        """Check if any pumps need voltage polling and perform it - DISABLED"""
+        # DISABLED: Voltage polling causes interference with dispenses
+        if not getattr(self, 'voltage_polling_enabled', False):
+            return
+            
         current_time = time.time()
         
         for pump_id in PUMP_ADDRESSES.keys():
