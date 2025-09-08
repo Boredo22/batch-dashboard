@@ -3,6 +3,7 @@
   import Stage2Testing from './Stage2Testing.svelte';
   import Settings from './Settings.svelte';
   import HeadGrower from './HeadGrower.svelte';
+  import Nutrients from './Nutrients.svelte';
   
   let currentPage = $state('headgrower');
   
@@ -25,6 +26,15 @@
       >
         <i class="fas fa-leaf" aria-hidden="true"></i>
         Head Grower
+      </button>
+      <button
+        class="nav-tab {currentPage === 'nutrients' ? 'active' : ''}"
+        onclick={() => navigateTo('nutrients')}
+        aria-label="Navigate to Nutrient Management"
+        aria-current={currentPage === 'nutrients' ? 'page' : false}
+      >
+        <i class="fas fa-tint" aria-hidden="true"></i>
+        Nutrients
       </button>
       <button
         class="nav-tab {currentPage === 'stage1' ? 'active' : ''}"
@@ -59,6 +69,8 @@
   <div class="page-content">
     {#if currentPage === 'headgrower'}
       <HeadGrower />
+    {:else if currentPage === 'nutrients'}
+      <Nutrients />
     {:else if currentPage === 'stage1'}
       <Dashboard />
     {:else if currentPage === 'stage2'}
