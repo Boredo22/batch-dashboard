@@ -1,4 +1,6 @@
 <script>
+  import NuteDispenseProgress from './NuteDispenseProgress.svelte';
+  
   let { pumps = [], selectedPump = $bindable(''), pumpAmount = $bindable(10), onDispensePump, onStopPump } = $props();
 
   async function handleDispense() {
@@ -45,19 +47,17 @@
           </div>
         </div>
         <!-- Progress bar for active dispensing -->
-        {#if pump.is_dispensing && pump.current_volume !== undefined && pump.target_volume !== undefined}
-          <div class="progress-container">
-            <div class="progress-header">
-              <span class="progress-text">Dispensing: {pump.current_volume?.toFixed(1)}ml / {pump.target_volume?.toFixed(1)}ml</span>
-              <span class="progress-percentage">{((pump.current_volume / pump.target_volume) * 100).toFixed(1)}%</span>
-            </div>
-            <div class="progress-bar">
-              <div 
-                class="progress-fill" 
-                style="width: {Math.min((pump.current_volume / pump.target_volume) * 100, 100)}%"
-              ></div>
-            </div>
-          </div>
+        {#if pump.is_dispensing || (pump.current_volume > 0)}
+          <NuteDispenseProgress
+            pumpId={pump.id}
+            pumpName={pump.name}
+            currentVolume={pump.current_volume || 0}
+            targetVolume={pump.target_volume || 0}
+            isDispensing={pump.is_dispensing || false}
+            voltage={pump.voltage || 0}
+            size="compact"
+            showVoltage={false}
+          />
         {/if}
 
         <div class="pump-controls">
@@ -365,56 +365,4 @@
     color: #ef4444;
   }
 
-  .progress-container {
-    margin: 12px 0;
-    padding: 8px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 6px;
-    border: 1px solid #4a5568;
-  }
-
-  .progress-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 6px;
-  }
-
-  .progress-text {
-    font-size: 0.8rem;
-    color: #e2e8f0;
-    font-weight: 500;
-  }
-
-  .progress-percentage {
-    font-size: 0.75rem;
-    color: #22c55e;
-    font-weight: 600;
-  }
-
-  .progress-bar {
-    height: 8px;
-    background: #1a202c;
-    border-radius: 4px;
-    overflow: hidden;
-    border: 1px solid #4a5568;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #22c55e, #4ade80);
-    border-radius: 3px;
-    transition: width 0.3s ease;
-    box-shadow: 0 0 6px rgba(34, 197, 94, 0.3);
-    animation: pulse-progress 2s infinite;
-  }
-
-  @keyframes pulse-progress {
-    0%, 100% { 
-      box-shadow: 0 0 6px rgba(34, 197, 94, 0.3);
-    }
-    50% { 
-      box-shadow: 0 0 12px rgba(34, 197, 94, 0.6);
-    }
-  }
 </style>

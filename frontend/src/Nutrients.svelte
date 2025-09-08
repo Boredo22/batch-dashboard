@@ -1,6 +1,7 @@
 <script>
   import PumpCalibration from './components/PumpCalibration.svelte';
   import Nutrients from './components/Nutrients.svelte';
+  import NuteDispenseProgress from './components/NuteDispenseProgress.svelte';
   
   // Pump configuration from config.py
   const pumpNames = {
@@ -74,7 +75,20 @@
       if (response.ok) {
         const data = await response.json();
         systemStatus = data;
+        
+        // API already returns pumps in the correct array format
         pumps = data.pumps || [];
+        
+        // Ensure all pumps have required fields
+        pumps = pumps.map(pump => ({
+          ...pump,
+          is_dispensing: pump.is_dispensing || pump.status === 'running',
+          current_volume: pump.current_volume || 0,
+          target_volume: pump.target_volume || 0,
+          voltage: pump.voltage || 0,
+          calibrated: pump.calibrated || false
+        }));
+        
         isConnected = true;
         lastUpdate = new Date();
       } else {
@@ -374,19 +388,16 @@
             </div>
             
             <!-- Progress Bar -->
-            {#if isActive && pump}
-              <div class="pump-progress">
-                <div class="progress-info">
-                  <span>{pump.current_volume?.toFixed(1) || 0}ml / {pump.target_volume?.toFixed(1) || amount}ml</span>
-                  <span>{pump.current_volume && pump.target_volume ? ((pump.current_volume / pump.target_volume) * 100).toFixed(1) : 0}%</span>
-                </div>
-                <div class="progress-bar">
-                  <div 
-                    class="progress-fill" 
-                    style="width: {pump.current_volume && pump.target_volume ? Math.min((pump.current_volume / pump.target_volume) * 100, 100) : 0}%"
-                  ></div>
-                </div>
-              </div>
+            {#if (isActive && pump) || (pump && (pump.current_volume > 0 || pump.is_dispensing))}
+              <NuteDispenseProgress
+                pumpId={parseInt(pumpId)}
+                pumpName={pumpName}
+                currentVolume={pump?.current_volume || 0}
+                targetVolume={pump?.target_volume || amount}
+                isDispensing={pump?.is_dispensing || false}
+                voltage={pump?.voltage || 0}
+                size="normal"
+              />
             {/if}
             
             <!-- Calibration Status -->

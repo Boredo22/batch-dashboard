@@ -330,6 +330,7 @@ def api_status():
                 'id': pid,
                 'name': hardware['pumps']['names'].get(pid, f'Pump {pid}'),
                 'status': 'running' if pump_info.get('is_dispensing', False) else 'stopped',
+                'is_dispensing': pump_info.get('is_dispensing', False),
                 'voltage': pump_info.get('voltage', 0.0),
                 'connected': pump_info.get('connected', False),
                 'calibrated': pump_info.get('calibrated', False),

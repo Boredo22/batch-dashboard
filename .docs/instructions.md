@@ -1,546 +1,479 @@
-# =============================================================================
-# PART 1: Enhanced hardware_comms.py additions
-# Add these methods to the HardwareComms class in hardware_comms.py
-# =============================================================================
+# Nutrient Pump Progress Bar Fixes
 
-def calibrate_pump(self, pump_id: int, actual_volume_ml: float) -> bool:
-    """
-    Calibrate EZO pump with actual dispensed volume
+## Problem Analysis
+
+The progress bars for nutrient pump dispensing are not showing up properly due to several issues:
+
+1. **Data Structure Mismatch**: API response format doesn't match component expectations
+2. **Scattered Progress Bar Code**: Multiple implementations instead of reusable component  
+3. **Broken Real-time Updates**: Progress updates from `NuteStat` messages not being processed correctly
+4. **Conditional Rendering Issues**: Progress bars not appearing when they should
+
+## Required Changes
+
+### 1. Create Reusable Progress Bar Component
+
+**File: `frontend/src/components/NuteDispenseProgress.svelte`**
+
+```svelte
+<script>
+  // Props with default values
+  let {
+    pumpId = 0,
+    pumpName = 'Unknown Pump',
+    currentVolume = 0,
+    targetVolume = 0,
+    isDispensing = false,
+    voltage = 0,
+    showVoltage = true,
+    size = 'normal', // 'compact', 'normal', 'large'
+    theme = 'default' // 'default', 'success', 'warning'
+  } = $props();
+
+  // Computed values
+  let progress = $derived(() => {
+    if (!targetVolume || targetVolume === 0) return 0;
+    return Math.min((currentVolume / targetVolume) * 100, 100);
+  });
+
+  let progressText = $derived(() => {
+    return `${currentVolume.toFixed(1)}ml / ${targetVolume.toFixed(1)}ml`;
+  });
+
+  let voltageStatus = $derived(() => {
+    if (voltage >= 5.0 && voltage <= 12.0) return 'normal';
+    return 'warning';
+  });
+
+  let statusText = $derived(() => {
+    if (!isDispensing) return 'Ready';
+    if (progress >= 100) return 'Complete';
+    return 'Dispensing';
+  });
+</script>
+
+<div class="nute-progress {size} {theme}" class:dispensing={isDispensing}>
+  <div class="progress-header">
+    <div class="pump-info">
+      <span class="pump-name">{pumpName}</span>
+      <span class="pump-id">Pump {pumpId}</span>
+    </div>
     
-    Args:
-        pump_id: Pump ID
-        actual_volume_ml: The actual volume that was measured
-    
-    Returns:
-        bool: Success status
-    """
-    from hardware.rpi_pumps import EZOPumpController
-    
-    try:
-        # Create pump controller instance
-        pump_controller = EZOPumpController()
-        
-        # Send calibration command (Cal,{actual_volume})
-        success = pump_controller.calibrate_pump(pump_id, actual_volume_ml)
-        
-        # Clean up
-        pump_controller.close()
-        
-        if success:
-            pump_name = get_pump_name(pump_id)
-            logger.info(f"Calibrated {pump_name} with {actual_volume_ml}ml")
-        else:
-            logger.error(f"Failed to calibrate pump {pump_id}")
-        
-        return success
-        
-    except Exception as e:
-        logger.error(f"Exception calibrating pump {pump_id}: {e}")
-        return False
+    <div class="status-area">
+      {#if showVoltage}
+        <div class="voltage {voltageStatus}">
+          {voltage.toFixed(1)}V
+        </div>
+      {/if}
+      <div class="status-indicator {isDispensing ? 'active' : 'idle'}">
+        {statusText}
+      </div>
+    </div>
+  </div>
 
-def clear_pump_calibration(self, pump_id: int) -> bool:
-    """
-    Clear EZO pump calibration data
-    
-    Args:
-        pump_id: Pump ID
-    
-    Returns:
-        bool: Success status
-    """
-    from hardware.rpi_pumps import EZOPumpController
-    
-    try:
-        pump_controller = EZOPumpController()
-        
-        # Send Cal,clear command
-        response = pump_controller.send_command(pump_id, "Cal,clear")
-        success = response is not None
-        
-        pump_controller.close()
-        
-        if success:
-            pump_name = get_pump_name(pump_id)
-            logger.info(f"Cleared calibration for {pump_name}")
-        
-        return success
-        
-    except Exception as e:
-        logger.error(f"Exception clearing pump {pump_id} calibration: {e}")
-        return False
+  {#if isDispensing || progress > 0}
+    <div class="progress-section">
+      <div class="progress-info">
+        <span class="volume-text">{progressText}</span>
+        <span class="percentage">{progress.toFixed(1)}%</span>
+      </div>
+      
+      <div class="progress-bar">
+        <div 
+          class="progress-fill" 
+          style="width: {progress}%"
+        ></div>
+      </div>
+      
+      {#if isDispensing}
+        <div class="pulse-indicator">
+          <i class="fas fa-circle"></i>
+          <span>Dispensing...</span>
+        </div>
+      {/if}
+    </div>
+  {/if}
+</div>
 
-def check_pump_calibration_status(self, pump_id: int) -> dict:
-    """
-    Check EZO pump calibration status
-    
-    Args:
-        pump_id: Pump ID
-    
-    Returns:
-        dict: Calibration status info
-    """
-    from hardware.rpi_pumps import EZOPumpController
-    
-    try:
-        pump_controller = EZOPumpController()
-        
-        # Send Cal,? command to check calibration status
-        response = pump_controller.send_command(pump_id, "Cal,?")
-        
-        pump_controller.close()
-        
-        if response:
-            # Parse response: ?Cal,0=uncalibrated, ?Cal,1=single point, ?Cal,2=volume, ?Cal,3=both
-            if response.startswith("?Cal,"):
-                cal_status = response.split(",")[1] if "," in response else "0"
-                status_map = {
-                    "0": "uncalibrated",
-                    "1": "single_point",
-                    "2": "volume_calibrated", 
-                    "3": "fully_calibrated"
-                }
-                
-                return {
-                    'success': True,
-                    'pump_id': pump_id,
-                    'calibration_status': status_map.get(cal_status, "unknown"),
-                    'raw_response': response
-                }
-        
-        return {
-            'success': False,
-            'pump_id': pump_id,
-            'calibration_status': 'unknown',
-            'error': 'Failed to get calibration status'
-        }
-        
-    except Exception as e:
-        logger.error(f"Exception checking pump {pump_id} calibration: {e}")
-        return {
-            'success': False,
-            'pump_id': pump_id,
-            'error': str(e)
-        }
-
-def pause_pump(self, pump_id: int) -> bool:
-    """
-    Pause EZO pump during dispensing
-    
-    Args:
-        pump_id: Pump ID
-    
-    Returns:
-        bool: Success status
-    """
-    from hardware.rpi_pumps import EZOPumpController
-    
-    try:
-        pump_controller = EZOPumpController()
-        
-        # Send P command to pause
-        response = pump_controller.send_command(pump_id, "P")
-        success = response is not None
-        
-        pump_controller.close()
-        
-        if success:
-            pump_name = get_pump_name(pump_id)
-            logger.info(f"Paused {pump_name}")
-        
-        return success
-        
-    except Exception as e:
-        logger.error(f"Exception pausing pump {pump_id}: {e}")
-        return False
-
-def get_pump_voltage(self, pump_id: int) -> dict:
-    """
-    Get EZO pump voltage
-    
-    Args:
-        pump_id: Pump ID
-    
-    Returns:
-        dict: Voltage info
-    """
-    from hardware.rpi_pumps import EZOPumpController
-    
-    try:
-        pump_controller = EZOPumpController()
-        
-        # Send PV,? command to get voltage
-        response = pump_controller.send_command(pump_id, "PV,?")
-        
-        pump_controller.close()
-        
-        if response and response.startswith("?PV,"):
-            voltage_str = response.split(",")[1] if "," in response else "0"
-            try:
-                voltage = float(voltage_str)
-                return {
-                    'success': True,
-                    'pump_id': pump_id,
-                    'voltage': voltage,
-                    'raw_response': response
-                }
-            except ValueError:
-                pass
-        
-        return {
-            'success': False,
-            'pump_id': pump_id,
-            'error': 'Failed to get voltage'
-        }
-        
-    except Exception as e:
-        logger.error(f"Exception getting pump {pump_id} voltage: {e}")
-        return {
-            'success': False,
-            'pump_id': pump_id,
-            'error': str(e)
-        }
-
-def get_current_dispensed_volume(self, pump_id: int) -> dict:
-    """
-    Get current dispensed volume from EZO pump
-    
-    Args:
-        pump_id: Pump ID
-    
-    Returns:
-        dict: Volume info
-    """
-    from hardware.rpi_pumps import EZOPumpController
-    
-    try:
-        pump_controller = EZOPumpController()
-        
-        # Send R command to read current volume
-        response = pump_controller.send_command(pump_id, "R")
-        
-        pump_controller.close()
-        
-        if response:
-            try:
-                volume = float(response)
-                return {
-                    'success': True,
-                    'pump_id': pump_id,
-                    'current_volume': volume,
-                    'raw_response': response
-                }
-            except ValueError:
-                pass
-        
-        return {
-            'success': False,
-            'pump_id': pump_id,
-            'error': 'Failed to get current volume'
-        }
-        
-    except Exception as e:
-        logger.error(f"Exception getting pump {pump_id} current volume: {e}")
-        return {
-            'success': False,
-            'pump_id': pump_id,
-            'error': str(e)
-        }
-
-# =============================================================================
-# PART 2: Add convenience functions at bottom of hardware_comms.py
-# =============================================================================
-
-def calibrate_pump(pump_id: int, actual_volume_ml: float) -> bool:
-    """Calibrate pump - convenience function"""
-    return get_hardware_comms().calibrate_pump(pump_id, actual_volume_ml)
-
-def clear_pump_calibration(pump_id: int) -> bool:
-    """Clear pump calibration - convenience function"""
-    return get_hardware_comms().clear_pump_calibration(pump_id)
-
-def check_pump_calibration_status(pump_id: int) -> dict:
-    """Check pump calibration status - convenience function"""
-    return get_hardware_comms().check_pump_calibration_status(pump_id)
-
-def pause_pump(pump_id: int) -> bool:
-    """Pause pump - convenience function"""
-    return get_hardware_comms().pause_pump(pump_id)
-
-def get_pump_voltage(pump_id: int) -> dict:
-    """Get pump voltage - convenience function"""
-    return get_hardware_comms().get_pump_voltage(pump_id)
-
-def get_current_dispensed_volume(pump_id: int) -> dict:
-    """Get current dispensed volume - convenience function"""
-    return get_hardware_comms().get_current_dispensed_volume(pump_id)
-
-# =============================================================================
-# PART 3: Fixed and enhanced Flask API endpoints in app.py
-# =============================================================================
-
-@app.route('/api/pumps/<int:pump_id>/calibrate', methods=['POST'])
-def api_calibrate_pump(pump_id):
-    """Calibrate pump with actual measured volume"""
-    try:
-        data = request.get_json() or {}
-        target_volume = float(data.get('target_volume', 0))
-        actual_volume = float(data.get('actual_volume', 0))
-        
-        if not target_volume or not actual_volume:
-            return jsonify({
-                'success': False,
-                'error': 'Both target_volume and actual_volume parameters required'
-            }), 400
-        
-        if target_volume <= 0 or actual_volume <= 0:
-            return jsonify({
-                'success': False,
-                'error': 'Volumes must be greater than 0'
-            }), 400
-        
-        # Calculate calibration factor for logging
-        calibration_factor = actual_volume / target_volume
-        
-        # Log the calibration for debugging
-        logger.info(f"Calibrating pump {pump_id}: target={target_volume}ml, actual={actual_volume}ml, factor={calibration_factor:.4f}")
-        
-        # FIXED: Actually calibrate the pump using hardware_comms
-        from hardware.hardware_comms import calibrate_pump
-        
-        success = calibrate_pump(pump_id, actual_volume)
-        
-        return jsonify({
-            'success': success,
-            'pump_id': pump_id,
-            'target_volume': target_volume,
-            'actual_volume': actual_volume,
-            'calibration_factor': calibration_factor,
-            'message': f"Pump {pump_id} calibrated successfully (factor: {calibration_factor:.4f})" if success else "Calibration failed - check logs"
-        })
-        
-    except ValueError as e:
-        return jsonify({
-            'success': False,
-            'error': f'Invalid volume values: {e}'
-        }), 400
-    except Exception as e:
-        logger.error(f"Error calibrating pump {pump_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/api/pumps/<int:pump_id>/calibration/clear', methods=['POST'])
-def api_clear_pump_calibration(pump_id):
-    """Clear pump calibration data"""
-    try:
-        from hardware.hardware_comms import clear_pump_calibration
-        
-        success = clear_pump_calibration(pump_id)
-        
-        return jsonify({
-            'success': success,
-            'pump_id': pump_id,
-            'message': f"Pump {pump_id} calibration cleared" if success else "Failed to clear calibration"
-        })
-        
-    except Exception as e:
-        logger.error(f"Error clearing pump {pump_id} calibration: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/api/pumps/<int:pump_id>/calibration/status', methods=['GET'])
-def api_check_pump_calibration_status(pump_id):
-    """Check pump calibration status"""
-    try:
-        from hardware.hardware_comms import check_pump_calibration_status
-        
-        result = check_pump_calibration_status(pump_id)
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Error checking pump {pump_id} calibration status: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/api/pumps/<int:pump_id>/pause', methods=['POST'])
-def api_pause_pump(pump_id):
-    """Pause pump during dispensing"""
-    try:
-        from hardware.hardware_comms import pause_pump
-        
-        success = pause_pump(pump_id)
-        
-        return jsonify({
-            'success': success,
-            'pump_id': pump_id,
-            'message': f"Pump {pump_id} paused" if success else "Failed to pause pump"
-        })
-        
-    except Exception as e:
-        logger.error(f"Error pausing pump {pump_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/api/pumps/<int:pump_id>/status', methods=['GET'])
-def api_get_pump_status(pump_id):
-    """Get comprehensive pump status including voltage, calibration, and current volume"""
-    try:
-        from hardware.hardware_comms import (
-            get_pump_voltage, 
-            check_pump_calibration_status,
-            get_current_dispensed_volume
-        )
-        
-        # Get all status info
-        voltage_info = get_pump_voltage(pump_id)
-        calibration_info = check_pump_calibration_status(pump_id)
-        volume_info = get_current_dispensed_volume(pump_id)
-        
-        pump_name = get_pump_name(pump_id)
-        
-        return jsonify({
-            'success': True,
-            'pump_id': pump_id,
-            'pump_name': pump_name,
-            'voltage': voltage_info,
-            'calibration': calibration_info,
-            'current_volume': volume_info
-        })
-        
-    except Exception as e:
-        logger.error(f"Error getting pump {pump_id} status: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-@app.route('/api/pumps/<int:pump_id>/volume', methods=['GET'])
-def api_get_current_volume(pump_id):
-    """Get current dispensed volume from pump"""
-    try:
-        from hardware.hardware_comms import get_current_dispensed_volume
-        
-        result = get_current_dispensed_volume(pump_id)
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Error getting pump {pump_id} current volume: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-# =============================================================================
-# PART 4: Enhanced Svelte frontend component improvements
-# Add these features to PumpCalibration.svelte
-# =============================================================================
-
-/*
-Enhanced PumpCalibration.svelte additions:
-
-1. Add calibration status checking before starting calibration
-2. Add ability to clear calibration
-3. Add real-time volume monitoring during dispensing
-4. Add pause/resume functionality
-5. Better error handling and user feedback
-
-Add these reactive statements and functions:
-
-let calibrationStatusInfo = $state(null);
-let isCheckingStatus = $state(false);
-let currentVolumeInfo = $state(null);
-let volumeCheckInterval = $state(null);
-
-// Check calibration status
-async function checkCalibrationStatus() {
-  isCheckingStatus = true;
-  try {
-    const response = await fetch(`/api/pumps/${selectedPumpNumber}/calibration/status`);
-    const data = await response.json();
-    calibrationStatusInfo = data;
-  } catch (error) {
-    statusMessage = `Error checking calibration status: ${error.message}`;
+<style>
+  .nute-progress {
+    background: #1a202c;
+    border: 2px solid #4a5568;
+    border-radius: 12px;
+    padding: 16px;
+    transition: all 0.3s ease;
+    position: relative;
   }
-  isCheckingStatus = false;
-}
 
-// Clear calibration
-async function clearCalibration() {
-  try {
-    const response = await fetch(`/api/pumps/${selectedPumpNumber}/calibration/clear`, {
-      method: 'POST'
-    });
-    
-    if (response.ok) {
-      statusMessage = 'Calibration cleared successfully';
-      await checkCalibrationStatus();
-    } else {
-      throw new Error('Failed to clear calibration');
+  .nute-progress.dispensing {
+    border-color: #22c55e;
+    background: #0f1f0f;
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.2);
+    animation: pulse-border 2s infinite;
+  }
+
+  @keyframes pulse-border {
+    0%, 100% { border-color: #22c55e; }
+    50% { border-color: #4ade80; }
+  }
+
+  .progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .pump-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .pump-name {
+    color: #e2e8f0;
+    font-weight: 600;
+    font-size: 1rem;
+  }
+
+  .pump-id {
+    color: #94a3b8;
+    font-size: 0.8rem;
+  }
+
+  .status-area {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .voltage {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid;
+  }
+
+  .voltage.normal {
+    color: #22c55e;
+    border-color: #22c55e;
+    background: rgba(34, 197, 94, 0.1);
+  }
+
+  .voltage.warning {
+    color: #f59e0b;
+    border-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+  }
+
+  .status-indicator {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.2s;
+  }
+
+  .status-indicator.active {
+    color: #22c55e;
+    background: rgba(34, 197, 94, 0.15);
+    animation: pulse-text 2s infinite;
+  }
+
+  .status-indicator.idle {
+    color: #94a3b8;
+    background: rgba(148, 163, 184, 0.1);
+  }
+
+  @keyframes pulse-text {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+
+  .progress-section {
+    margin-top: 12px;
+  }
+
+  .progress-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .volume-text {
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+
+  .percentage {
+    color: #22c55e;
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+
+  .progress-bar {
+    height: 8px;
+    background: #0f172a;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #334155;
+    position: relative;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #22c55e, #4ade80);
+    border-radius: 3px;
+    transition: width 0.5s ease;
+    position: relative;
+  }
+
+  .dispensing .progress-fill {
+    box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+    animation: progress-glow 2s infinite;
+  }
+
+  @keyframes progress-glow {
+    0%, 100% { 
+      box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
     }
-  } catch (error) {
-    statusMessage = `Error clearing calibration: ${error.message}`;
+    50% { 
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.8);
+    }
   }
-}
 
-// Monitor current volume during dispensing
-function startVolumeMonitoring() {
-  if (volumeCheckInterval) clearInterval(volumeCheckInterval);
-  
-  volumeCheckInterval = setInterval(async () => {
-    try {
-      const response = await fetch(`/api/pumps/${selectedPumpNumber}/volume`);
+  .pulse-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    color: #22c55e;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .pulse-indicator i {
+    animation: pulse-dot 1.5s infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+</style>
+```
+
+### 2. Fix Main Nutrients.svelte Component
+
+**File: `frontend/src/Nutrients.svelte`**
+
+**Key Changes Needed:**
+
+1. **Import the new progress component:**
+```javascript
+import NuteDispenseProgress from './components/NuteDispenseProgress.svelte';
+```
+
+2. **Fix data structure mapping in fetchSystemStatus():**
+```javascript
+async function fetchSystemStatus() {
+  try {
+    const response = await fetch('/api/status');
+    if (response.ok) {
       const data = await response.json();
-      currentVolumeInfo = data;
-    } catch (error) {
-      console.error('Error monitoring volume:', error);
-    }
-  }, 1000);
-}
-
-function stopVolumeMonitoring() {
-  if (volumeCheckInterval) {
-    clearInterval(volumeCheckInterval);
-    volumeCheckInterval = null;
-  }
-}
-
-// Pause pump
-async function pausePump() {
-  try {
-    const response = await fetch(`/api/pumps/${selectedPumpNumber}/pause`, {
-      method: 'POST'
-    });
-    
-    if (response.ok) {
-      statusMessage = 'Pump paused - dispense same command again to resume';
+      systemStatus = data;
+      
+      // Map API response to expected pump structure
+      pumps = (data.pumps || []).map(pump => ({
+        id: pump.id,
+        name: pumpNames[pump.id] || `Pump ${pump.id}`,
+        status: pump.is_dispensing ? 'running' : 'stopped',
+        voltage: pump.voltage || 0,
+        is_dispensing: pump.is_dispensing || false,
+        current_volume: pump.current_volume || 0,
+        target_volume: pump.target_volume || 0,
+        calibrated: pump.calibrated || false
+      }));
+      
+      isConnected = true;
+      lastUpdate = new Date();
     } else {
-      throw new Error('Failed to pause pump');
+      isConnected = false;
     }
   } catch (error) {
-    statusMessage = `Error pausing pump: ${error.message}`;
+    console.error('Failed to fetch status:', error);
+    isConnected = false;
   }
 }
+```
 
-// Call checkCalibrationStatus when component mounts or pump changes
-$effect(() => {
-  if (selectedPumpNumber) {
-    checkCalibrationStatus();
+3. **Replace existing progress bar implementation in pump grid:**
+```svelte
+<!-- In the pump grid section, replace the existing progress bar with: -->
+{#each Object.entries(pumpNames) as [pumpId, pumpName]}
+  {@const pump = pumps.find(p => p.id == pumpId)}
+  {@const isActive = dispensingPumps.has(parseInt(pumpId))}
+  {@const amount = dispenseAmounts[pumpId] || 0}
+  
+  <div class="pump-card {isActive ? 'dispensing' : ''} {amount > 0 ? 'selected' : ''}">
+    <!-- Volume Input -->
+    <div class="volume-control">
+      <label for="pump-{pumpId}-amount">Amount (ml)</label>
+      <input
+        id="pump-{pumpId}-amount"
+        type="number"
+        min="0"
+        max="5000"
+        step="0.1"
+        bind:value={dispenseAmounts[pumpId]}
+        disabled={isDispensing}
+      />
+    </div>
+    
+    <!-- Replace existing progress bar section with the new component -->
+    <NuteDispenseProgress
+      pumpId={parseInt(pumpId)}
+      pumpName={pumpName}
+      currentVolume={pump?.current_volume || 0}
+      targetVolume={pump?.target_volume || amount}
+      isDispensing={pump?.is_dispensing || false}
+      voltage={pump?.voltage || 0}
+      size="normal"
+    />
+    
+    <!-- Rest of pump card content -->
+  </div>
+{/each}
+```
+
+### 3. Fix PumpControl.svelte Component
+
+**File: `frontend/src/components/PumpControl.svelte`**
+
+**Changes:**
+1. Import the new progress component
+2. Replace existing progress bar implementation with:
+
+```svelte
+<!-- Replace existing progress container with: -->
+{#if pump.is_dispensing && pump.current_volume !== undefined && pump.target_volume !== undefined}
+  <NuteDispenseProgress
+    pumpId={pump.id}
+    pumpName={pump.name}
+    currentVolume={pump.current_volume}
+    targetVolume={pump.target_volume}
+    isDispensing={pump.is_dispensing}
+    voltage={pump.voltage}
+    size="compact"
+  />
+{/if}
+```
+
+### 4. Fix Real-time Data Updates
+
+**In multiple files that fetch system status, ensure this pattern:**
+
+```javascript
+// Make sure API endpoint returns proper structure
+async function fetchSystemStatus() {
+  try {
+    const response = await fetch('/api/status');
+    if (response.ok) {
+      const data = await response.json();
+      
+      // Ensure pumps array has correct structure for progress bars
+      if (data.pumps) {
+        // Convert API response to standardized pump objects
+        const updatedPumps = Object.entries(data.pumps).map(([pumpId, pumpData]) => ({
+          id: parseInt(pumpId),
+          name: pumpNames[pumpId] || `Pump ${pumpId}`,
+          status: pumpData.is_dispensing ? 'running' : 'stopped',
+          voltage: pumpData.voltage || 0,
+          is_dispensing: pumpData.is_dispensing || false,
+          current_volume: pumpData.current_volume || 0,
+          target_volume: pumpData.target_volume || 0,
+          calibrated: pumpData.calibrated || false
+        }));
+        
+        pumps = updatedPumps;
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch status:', error);
   }
-});
+}
+```
 
-// Clean up interval on component unmount
-$effect(() => {
-  return () => {
-    stopVolumeMonitoring();
-  };
-});
-*/
+### 5. Backend API Verification
+
+**Ensure the Flask API (`app.py`) returns the correct structure:**
+
+```python
+# In the /api/status endpoint, ensure pump data includes:
+pump_status = {
+    "pumps": {
+        str(pump_id): {
+            "id": pump_id,
+            "is_dispensing": pump_info.get('is_dispensing', False),
+            "current_volume": pump_info.get('current_volume', 0),
+            "target_volume": pump_info.get('target_volume', 0),
+            "voltage": pump_info.get('voltage', 0),
+            "calibrated": pump_info.get('calibrated', False)
+        }
+        for pump_id, pump_info in all_pump_status.items()
+    }
+}
+```
+
+### 6. Handle NuteStat Updates
+
+**Ensure the main.py properly sends NuteStat updates:**
+
+```python
+# In hardware_comms.py or main.py, when processing NuteStat messages:
+def _handle_nute_stat_update(self, parts):
+    """Handle: Start;Update;NuteStat;5;ON;281.67;500.00;end"""
+    if len(parts) >= 7:
+        pump_id = int(parts[3])
+        status = parts[4]  # "ON" or "OFF"
+        current_volume = float(parts[5])
+        target_volume = float(parts[6])
+        
+        # Update pump info that will be returned by /api/status
+        if pump_id in self.pump_status:
+            self.pump_status[pump_id].update({
+                'current_volume': current_volume,
+                'target_volume': target_volume,
+                'is_dispensing': status == "ON"
+            })
+```
+
+## Testing the Fixes
+
+1. **Start a nutrient dispense operation**
+2. **Verify progress bars appear** in both Nutrients.svelte and any other components
+3. **Check real-time updates** - progress should update every second based on NuteStat messages
+4. **Test multiple pumps** dispensing simultaneously
+5. **Verify completion** - progress bars should show 100% and stop animating when done
+
+## Expected Behavior After Fixes
+
+- Progress bars will show up immediately when dispensing starts
+- Real-time updates every second showing current/target volume and percentage
+- Smooth animations and visual feedback during dispensing
+- Consistent progress bar appearance across all components
+- Proper completion state when target volume is reached
+
+## Key Files to Modify
+
+1. `frontend/src/components/NuteDispenseProgress.svelte` (new file)
+2. `frontend/src/Nutrients.svelte` (import and use new component)
+3. `frontend/src/components/PumpControl.svelte` (replace progress bar)
+4. `frontend/src/Dashboard.svelte` (update status mapping)
+5. `app.py` (verify API response structure)
+6. `hardware_comms.py` or `main.py` (ensure proper NuteStat handling)
+
+The main issue was the mismatch between what the progress bar components expected (`current_volume`, `target_volume`, `is_dispensing`) and what the API was actually providing. This comprehensive fix ensures consistent data structures throughout the application.
