@@ -1,197 +1,154 @@
 #!/usr/bin/env python3
 """
-Simple GPIO Pulse Detection Test
-Tests basic GPIO input and pulse detection functionality
-
-This script will help debug optocoupler connections and GPIO setup
+Flow Meter Pulse Test Script
+Tests GPIO 24 for flow meter pulses using voltage divider
 """
 
+import lgpio
 import time
 import signal
 import sys
-import os
 
-# Add parent directory to Python path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-try:
-    import lgpio
-    MOCK_MODE = False
-    print("✓ Using real lgpio library")
-except ImportError:
-    print("⚠️  lgpio not available - using mock mode")
-    from hardware.mock_hardware_libs import lgpio
-    MOCK_MODE = True
-
-from config import FLOW_METER_GPIO_PINS, FLOW_METER_NAMES
+# Configuration
+GPIO_PIN = 24  # Your flow meter GPIO pin
+TEST_DURATION = 30  # Test for 30 seconds
 
 # Global variables
 h = None
-running = True
-pulse_counts = {}
-last_pulse_times = {}
+pulse_count = 0
+start_time = None
 
-def signal_handler(sig, frame):
-    """Handle Ctrl+C gracefully"""
-    global running, h
-    print("\n🛑 Stopping GPIO test...")
-    running = False
-    cleanup_gpio()
-    sys.exit(0)
+def pulse_callback(chip, gpio, level, tick):
+    """Callback function for each pulse"""
+    global pulse_count, start_time
+    pulse_count += 1
+    
+    # Calculate time since start
+    elapsed = time.time() - start_time
+    
+    print(f"💧 PULSE #{pulse_count} detected! ({elapsed:.1f}s elapsed)")
 
-def pulse_callback(chip, gpio, level, tick, meter_id):
-    """Callback for GPIO pulse detection"""
-    global pulse_counts, last_pulse_times
-    
-    current_time = time.time()
-    
-    if meter_id not in pulse_counts:
-        pulse_counts[meter_id] = 0
-    
-    pulse_counts[meter_id] += 1
-    
-    # Calculate time since last pulse
-    time_diff = 0
-    if meter_id in last_pulse_times:
-        time_diff = current_time - last_pulse_times[meter_id]
-    
-    last_pulse_times[meter_id] = current_time
-    
-    meter_name = FLOW_METER_NAMES.get(meter_id, f"Meter {meter_id}")
-    
-    print(f"🌊 PULSE! {meter_name} (GPIO {gpio}): Count={pulse_counts[meter_id]}, "
-          f"Level={level}, Time since last={time_diff:.3f}s")
-
-def cleanup_gpio():
+def cleanup(signum=None, frame=None):
     """Clean up GPIO resources"""
     global h
+    print("\n🛑 Cleaning up...")
+    
     if h is not None:
         try:
-            # Close the GPIO chip
+            lgpio.gpio_free(h, GPIO_PIN)
             lgpio.gpiochip_close(h)
-            h = None
-            print("✓ GPIO cleanup completed")
-        except Exception as e:
-            print(f"❌ Error during cleanup: {e}")
-
-def test_gpio_basic_read(gpio_pin):
-    """Test basic GPIO pin reading"""
-    global h
+        except:
+            pass
     
-    if h is None:
-        return False
-        
+    print("✅ Cleanup complete")
+    sys.exit(0)
+
+def test_gpio_level():
+    """Test current GPIO level"""
     try:
-        # Read current level
-        level = lgpio.gpio_read(h, gpio_pin)
+        level = lgpio.gpio_read(h, GPIO_PIN)
+        voltage = "~3V (HIGH)" if level == 1 else "~0V (LOW)"
+        print(f"📊 Current GPIO {GPIO_PIN} level: {level} ({voltage})")
         return level
     except Exception as e:
-        print(f"❌ Error reading GPIO {gpio_pin}: {e}")
+        print(f"❌ Error reading GPIO: {e}")
         return None
 
 def main():
-    global h, running, pulse_counts
+    """Main test function"""
+    global h, start_time
     
-    # Setup signal handler
-    signal.signal(signal.SIGINT, signal_handler)
-    
-    print("=" * 70)
-    print("🧪 GPIO PULSE DETECTION TEST")
-    print(f"   Mode: {'MOCK HARDWARE' if MOCK_MODE else 'REAL HARDWARE'}")
-    print("=" * 70)
+    print("🌊 Flow Meter Pulse Test")
+    print("=" * 40)
+    print(f"📍 GPIO Pin: {GPIO_PIN}")
+    print(f"⏱️  Test Duration: {TEST_DURATION} seconds")
+    print(f"🔧 Setup: 24V → Voltage Divider → GPIO {GPIO_PIN}")
     print()
     
-    if MOCK_MODE:
-        print("⚠️  Running in mock mode - no real GPIO testing possible")
-        print("   Install lgpio with: pip install lgpio")
-        return
+    # Set up signal handler for clean exit
+    signal.signal(signal.SIGINT, cleanup)
+    signal.signal(signal.SIGTERM, cleanup)
     
     try:
         # Initialize GPIO
-        print("🔧 Initializing GPIO...")
+        print("🔌 Initializing GPIO...")
         h = lgpio.gpiochip_open(0)
-        print("✓ GPIO chip opened successfully")
         
-        # Configure and test each flow meter GPIO pin
-        callbacks = {}
+        # Configure GPIO as input with pull-up
+        lgpio.gpio_claim_input(h, GPIO_PIN, lgpio.SET_PULL_UP)
+        print(f"✅ GPIO {GPIO_PIN} configured as input with pull-up")
         
-        for meter_id, gpio_pin in FLOW_METER_GPIO_PINS.items():
-            meter_name = FLOW_METER_NAMES.get(meter_id, f"Meter {meter_id}")
-            
-            print(f"\n📍 Setting up {meter_name} on GPIO {gpio_pin}...")
-            
-            try:
-                # Configure as input with pull-up resistor
-                lgpio.gpio_claim_input(h, gpio_pin, lgpio.SET_PULL_UP)
-                print(f"  ✓ GPIO {gpio_pin} configured as input with pull-up")
-                
-                # Test basic reading
-                initial_level = test_gpio_basic_read(gpio_pin)
-                if initial_level is not None:
-                    print(f"  ✓ Initial level: {initial_level} ({'HIGH' if initial_level else 'LOW'})")
-                else:
-                    print(f"  ❌ Cannot read GPIO {gpio_pin}")
-                    continue
-                
-                # Setup interrupt callback for FALLING edge (typical for optocouplers)
-                callback_id = lgpio.callback(h, gpio_pin, lgpio.FALLING_EDGE,
-                                           lambda chip, gpio, level, tick, mid=meter_id: pulse_callback(chip, gpio, level, tick, mid))
-                
-                callbacks[meter_id] = callback_id
-                pulse_counts[meter_id] = 0
-                
-                print(f"  ✓ Interrupt callback setup for FALLING edge")
-                
-            except Exception as e:
-                print(f"  ❌ Error setting up GPIO {gpio_pin}: {e}")
-                continue
+        # Test current level
+        print("\n🔍 Testing current GPIO state...")
+        initial_level = test_gpio_level()
         
-        if not callbacks:
-            print("\n❌ No GPIO pins configured successfully!")
+        if initial_level is None:
+            print("❌ Cannot read GPIO level - check connections!")
+            cleanup()
             return
         
-        print(f"\n✓ Successfully configured {len(callbacks)} flow meter GPIO pins")
-        print("\n" + "=" * 70)
-        print("💡 TESTING INSTRUCTIONS:")
-        print("   1. Turn on water flow through your flow meters")
-        print("   2. Watch for pulse messages above")
-        print("   3. Check that optocoupler LED is blinking")
-        print("   4. Verify GPIO levels change with flow")
-        print("   5. Press Ctrl+C to stop")
-        print("=" * 70)
+        # Set up interrupt callback for FALLING edge (pulse detection)
+        print(f"\n⚡ Setting up interrupt on FALLING edge...")
+        callback_id = lgpio.callback(h, GPIO_PIN, lgpio.FALLING_EDGE, pulse_callback)
+        print(f"✅ Interrupt callback registered")
+        
+        print(f"\n🎯 STARTING PULSE DETECTION...")
+        print(f"💡 Expectations:")
+        print(f"   • Idle state: GPIO reads HIGH (~3V)")
+        print(f"   • Pulse state: GPIO reads LOW (~0V)")
+        print(f"   • Trigger: FALLING edge (HIGH → LOW)")
+        print()
+        print(f"🚰 Now test your flow meter:")
+        print(f"   • Turn on water/pump")
+        print(f"   • Manually spin the impeller")
+        print(f"   • Tap the sensor gently")
         print()
         
-        # Main monitoring loop
-        last_status_time = time.time()
+        start_time = time.time()
         
-        while running:
-            current_time = time.time()
+        # Monitor for pulses
+        for seconds in range(TEST_DURATION):
+            remaining = TEST_DURATION - seconds
+            print(f"\r⏳ Monitoring... {remaining:2d}s remaining | Pulses: {pulse_count:4d}", end="", flush=True)
             
-            # Print status every 5 seconds
-            if current_time - last_status_time >= 5.0:
-                print(f"\n📊 STATUS UPDATE - {time.strftime('%H:%M:%S')}")
-                
-                for meter_id, gpio_pin in FLOW_METER_GPIO_PINS.items():
-                    meter_name = FLOW_METER_NAMES.get(meter_id, f"Meter {meter_id}")
-                    count = pulse_counts.get(meter_id, 0)
-                    
-                    # Read current GPIO level
-                    current_level = test_gpio_basic_read(gpio_pin)
-                    level_str = "HIGH" if current_level else "LOW" if current_level is not None else "ERROR"
-                    
-                    print(f"  {meter_name:15s} (GPIO {gpio_pin:2d}): {count:4d} pulses, Level: {level_str}")
-                
-                last_status_time = current_time
-                print()
+            # Check GPIO level every 5 seconds
+            if seconds % 5 == 0 and seconds > 0:
+                print()  # New line
+                test_gpio_level()
             
-            time.sleep(0.1)  # Small delay
-            
-    except KeyboardInterrupt:
-        signal_handler(None, None)
+            time.sleep(1)
+        
+        print()  # Final newline
+        
     except Exception as e:
-        print(f"\n❌ Test failed: {e}")
-        cleanup_gpio()
-        sys.exit(1)
+        print(f"\n❌ Error during test: {e}")
+        print("🔧 Check your wiring:")
+        print("   • GPIO 24 connected to voltage divider junction?")
+        print("   • Ground shared between Pi and power supply?")
+        print("   • Flow meter signal connected to voltage divider?")
+    
+    finally:
+        # Final results
+        elapsed_time = time.time() - start_time if start_time else 0
+        print(f"\n📈 TEST RESULTS:")
+        print(f"   • Total Pulses: {pulse_count}")
+        print(f"   • Test Duration: {elapsed_time:.1f} seconds")
+        if pulse_count > 0 and elapsed_time > 0:
+            rate = pulse_count / elapsed_time * 60  # pulses per minute
+            gallons_per_minute = rate / 220  # assuming 220 pulses/gallon
+            print(f"   • Pulse Rate: {rate:.1f} pulses/minute")
+            print(f"   • Flow Rate: {gallons_per_minute:.2f} gallons/minute")
+        
+        if pulse_count == 0:
+            print("\n🤔 No pulses detected. Troubleshooting:")
+            print("   1. Check voltage at junction point (should be ~3V)")
+            print("   2. Manually test flow sensor (spin/tap)")
+            print("   3. Verify wiring connections")
+            print("   4. Check if flow meter is powered")
+        else:
+            print(f"\n🎉 SUCCESS! Flow meter is working!")
+        
+        cleanup()
 
 if __name__ == "__main__":
     main()
