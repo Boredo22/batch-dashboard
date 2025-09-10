@@ -1,15 +1,25 @@
 <script>
   import { onMount } from 'svelte';
-  import PumpCalibration from './components/PumpCalibration.svelte';
-  import Nutrients from './components/Nutrients.svelte';
-  
-  let config = $state({});
-  let loading = $state(true);
-  let saving = $state(false);
-  let savingFormulas = $state(false);
-  let activeSection = $state('user');
-  
-  // User settings - organized for easy editing
+  import { TabsRoot as Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs/index.js";
+  import { Card, CardContent, CardHeader, CardTitle } from "$lib/components/ui/card/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
+  import { Label } from "$lib/components/ui/label/index.js";
+  import { Switch } from "$lib/components/ui/switch/index.js";
+  import { Textarea } from "$lib/components/ui/textarea/index.js";
+  import { Alert, AlertDescription } from "$lib/components/ui/alert/index.js";
+  import { Badge } from "$lib/components/ui/badge/index.js";
+  import { Separator } from "$lib/components/ui/separator/index.js";
+  import { 
+    User, 
+    Code, 
+    Plus, 
+    Trash2, 
+    Save,
+    Settings as SettingsIcon,
+    AlertCircle 
+  } from "@lucide/svelte/icons";
+
   let userSettings = $state({
     tanks: {},
     pumps: {
@@ -28,33 +38,6 @@
     }
   });
   
-  // Separate nutrients configuration
-  let nutrientsConfig = $state({
-    available_nutrients: [],
-    veg_formula: {},
-    bloom_formula: {},
-    pump_name_to_id: {}
-  });
-
-  // Available nutrients for formulas
-  let availableNutrients = $derived(() => {
-    return (nutrientsConfig.available_nutrients || []).map(n => n.name || n);
-  });
-  
-  // Get default dosage for a nutrient
-  function getDefaultDosage(nutrientName) {
-    const nutrient = (nutrientsConfig.available_nutrients || []).find(n => 
-      (n.name || n) === nutrientName
-    );
-    return nutrient?.defaultDosage || 1.0;
-  }
-
-  // Available relays for mix relay selection
-  let availableRelays = $derived(() => {
-    return Object.keys(devSettings.gpio.relay_pins || {}).map(Number).sort((a, b) => a - b);
-  });
-  
-  // Dev settings - technical configurations
   let devSettings = $state({
     gpio: {
       relay_pins: {},
@@ -70,7 +53,13 @@
       command_end: "end",
       arduino_baudrate: 115200
     },
-    mock: {},
+    mock: {
+      mock_mode: false,
+      mock_pumps: false,
+      mock_relays: false,
+      mock_flow_meters: false,
+      mock_ecph: false
+    },
     debug: {
       debug_mode: false,
       verbose_logging: false,
@@ -78,992 +67,428 @@
     }
   });
 
-  onMount(async () => {
+  let loading = $state(true);
+  let saving = $state(false);
+  let saveMessage = $state('');
+
+  async function loadSettings() {
     try {
-      await loadConfig();
+      const [userResponse, devResponse] = await Promise.all([
+        fetch('/api/settings/user'),
+        fetch('/api/settings/developer')
+      ]);
+      
+      if (userResponse.ok) {
+        const userData = await userResponse.json();
+        userSettings = { ...userSettings, ...userData };
+      }
+      if (devResponse.ok) {
+        const devData = await devResponse.json();
+        devSettings = { ...devSettings, ...devData };
+      }
     } catch (error) {
-      console.error('Error loading config:', error);
+      console.error('Error loading settings:', error);
+      saveMessage = 'Error loading settings. Using defaults.';
     } finally {
       loading = false;
     }
-    
-    // Listen for nutrient updates from the Nutrients component
-    const handleNutrientsUpdate = async (event) => {
-      const { nutrients } = event.detail;
-      // Reload nutrients config after changes
-      await loadNutrientsConfig();
-    };
-    
-    window.addEventListener('nutrients-updated', handleNutrientsUpdate);
-    
-    return () => {
-      window.removeEventListener('nutrients-updated', handleNutrientsUpdate);
-    };
-  });
-  
-  async function loadNutrientsConfig() {
-    try {
-      const response = await fetch('/api/nutrients');
-      if (response.ok) {
-        nutrientsConfig = await response.json();
-      } else {
-        console.error('Failed to load nutrients configuration');
-      }
-    } catch (error) {
-      console.error('Error loading nutrients configuration:', error);
-    }
   }
 
-  async function loadConfig() {
-    const response = await fetch('/api/config');
-    if (response.ok) {
-      config = await response.json();
-      organizeSettings();
-      await loadNutrientsConfig(); // Load nutrients separately
-    } else {
-      throw new Error('Failed to load configuration');
-    }
-  }
-  
-  function organizeSettings() {
-    // Organize user-friendly settings
-    userSettings.tanks = config.TANKS || {};
-    userSettings.pumps = {
-      names: config.PUMP_NAMES || {},
-      addresses: config.PUMP_ADDRESSES || {}
-    };
-    userSettings.timing = {
-      status_update_interval: config.STATUS_UPDATE_INTERVAL || 2.0,
-      pump_check_interval: config.PUMP_CHECK_INTERVAL || 1.0,
-      flow_update_interval: config.FLOW_UPDATE_INTERVAL || 0.5
-    };
-    userSettings.limits = {
-      max_pump_volume_ml: config.MAX_PUMP_VOLUME_ML || 2500.0,
-      min_pump_volume_ml: config.MIN_PUMP_VOLUME_ML || 0.5,
-      max_flow_gallons: config.MAX_FLOW_GALLONS || 100
-    };
-    
-    // Organize development settings
-    devSettings.gpio = {
-      relay_pins: config.RELAY_GPIO_PINS || {},
-      flow_meter_pins: config.FLOW_METER_GPIO_PINS || {}
-    };
-    devSettings.i2c = {
-      bus_number: config.I2C_BUS_NUMBER || 1,
-      pump_addresses: config.PUMP_ADDRESSES || {},
-      command_delay: config.EZO_COMMAND_DELAY || 0.3
-    };
-    devSettings.communication = {
-      command_start: config.COMMAND_START || "Start",
-      command_end: config.COMMAND_END || "end",
-      arduino_baudrate: config.ARDUINO_UNO_BAUDRATE || 115200
-    };
-    devSettings.mock = config.MOCK_SETTINGS || {};
-    devSettings.debug = {
-      debug_mode: config.DEBUG_MODE || false,
-      verbose_logging: config.VERBOSE_LOGGING || false,
-      log_level: config.LOG_LEVEL || "INFO"
-    };
-  }
-  
-  async function saveFormulas() {
-    if (savingFormulas) return;
-    savingFormulas = true;
-    
-    try {
-      const response = await fetch('/api/nutrients', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(nutrientsConfig)
-      });
-      
-      if (response.ok) {
-        console.log('Formulas saved successfully');
-      } else {
-        throw new Error('Failed to save formulas');
-      }
-    } catch (error) {
-      console.error('Error saving formulas:', error);
-    } finally {
-      savingFormulas = false;
-    }
-  }
-
-  async function saveConfig() {
-    if (saving) return;
+  async function saveSettings() {
     saving = true;
-    
     try {
-      const response = await fetch('/api/config', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          userSettings,
-          devSettings
+      const [userResponse, devResponse] = await Promise.all([
+        fetch('/api/settings/user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(userSettings)
+        }),
+        fetch('/api/settings/developer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(devSettings)
         })
-      });
-      
-      if (response.ok) {
-        // Show success message
-        console.log('Settings saved successfully');
+      ]);
+
+      if (userResponse.ok && devResponse.ok) {
+        saveMessage = 'Settings saved successfully!';
       } else {
-        throw new Error('Failed to save settings');
+        saveMessage = 'Error saving settings. Please try again.';
       }
     } catch (error) {
-      console.error('Error saving config:', error);
-      alert('Error saving settings. Please try again.');
+      console.error('Error saving settings:', error);
+      saveMessage = 'Error saving settings. Please try again.';
     } finally {
       saving = false;
+      setTimeout(() => saveMessage = '', 3000);
     }
   }
-  
+
   function addTank() {
-    const newId = Math.max(...Object.keys(userSettings.tanks).map(Number), 0) + 1;
-    userSettings.tanks[newId] = {
-      name: `Tank ${newId}`,
-      capacity_gallons: 100,
-      fill_relay: 0,
-      mix_relays: [],
-      send_relay: 0
+    const newId = Object.keys(userSettings.tanks || {}).length + 1;
+    userSettings.tanks = {
+      ...userSettings.tanks,
+      [newId]: {
+        name: `Tank ${newId}`,
+        capacity_gallons: 100,
+        fill_relay: 0,
+        send_relay: 0,
+        mix_relays: []
+      }
     };
   }
-  
+
   function removeTank(tankId) {
-    delete userSettings.tanks[tankId];
-    userSettings.tanks = { ...userSettings.tanks };
-  }
-  
-  function addNutrient(formulaType) {
-    const availableOptions = availableNutrients().filter(nutrient => {
-      const formula = formulaType === 'veg' ? nutrientsConfig.veg_formula : nutrientsConfig.bloom_formula;
-      return !formula.hasOwnProperty(nutrient);
-    });
-    
-    if (availableOptions.length > 0) {
-      const defaultDosage = getDefaultDosage(availableOptions[0]);
-      if (formulaType === 'veg') {
-        nutrientsConfig.veg_formula[availableOptions[0]] = defaultDosage;
-        // Trigger reactivity
-        nutrientsConfig.veg_formula = { ...nutrientsConfig.veg_formula };
-      } else {
-        nutrientsConfig.bloom_formula[availableOptions[0]] = defaultDosage;
-        // Trigger reactivity
-        nutrientsConfig.bloom_formula = { ...nutrientsConfig.bloom_formula };
-      }
-    }
-  }
-  
-  function removeNutrient(formulaType, nutrientName) {
-    if (formulaType === 'veg') {
-      delete nutrientsConfig.veg_formula[nutrientName];
-      // Trigger reactivity
-      nutrientsConfig.veg_formula = { ...nutrientsConfig.veg_formula };
-    } else {
-      delete nutrientsConfig.bloom_formula[nutrientName];
-      // Trigger reactivity
-      nutrientsConfig.bloom_formula = { ...nutrientsConfig.bloom_formula };
-    }
+    const { [tankId]: removed, ...rest } = userSettings.tanks;
+    userSettings.tanks = rest;
   }
 
   function addMixRelay(tankId) {
     const tank = userSettings.tanks[tankId];
-    if (!tank.mix_relays) {
-      tank.mix_relays = [];
-    }
-    // Find the first available relay that's not already used
-    const usedRelays = tank.mix_relays;
-    const availableOptions = availableRelays.filter(relay => !usedRelays.includes(relay));
-    if (availableOptions.length > 0) {
-      tank.mix_relays.push(availableOptions[0]);
+    if (tank) {
+      tank.mix_relays = [...(tank.mix_relays || []), 0];
+      userSettings.tanks = { ...userSettings.tanks };
     }
   }
 
   function removeMixRelay(tankId, index) {
     const tank = userSettings.tanks[tankId];
-    if (tank.mix_relays) {
+    if (tank && tank.mix_relays) {
       tank.mix_relays.splice(index, 1);
-      // Trigger reactivity
       userSettings.tanks = { ...userSettings.tanks };
     }
   }
+
+  onMount(loadSettings);
 </script>
 
-<div class="settings-container">
-  <header class="settings-header">
-    <h1>System Settings</h1>
-    <p>Configure your nutrient mixing system parameters</p>
-  </header>
-  
-  {#if loading}
-    <div class="loading">
-      <i class="fas fa-spinner fa-spin"></i>
-      Loading configuration...
+{#if loading}
+  <div class="flex items-center justify-center py-12">
+    <div class="text-center space-y-4">
+      <SettingsIcon class="size-8 mx-auto animate-spin text-muted-foreground" />
+      <p class="text-muted-foreground">Loading settings...</p>
     </div>
-  {:else}
-    <!-- Section Navigation -->
-    <div class="section-nav">
-      <button 
-        class="section-tab {activeSection === 'user' ? 'active' : ''}"
-        onclick={() => activeSection = 'user'}
-      >
-        <i class="fas fa-user-cog"></i>
-        User Settings
-      </button>
-      <button 
-        class="section-tab {activeSection === 'dev' ? 'active' : ''}"
-        onclick={() => activeSection = 'dev'}
-      >
-        <i class="fas fa-code"></i>
-        Development Settings
-      </button>
-    </div>
+  </div>
+{:else}
+  <div class="space-y-6">
+    <!-- Save Message -->
+    {#if saveMessage}
+      <Alert variant={saveMessage.includes('Error') ? 'destructive' : 'default'}>
+        <AlertCircle class="size-4" />
+        <AlertDescription>{saveMessage}</AlertDescription>
+      </Alert>
+    {/if}
 
-    <!-- User Settings Section -->
-    {#if activeSection === 'user'}
-      <div class="settings-section">
+    <!-- Settings Tabs -->
+    <Tabs defaultValue="user" class="space-y-6">
+      <TabsList class="grid w-full grid-cols-2">
+        <TabsTrigger value="user" class="flex items-center gap-2">
+          <User class="size-4" />
+          User Settings
+        </TabsTrigger>
+        <TabsTrigger value="developer" class="flex items-center gap-2">
+          <Code class="size-4" />
+          Developer Settings
+        </TabsTrigger>
+      </TabsList>
+
+      <!-- User Settings Tab -->
+      <TabsContent value="user" class="space-y-6">
         
         <!-- Tank Configuration -->
-        <div class="settings-group">
-          <div class="group-header">
-            <h3><i class="fas fa-water"></i> Tank Configuration</h3>
-            <button class="btn btn-secondary" onclick={addTank}>
-              <i class="fas fa-plus"></i> Add Tank
-            </button>
-          </div>
-          <div class="tanks-grid">
-            {#each Object.entries(userSettings.tanks) as [tankId, tank]}
-              <div class="tank-card">
-                <div class="tank-header">
-                  <h4>Tank {tankId}</h4>
-                  <button class="btn-remove" onclick={() => removeTank(tankId)} aria-label="Remove Tank {tankId}">
-                    <i class="fas fa-times" aria-hidden="true"></i>
-                  </button>
-                </div>
-                <div class="form-row">
-                  <label for="tank-{tankId}-name">Name:</label>
-                  <input id="tank-{tankId}-name" type="text" bind:value={tank.name} />
-                </div>
-                <div class="form-row">
-                  <label for="tank-{tankId}-capacity">Capacity (gallons):</label>
-                  <input id="tank-{tankId}-capacity" type="number" bind:value={tank.capacity_gallons} />
-                </div>
-                <div class="form-row">
-                  <label for="tank-{tankId}-fill-relay">Fill Relay:</label>
-                  <input id="tank-{tankId}-fill-relay" type="number" bind:value={tank.fill_relay} />
-                </div>
-                <div class="form-row">
-                  <label for="tank-{tankId}-send-relay">Send Relay:</label>
-                  <input id="tank-{tankId}-send-relay" type="number" bind:value={tank.send_relay} />
-                </div>
-                <div class="form-row">
-                  <!-- svelte-ignore a11y_label_has_associated_control -->
-                  <label>Mix Relays:</label>
-                  <div class="mix-relays-container">
-                    {#if tank.mix_relays && tank.mix_relays.length > 0}
-                      {#each tank.mix_relays as relay, index}
-                        <div class="mix-relay-item">
-                          <select bind:value={tank.mix_relays[index]}>
-                            {#each availableRelays as relayOption}
-                              <option value={relayOption}>{relayOption}</option>
-                            {/each}
-                          </select>
-                          <button class="btn-remove" onclick={() => removeMixRelay(tankId, index)} aria-label="Remove mix relay {relay}">
-                            <i class="fas fa-times" aria-hidden="true"></i>
-                          </button>
+        <Card>
+          <CardHeader>
+            <div class="flex items-center justify-between">
+              <CardTitle>Tank Configuration</CardTitle>
+              <Button onclick={addTank} size="sm">
+                <Plus class="size-4 mr-2" />
+                Add Tank
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {#if userSettings.tanks && Object.keys(userSettings.tanks).length > 0}
+              <div class="grid gap-6 md:grid-cols-2">
+                {#each Object.entries(userSettings.tanks) as [tankId, tank]}
+                  <Card>
+                    <CardHeader>
+                      <div class="flex items-center justify-between">
+                        <h4 class="font-semibold">Tank {tankId}</h4>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onclick={() => removeTank(tankId)}
+                        >
+                          <Trash2 class="size-4" />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent class="space-y-4">
+                      <div class="space-y-2">
+                        <Label for="tank-{tankId}-name">Tank Name</Label>
+                        <Input 
+                          id="tank-{tankId}-name" 
+                          bind:value={tank.name}
+                          placeholder="Enter tank name"
+                        />
+                      </div>
+
+                      <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                          <Label for="tank-{tankId}-capacity">Capacity (gal)</Label>
+                          <Input 
+                            id="tank-{tankId}-capacity" 
+                            type="number" 
+                            bind:value={tank.capacity_gallons}
+                            min="1"
+                          />
                         </div>
-                      {/each}
-                    {:else}
-                      <div class="no-mix-relays">No mix relays configured</div>
-                    {/if}
-                    <button class="btn btn-secondary btn-sm" onclick={() => addMixRelay(tankId)}>
-                      <i class="fas fa-plus"></i> Add Mix Relay
-                    </button>
-                  </div>
-                </div>
+                        <div class="space-y-2">
+                          <Label for="tank-{tankId}-fill">Fill Relay</Label>
+                          <Input 
+                            id="tank-{tankId}-fill" 
+                            type="number" 
+                            bind:value={tank.fill_relay}
+                            min="0"
+                          />
+                        </div>
+                      </div>
+
+                      <div class="space-y-2">
+                        <Label for="tank-{tankId}-send">Send Relay</Label>
+                        <Input 
+                          id="tank-{tankId}-send" 
+                          type="number" 
+                          bind:value={tank.send_relay}
+                          min="0"
+                        />
+                      </div>
+
+                      <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                          <Label>Mix Relays</Label>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onclick={() => addMixRelay(tankId)}
+                          >
+                            <Plus class="size-4" />
+                          </Button>
+                        </div>
+                        {#if tank.mix_relays && tank.mix_relays.length > 0}
+                          <div class="space-y-2">
+                            {#each tank.mix_relays as relay, index}
+                              <div class="flex items-center gap-2">
+                                <Input 
+                                  type="number" 
+                                  bind:value={tank.mix_relays[index]}
+                                  placeholder="Relay number"
+                                  min="0"
+                                  class="flex-1"
+                                />
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost" 
+                                  onclick={() => removeMixRelay(tankId, index)}
+                                >
+                                  <Trash2 class="size-4" />
+                                </Button>
+                              </div>
+                            {/each}
+                          </div>
+                        {:else}
+                          <p class="text-sm text-muted-foreground">No mix relays configured</p>
+                        {/if}
+                      </div>
+                    </CardContent>
+                  </Card>
+                {/each}
               </div>
-            {/each}
-          </div>
-        </div>
-        
-        <!-- Pump Configuration -->
-        <div class="settings-group">
-          <div class="group-header">
-            <h3><i class="fas fa-tint"></i> Pump Configuration</h3>
-          </div>
-          <div class="pumps-grid">
-            {#each Object.entries(userSettings.pumps.names) as [pumpId, name]}
-              <div class="pump-card">
-                <div class="form-row">
-                  <label for="pump-{pumpId}-name">Pump {pumpId}:</label>
-                  <input id="pump-{pumpId}-name" type="text" bind:value={userSettings.pumps.names[pumpId]} />
-                </div>
+            {:else}
+              <div class="text-center py-8">
+                <p class="text-muted-foreground">No tanks configured</p>
+                <Button onclick={addTank} class="mt-4">
+                  <Plus class="size-4 mr-2" />
+                  Add Your First Tank
+                </Button>
               </div>
-            {/each}
-          </div>
-        </div>
-        
-        <!-- Pump Calibration -->
-        <div class="settings-group">
-          <div class="group-header">
-            <h3><i class="fas fa-ruler"></i> Pump Calibration</h3>
-          </div>
-          <PumpCalibration pumps={userSettings.pumps} />
-        </div>
-        
-        <!-- Nutrients Management -->
-        <div class="settings-group">
-          <div class="group-header">
-            <h3><i class="fas fa-seedling"></i> Nutrients Library</h3>
-          </div>
-          <Nutrients nutrients={nutrientsConfig.available_nutrients || []} />
-        </div>
-        
-        <!-- Nutrient Formulas -->
-        <div class="settings-group full-width">
-          <div class="group-header">
-            <h3><i class="fas fa-flask"></i> Nutrient Formulas</h3>
-          </div>
-          <div class="formulas-container">
-            <!-- VEG Formula -->
-            <div class="formula-section">
-              <div class="formula-header">
-                <h4>VEG Formula (ml/gallon)</h4>
-                <button class="btn btn-secondary" onclick={() => addNutrient('veg')}>
-                  <i class="fas fa-plus"></i> Add Nutrient
-                </button>
+            {/if}
+          </CardContent>
+        </Card>
+
+        <!-- System Limits -->
+        <Card>
+          <CardHeader>
+            <CardTitle>System Limits</CardTitle>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="grid grid-cols-3 gap-4">
+              <div class="space-y-2">
+                <Label for="max-pump-volume">Max Pump Volume (ml)</Label>
+                <Input 
+                  id="max-pump-volume"
+                  type="number"
+                  bind:value={userSettings.limits.max_pump_volume_ml}
+                  min="1"
+                />
               </div>
-              {#each Object.entries(nutrientsConfig.veg_formula) as [nutrient, amount]}
-                <div class="nutrient-row">
-                  <select bind:value={nutrientsConfig.veg_formula[nutrient]} style="display: none;">
-                    {#each availableNutrients as nutrientOption}
-                      <option value={nutrientOption}>{nutrientOption}</option>
-                    {/each}
-                  </select>
-                  <span class="nutrient-name">{nutrient}</span>
-                  <input type="number" step="0.1" bind:value={nutrientsConfig.veg_formula[nutrient]} />
-                  <span class="nutrient-unit">ml/gal</span>
-                  <button class="btn-remove" onclick={() => removeNutrient('veg', nutrient)} aria-label="Remove {nutrient} from VEG formula">
-                    <i class="fas fa-times" aria-hidden="true"></i>
-                  </button>
-                </div>
-              {/each}
-            </div>
-            
-            <!-- BLOOM Formula -->
-            <div class="formula-section">
-              <div class="formula-header">
-                <h4>BLOOM Formula (ml/gallon)</h4>
-                <button class="btn btn-secondary" onclick={() => addNutrient('bloom')}>
-                  <i class="fas fa-plus"></i> Add Nutrient
-                </button>
+              <div class="space-y-2">
+                <Label for="min-pump-volume">Min Pump Volume (ml)</Label>
+                <Input 
+                  id="min-pump-volume"
+                  type="number"
+                  bind:value={userSettings.limits.min_pump_volume_ml}
+                  min="0.1"
+                  step="0.1"
+                />
               </div>
-              {#each Object.entries(nutrientsConfig.bloom_formula) as [nutrient, amount]}
-                <div class="nutrient-row">
-                  <select bind:value={nutrientsConfig.bloom_formula[nutrient]} style="display: none;">
-                    {#each availableNutrients as nutrientOption}
-                      <option value={nutrientOption}>{nutrientOption}</option>
-                    {/each}
-                  </select>
-                  <span class="nutrient-name">{nutrient}</span>
-                  <input type="number" step="0.1" bind:value={nutrientsConfig.bloom_formula[nutrient]} />
-                  <span class="nutrient-unit">ml/gal</span>
-                  <button class="btn-remove" onclick={() => removeNutrient('bloom', nutrient)} aria-label="Remove {nutrient} from BLOOM formula">
-                    <i class="fas fa-times" aria-hidden="true"></i>
-                  </button>
-                </div>
-              {/each}
-            </div>
-          </div>
-          
-          <!-- Save Formulas Button -->
-          <div class="formula-actions">
-            <button 
-              class="btn btn-primary" 
-              onclick={saveFormulas}
-              disabled={savingFormulas}
-            >
-              {#if savingFormulas}
-                <i class="fas fa-spinner fa-spin"></i>
-                Saving Formulas...
-              {:else}
-                <i class="fas fa-save"></i>
-                Save Formulas
-              {/if}
-            </button>
-          </div>
-        </div>
-        
-        <!-- System Timing -->
-        <div class="settings-group">
-          <div class="group-header">
-            <h3><i class="fas fa-clock"></i> System Timing</h3>
-          </div>
-          <div class="timing-grid">
-            <div class="form-row">
-              <label for="status-update-interval">Status Update Interval (seconds):</label>
-              <input id="status-update-interval" type="number" step="0.1" bind:value={userSettings.timing.status_update_interval} />
-            </div>
-            <div class="form-row">
-              <label for="pump-check-interval">Pump Check Interval (seconds):</label>
-              <input id="pump-check-interval" type="number" step="0.1" bind:value={userSettings.timing.pump_check_interval} />
-            </div>
-            <div class="form-row">
-              <label for="flow-update-interval">Flow Update Interval (seconds):</label>
-              <input id="flow-update-interval" type="number" step="0.1" bind:value={userSettings.timing.flow_update_interval} />
-            </div>
-          </div>
-        </div>
-        
-        <!-- Safety Limits -->
-        <div class="settings-group">
-          <div class="group-header">
-            <h3><i class="fas fa-shield-alt"></i> Safety Limits</h3>
-          </div>
-          <div class="limits-grid">
-            <div class="form-row">
-              <label for="max-pump-volume">Max Pump Volume (ml):</label>
-              <input id="max-pump-volume" type="number" step="0.1" bind:value={userSettings.limits.max_pump_volume_ml} />
-            </div>
-            <div class="form-row">
-              <label for="min-pump-volume">Min Pump Volume (ml):</label>
-              <input id="min-pump-volume" type="number" step="0.1" bind:value={userSettings.limits.min_pump_volume_ml} />
-            </div>
-            <div class="form-row">
-              <label for="max-flow-gallons">Max Flow (gallons):</label>
-              <input id="max-flow-gallons" type="number" bind:value={userSettings.limits.max_flow_gallons} />
-            </div>
-          </div>
-        </div>
-      </div>
-    {/if}
-    
-    <!-- Development Settings Section -->
-    {#if activeSection === 'dev'}
-      <div class="settings-section">
-        
-        <!-- GPIO Configuration -->
-        <div class="settings-group">
-          <div class="group-header">
-            <h3><i class="fas fa-microchip"></i> GPIO Configuration</h3>
-          </div>
-          <div class="gpio-container">
-            <div class="gpio-section">
-              <h4>Relay GPIO Pins</h4>
-              {#each Object.entries(devSettings.gpio.relay_pins) as [relayId, pin]}
-                <div class="gpio-row">
-                  <label for="relay-{relayId}-pin">Relay {relayId}:</label>
-                  <input id="relay-{relayId}-pin" type="number" bind:value={devSettings.gpio.relay_pins[relayId]} />
-                </div>
-              {/each}
-            </div>
-            
-            <div class="gpio-section">
-              <h4>Flow Meter GPIO Pins</h4>
-              {#each Object.entries(devSettings.gpio.flow_meter_pins) as [meterId, pin]}
-                <div class="gpio-row">
-                  <label for="flow-meter-{meterId}-pin">Flow Meter {meterId}:</label>
-                  <input id="flow-meter-{meterId}-pin" type="number" bind:value={devSettings.gpio.flow_meter_pins[meterId]} />
-                </div>
-              {/each}
-            </div>
-          </div>
-        </div>
-        
-        <!-- I2C Configuration -->
-        <div class="settings-group">
-          <div class="group-header">
-            <h3><i class="fas fa-ethernet"></i> I2C Configuration</h3>
-          </div>
-          <div class="i2c-grid">
-            <div class="form-row">
-              <label for="i2c-bus-number">I2C Bus Number:</label>
-              <input id="i2c-bus-number" type="number" bind:value={devSettings.i2c.bus_number} />
-            </div>
-            <div class="form-row">
-              <label for="ezo-command-delay">EZO Command Delay (seconds):</label>
-              <input id="ezo-command-delay" type="number" step="0.01" bind:value={devSettings.i2c.command_delay} />
-            </div>
-          </div>
-        </div>
-        
-        <!-- Mock Settings -->
-        <div class="settings-group">
-          <div class="group-header">
-            <h3><i class="fas fa-test-tube"></i> Mock Hardware Settings</h3>
-          </div>
-          <div class="mock-grid">
-            {#each Object.entries(devSettings.mock) as [component, enabled]}
-              <div class="checkbox-row">
-                <label>
-                  <input type="checkbox" bind:checked={devSettings.mock[component]} />
-                  Mock {component}
-                </label>
+              <div class="space-y-2">
+                <Label for="max-flow-gallons">Max Flow (gallons)</Label>
+                <Input 
+                  id="max-flow-gallons"
+                  type="number"
+                  bind:value={userSettings.limits.max_flow_gallons}
+                  min="1"
+                />
               </div>
-            {/each}
-          </div>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
+
+      </TabsContent>
+
+      <!-- Developer Settings Tab -->
+      <TabsContent value="developer" class="space-y-6">
         
+        <!-- Hardware Configuration -->
+        <Card>
+          <CardHeader>
+            <CardTitle>Hardware Configuration</CardTitle>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <Label class="text-base">Mock Mode</Label>
+                <p class="text-sm text-muted-foreground">
+                  Enable mock mode for development without physical hardware
+                </p>
+              </div>
+              <Switch bind:checked={devSettings.mock.mock_mode} />
+            </div>
+
+            <Separator />
+
+            <div class="grid grid-cols-2 gap-4">
+              <div class="space-y-2">
+                <Label for="i2c-bus">I2C Bus Number</Label>
+                <Input 
+                  id="i2c-bus"
+                  type="number"
+                  bind:value={devSettings.i2c.bus_number}
+                  min="0"
+                />
+              </div>
+              <div class="space-y-2">
+                <Label for="arduino-baud">Arduino Baud Rate</Label>
+                <Input 
+                  id="arduino-baud"
+                  type="number"
+                  bind:value={devSettings.communication.arduino_baudrate}
+                />
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <Label for="command-delay">Command Delay (seconds)</Label>
+              <Input 
+                id="command-delay"
+                type="number"
+                bind:value={devSettings.i2c.command_delay}
+                min="0"
+                step="0.1"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         <!-- Debug Settings -->
-        <div class="settings-group">
-          <div class="group-header">
-            <h3><i class="fas fa-bug"></i> Debug Settings</h3>
-          </div>
-          <div class="debug-grid">
-            <div class="checkbox-row">
-              <label>
-                <input type="checkbox" bind:checked={devSettings.debug.debug_mode} />
-                Debug Mode
-              </label>
+        <Card>
+          <CardHeader>
+            <CardTitle>Debug Settings</CardTitle>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <Label class="text-base">Enable Debug Logging</Label>
+                <p class="text-sm text-muted-foreground">
+                  Show detailed debug information in logs
+                </p>
+              </div>
+              <Switch bind:checked={devSettings.debug.debug_mode} />
             </div>
-            <div class="checkbox-row">
-              <label>
-                <input type="checkbox" bind:checked={devSettings.debug.verbose_logging} />
-                Verbose Logging
-              </label>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <Label class="text-base">Verbose Hardware Output</Label>
+                <p class="text-sm text-muted-foreground">
+                  Log all hardware communication
+                </p>
+              </div>
+              <Switch bind:checked={devSettings.debug.verbose_logging} />
             </div>
-            <div class="form-row">
-              <label for="log-level">Log Level:</label>
-              <select id="log-level" bind:value={devSettings.debug.log_level}>
-                <option value="DEBUG">DEBUG</option>
-                <option value="INFO">INFO</option>
-                <option value="WARNING">WARNING</option>
-                <option value="ERROR">ERROR</option>
-              </select>
+
+            <div class="space-y-2">
+              <Label for="log-level">Log Level</Label>
+              <Input 
+                id="log-level"
+                bind:value={devSettings.debug.log_level}
+                placeholder="DEBUG, INFO, WARNING, ERROR"
+              />
             </div>
-          </div>
-        </div>
-      </div>
-    {/if}
-    
+          </CardContent>
+        </Card>
+
+        <!-- Mock Settings -->
+        <Card>
+          <CardHeader>
+            <CardTitle>Mock Component Settings</CardTitle>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+              <div class="flex items-center justify-between">
+                <Label class="text-base">Mock Pumps</Label>
+                <Switch bind:checked={devSettings.mock.mock_pumps} />
+              </div>
+              <div class="flex items-center justify-between">
+                <Label class="text-base">Mock Relays</Label>
+                <Switch bind:checked={devSettings.mock.mock_relays} />
+              </div>
+              <div class="flex items-center justify-between">
+                <Label class="text-base">Mock Flow Meters</Label>
+                <Switch bind:checked={devSettings.mock.mock_flow_meters} />
+              </div>
+              <div class="flex items-center justify-between">
+                <Label class="text-base">Mock EC/pH</Label>
+                <Switch bind:checked={devSettings.mock.mock_ecph} />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+      </TabsContent>
+    </Tabs>
+
     <!-- Save Button -->
-    <div class="save-section full-width">
-      <button 
-        class="btn btn-primary save-btn {saving ? 'saving' : ''}" 
-        onclick={saveConfig}
-        disabled={saving}
-      >
+    <div class="flex justify-end pt-6 border-t">
+      <Button onclick={saveSettings} disabled={saving} size="lg">
         {#if saving}
-          <i class="fas fa-spinner fa-spin"></i>
+          <SettingsIcon class="size-4 mr-2 animate-spin" />
           Saving...
         {:else}
-          <i class="fas fa-save"></i>
+          <Save class="size-4 mr-2" />
           Save Settings
         {/if}
-      </button>
+      </Button>
     </div>
-  {/if}
-</div>
-
-<style>
-  .settings-container {
-    padding: 2rem;
-    width: 95%;
-    background: #1a1a1a;
-    color: white;
-    min-height: calc(100vh - 4rem);
-    overflow-y: auto;
-    position: relative;
-  }
-  
-  .settings-header {
-    text-align: center;
-    margin-bottom: 2rem;
-  }
-  
-  .settings-header h1 {
-    color: #06b6d4;
-    margin: 0 0 0.5rem 0;
-  }
-  
-  .settings-header p {
-    color: #94a3b8;
-    margin: 0;
-  }
-  
-  .loading {
-    text-align: center;
-    padding: 4rem;
-    color: #94a3b8;
-  }
-  
-  .section-nav {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 2rem;
-    justify-content: center;
-  }
-  
-  .section-tab {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 1rem 2rem;
-    border: none;
-    border-radius: 0.5rem;
-    background: #0f172a;
-    color: #94a3b8;
-    cursor: pointer;
-    transition: all 0.2s;
-    border: 1px solid #334155;
-  }
-  
-  .section-tab:hover {
-    background: #1e293b;
-    color: #e2e8f0;
-  }
-  
-  .section-tab.active {
-    background: #0f2419;
-    color: #06b6d4;
-    border-color: #06b6d4;
-  }
-  
-  .settings-section {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-  }
-  
-  .settings-section .full-width {
-    grid-column: 1 / -1;
-  }
-  
-  .settings-group {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 0.5rem;
-    padding: 1.5rem;
-  }
-  
-  .group-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.5rem;
-  }
-  
-  .group-header h3 {
-    color: #e2e8f0;
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  
-  .tanks-grid, .pumps-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1rem;
-  }
-  
-  .tank-card, .pump-card {
-    background: #1e293b;
-    border: 1px solid #475569;
-    border-radius: 0.375rem;
-    padding: 1rem;
-  }
-  
-  .tank-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-  }
-  
-  .tank-header h4 {
-    margin: 0;
-    color: #06b6d4;
-  }
-  
-  .form-row {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 0.75rem;
-  }
-  
-  .form-row label {
-    min-width: 120px;
-    color: #cbd5e1;
-    font-size: 0.9rem;
-    flex-shrink: 0;
-  }
-  
-  input[type="text"], input[type="number"], select {
-    flex: 1;
-    min-width: 0;
-    padding: 0.5rem;
-    border: 1px solid #475569;
-    border-radius: 0.25rem;
-    background: #334155;
-    color: white;
-    font-size: 0.9rem;
-    box-sizing: border-box;
-  }
-  
-  input:focus, select:focus {
-    outline: none;
-    border-color: #06b6d4;
-  }
-  
-  .formulas-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-  }
-  
-  .formula-section {
-    background: #1e293b;
-    border-radius: 0.375rem;
-    padding: 1rem;
-  }
-  
-  .formula-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-  }
-  
-  .formula-header h4 {
-    margin: 0;
-    color: #06b6d4;
-  }
-  
-  .nutrient-row {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    margin-bottom: 0.5rem;
-  }
-  
-  .nutrient-row .nutrient-name {
-    flex: 1;
-    color: #e2e8f0;
-    font-weight: 500;
-    padding: 0.5rem;
-    background: #475569;
-    border-radius: 0.25rem;
-    border: 1px solid #64748b;
-  }
-  
-  .nutrient-row input[type="number"] {
-    width: 80px;
-  }
-
-  .nutrient-row .nutrient-unit {
-    color: #94a3b8;
-    font-size: 0.85rem;
-    min-width: 40px;
-  }
-  
-  .formula-actions {
-    display: flex;
-    justify-content: center;
-    margin-top: 1.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid #475569;
-  }
-
-  .mix-relays-container {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    flex: 1;
-  }
-
-  .mix-relay-item {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-  }
-
-  .mix-relay-item select {
-    flex: 1;
-  }
-
-  .no-mix-relays {
-    color: #94a3b8;
-    font-style: italic;
-    padding: 0.5rem;
-  }
-
-  .btn-sm {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.8rem;
-  }
-  
-  .timing-grid, .limits-grid, .i2c-grid, .debug-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-  }
-  
-  .gpio-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
-  }
-  
-  .gpio-section {
-    background: #1e293b;
-    border-radius: 0.375rem;
-    padding: 1rem;
-  }
-  
-  .gpio-section h4 {
-    margin: 0 0 1rem 0;
-    color: #06b6d4;
-  }
-  
-  .gpio-row {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 0.75rem;
-  }
-  
-  .gpio-row label {
-    min-width: 100px;
-    color: #cbd5e1;
-    font-size: 0.9rem;
-  }
-  
-  .gpio-row input {
-    width: 80px;
-  }
-  
-  .mock-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-  }
-  
-  .checkbox-row {
-    display: flex;
-    align-items: center;
-  }
-  
-  .checkbox-row label {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: #cbd5e1;
-    cursor: pointer;
-  }
-  
-  input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    accent-color: #06b6d4;
-  }
-  
-  .btn {
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 0.25rem;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  
-  .btn-primary {
-    background: #06b6d4;
-    color: white;
-  }
-  
-  .btn-primary:hover:not(:disabled) {
-    background: #0891b2;
-  }
-  
-  .btn-secondary {
-    background: #475569;
-    color: white;
-  }
-  
-  .btn-secondary:hover {
-    background: #64748b;
-  }
-  
-  .btn-remove {
-    background: #dc2626;
-    color: white;
-    padding: 0.25rem 0.5rem;
-    border: none;
-    border-radius: 0.25rem;
-    cursor: pointer;
-    font-size: 0.8rem;
-  }
-  
-  .btn-remove:hover {
-    background: #b91c1c;
-  }
-  
-  .save-section {
-    display: flex;
-    justify-content: center;
-    margin-top: 2rem;
-  }
-  
-  .save-btn {
-    padding: 1rem 3rem;
-    font-size: 1rem;
-    font-weight: 600;
-  }
-  
-  .save-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-  
-  @media (max-width: 768px) {
-    .settings-container {
-      padding: 1rem;
-    }
-    
-    .section-nav {
-      flex-direction: column;
-      align-items: center;
-    }
-    
-    .section-tab {
-      width: 200px;
-      justify-content: center;
-    }
-    
-    .settings-section {
-      grid-template-columns: 1fr;
-    }
-    
-    .formulas-container,
-    .timing-grid,
-    .limits-grid,
-    .i2c-grid,
-    .debug-grid,
-    .gpio-container {
-      grid-template-columns: 1fr;
-    }
-    
-    .tanks-grid,
-    .pumps-grid {
-      grid-template-columns: 1fr;
-    }
-    
-    .form-row {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 0.5rem;
-    }
-    
-    .form-row label {
-      min-width: auto;
-    }
-  }
-</style>
+  </div>
+{/if}

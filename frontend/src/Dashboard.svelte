@@ -1,10 +1,10 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
-  import RelayGrid from './components/RelayGrid.svelte';
-  import PumpControl from './components/PumpControl.svelte';
-  import FlowMeterControl from './components/FlowMeterControl.svelte';
-  import ECPHMonitor from './components/ECPHMonitor.svelte';
-  import SystemLog from './components/SystemLog.svelte';
+  import RelayControlCard from '$lib/components/hardware/relay-control-card.svelte';
+  import PumpControlCard from '$lib/components/hardware/pump-control-card.svelte';
+  import FlowMeterCard from '$lib/components/hardware/flow-meter-card.svelte';
+  import ECPHMonitorCard from '$lib/components/hardware/ecph-monitor-card.svelte';
+  import SystemLogCard from '$lib/components/hardware/system-log-card.svelte';
 
   // State variables using Svelte 5 runes
   let logs = $state([]);
@@ -13,42 +13,42 @@
   
   // Hardware data with defaults to show all hardware
   let relays = $state([
-    { id: 1, name: 'Relay 1', state: false },
-    { id: 2, name: 'Relay 2', state: false },
-    { id: 3, name: 'Relay 3', state: false },
-    { id: 4, name: 'Relay 4', state: false },
-    { id: 5, name: 'Relay 5', state: false },
-    { id: 6, name: 'Relay 6', state: false },
-    { id: 7, name: 'Relay 7', state: false },
-    { id: 8, name: 'Relay 8', state: false },
-    { id: 9, name: 'Relay 9', state: false },
-    { id: 10, name: 'Relay 10', state: false },
-    { id: 11, name: 'Relay 11', state: false },
-    { id: 12, name: 'Relay 12', state: false },
-    { id: 13, name: 'Relay 13', state: false }
+    { id: 1, name: 'Relay 1', status: 'off' },
+    { id: 2, name: 'Relay 2', status: 'off' },
+    { id: 3, name: 'Relay 3', status: 'off' },
+    { id: 4, name: 'Relay 4', status: 'off' },
+    { id: 5, name: 'Relay 5', status: 'off' },
+    { id: 6, name: 'Relay 6', status: 'off' },
+    { id: 7, name: 'Relay 7', status: 'off' },
+    { id: 8, name: 'Relay 8', status: 'off' },
+    { id: 9, name: 'Relay 9', status: 'off' },
+    { id: 10, name: 'Relay 10', status: 'off' },
+    { id: 11, name: 'Relay 11', status: 'off' },
+    { id: 12, name: 'Relay 12', status: 'off' },
+    { id: 13, name: 'Relay 13', status: 'off' }
   ]);
   let pumps = $state([
-    { id: 1, name: 'Pump 1', status: 'stopped' },
-    { id: 2, name: 'Pump 2', status: 'stopped' },
-    { id: 3, name: 'Pump 3', status: 'stopped' },
-    { id: 4, name: 'Pump 4', status: 'stopped' },
-    { id: 5, name: 'Pump 5', status: 'stopped' },
-    { id: 6, name: 'Pump 6', status: 'stopped' },
-    { id: 7, name: 'Pump 7', status: 'stopped' },
-    { id: 8, name: 'Pump 8', status: 'stopped' }
+    { id: 1, name: 'Pump 1', status: 'idle' },
+    { id: 2, name: 'Pump 2', status: 'idle' },
+    { id: 3, name: 'Pump 3', status: 'idle' },
+    { id: 4, name: 'Pump 4', status: 'idle' },
+    { id: 5, name: 'Pump 5', status: 'idle' },
+    { id: 6, name: 'Pump 6', status: 'idle' },
+    { id: 7, name: 'Pump 7', status: 'idle' },
+    { id: 8, name: 'Pump 8', status: 'idle' }
   ]);
   let flowMeters = $state([
-    { id: 1, name: 'Flow Meter 1', status: 'stopped', flow_rate: 0, total_gallons: 0 },
-    { id: 2, name: 'Flow Meter 2', status: 'stopped', flow_rate: 0, total_gallons: 0 }
+    { id: 1, name: 'Flow Meter 1', status: 'idle', flow_rate: 0, total_gallons: 0 },
+    { id: 2, name: 'Flow Meter 2', status: 'idle', flow_rate: 0, total_gallons: 0 }
   ]);
   let ecPhMonitoring = $state(false);
   let ecValue = $state(0);
   let phValue = $state(0);
   
   // Form inputs
-  let selectedPump = $state('');
+  let selectedPump = $state(null);
   let pumpAmount = $state(10);
-  let selectedFlowMeter = $state('');
+  let selectedFlowMeter = $state(null);
   let flowGallons = $state(1);
   
   // Progress tracking for log messages
@@ -64,15 +64,24 @@
         const data = await response.json();
         // Merge API data with defaults, keeping defaults if API doesn't provide
         if (data.relays && data.relays.length > 0) {
-          // Force all relays to start in OFF state for correct UI behavior
-          relays = data.relays.map(relay => ({ ...relay, state: false }));
+          // Update relays data, converting state to status for consistency
+          relays = data.relays.map(relay => ({ 
+            ...relay, 
+            status: relay.state ? 'on' : 'off' 
+          }));
           console.log('Loaded relays:', relays);
         }
         if (data.pumps && data.pumps.length > 0) {
-          pumps = data.pumps;
+          pumps = data.pumps.map(pump => ({
+            ...pump,
+            status: pump.status === 'running' ? 'dispensing' : 'idle'
+          }));
         }
         if (data.flow_meters && data.flow_meters.length > 0) {
-          flowMeters = data.flow_meters;
+          flowMeters = data.flow_meters.map(flowMeter => ({
+            ...flowMeter,
+            status: flowMeter.status === 'running' ? 'flowing' : 'idle'
+          }));
         }
         systemStatus = 'Connected';
         errorMessage = '';
@@ -122,7 +131,7 @@
               
               return {
                 ...pump,
-                status: statusInfo.is_dispensing ? 'running' : 'stopped',
+                status: statusInfo.is_dispensing ? 'dispensing' : 'idle',
                 voltage: statusInfo.voltage || 0,
                 is_dispensing: statusInfo.is_dispensing || false,
                 current_volume: statusInfo.current_volume || 0,
@@ -138,21 +147,21 @@
     }
   }
 
-  async function controlRelay(relayId, state) {
+  async function controlRelay(relayId, action) {
     // Handle ALL OFF special case
-    if (relayId === 0 && !state) {
+    if (relayId === 0 && action === 'off') {
       await allRelaysOff();
       return;
     }
     
     try {
-      const response = await fetch(`/api/relay/${relayId}/${state ? 'on' : 'off'}`, {
+      const response = await fetch(`/api/relay/${relayId}/${action}`, {
         method: 'POST'
       });
       
       if (response.ok) {
         const result = await response.json();
-        const userMessage = result.message || `Relay ${relayId} ${state ? 'ON' : 'OFF'}`;
+        const userMessage = result.message || `Relay ${relayId} ${action.toUpperCase()}`;
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
         
         addLog(userMessage);
@@ -160,7 +169,7 @@
         
         // Update local state for responsive UI
         relays = relays.map(relay => 
-          relay.id === relayId ? { ...relay, state: state } : relay
+          relay.id === relayId ? { ...relay, status: action } : relay
         );
       } else {
         const error = await response.json();
@@ -188,7 +197,7 @@
         addLog(rawMessage);
         
         // Update local state to turn all relays off
-        relays = relays.map(relay => ({ ...relay, state: false }));
+        relays = relays.map(relay => ({ ...relay, status: 'off' }));
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
@@ -200,29 +209,29 @@
     }
   }
 
-  async function dispensePump() {
-    if (!selectedPump || !pumpAmount) {
+  async function dispensePump(pumpId, amount) {
+    if (!pumpId || !amount) {
       addLog('Please select a pump and amount');
       return;
     }
     
     try {
-      const response = await fetch(`/api/pump/${selectedPump}/dispense`, {
+      const response = await fetch(`/api/pump/${pumpId}/dispense`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: pumpAmount })
+        body: JSON.stringify({ amount: amount })
       });
       
       if (response.ok) {
         const result = await response.json();
-        const userMessage = result.message || `Dispensing ${pumpAmount}ml from pump ${selectedPump}`;
+        const userMessage = result.message || `Dispensing ${amount}ml from pump ${pumpId}`;
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
         
         addLog(userMessage);
         addLog(rawMessage);
         
         // Reset progress tracking for this pump
-        lastProgressReported.set(parseInt(selectedPump), -10);
+        lastProgressReported.set(parseInt(pumpId), -10);
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
@@ -234,20 +243,20 @@
     }
   }
 
-  async function stopPump() {
-    if (!selectedPump) {
+  async function stopPump(pumpId) {
+    if (!pumpId) {
       addLog('Please select a pump');
       return;
     }
     
     try {
-      const response = await fetch(`/api/pump/${selectedPump}/stop`, {
+      const response = await fetch(`/api/pump/${pumpId}/stop`, {
         method: 'POST'
       });
       
       if (response.ok) {
         const result = await response.json();
-        const userMessage = result.message || `Stopped pump ${selectedPump}`;
+        const userMessage = result.message || `Stopped pump ${pumpId}`;
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
         
         addLog(userMessage);
@@ -263,22 +272,22 @@
     }
   }
 
-  async function startFlow() {
-    if (!selectedFlowMeter || !flowGallons) {
+  async function startFlow(flowMeterId, gallons) {
+    if (!flowMeterId || !gallons) {
       addLog('Please select a flow meter and gallons');
       return;
     }
     
     try {
-      const response = await fetch(`/api/flow/${selectedFlowMeter}/start`, {
+      const response = await fetch(`/api/flow/${flowMeterId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gallons: flowGallons })
+        body: JSON.stringify({ gallons: gallons })
       });
       
       if (response.ok) {
         const result = await response.json();
-        const userMessage = result.message || `Started flow meter ${selectedFlowMeter} for ${flowGallons} gallons`;
+        const userMessage = result.message || `Started flow meter ${flowMeterId} for ${gallons} gallons`;
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
         
         addLog(userMessage);
@@ -294,20 +303,20 @@
     }
   }
 
-  async function stopFlow() {
-    if (!selectedFlowMeter) {
+  async function stopFlow(flowMeterId) {
+    if (!flowMeterId) {
       addLog('Please select a flow meter');
       return;
     }
     
     try {
-      const response = await fetch(`/api/flow/${selectedFlowMeter}/stop`, {
+      const response = await fetch(`/api/flow/${flowMeterId}/stop`, {
         method: 'POST'
       });
       
       if (response.ok) {
         const result = await response.json();
-        const userMessage = result.message || `Stopped flow meter ${selectedFlowMeter}`;
+        const userMessage = result.message || `Stopped flow meter ${flowMeterId}`;
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
         
         addLog(userMessage);
@@ -374,6 +383,10 @@
     logs = [{ time: timestamp, message }, ...logs].slice(0, 100); // Keep last 100 logs
   }
 
+  function clearLogs() {
+    logs = [];
+  }
+
   onMount(async () => {
     addLog('System starting...');
     await fetchHardwareData();
@@ -395,151 +408,41 @@
   });
 </script>
 
-<div class="dashboard-container">
-  <div class="dashboard-header">
-    <div class="header-info">
-      <h2>Hardware Testing Dashboard</h2>
-      <p>Individual component testing and control</p>
+<!-- Main dashboard grid -->
+<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+  <!-- Hardware Controls - Takes up 2 columns on large screens -->
+  <div class="lg:col-span-2 space-y-4">
+    <RelayControlCard {relays} onRelayControl={controlRelay} />
+    
+    <div class="grid gap-4 md:grid-cols-2">
+      <PumpControlCard 
+        {pumps} 
+        bind:selectedPump 
+        bind:pumpAmount 
+        onDispensePump={dispensePump} 
+        onStopPump={stopPump} 
+      />
+      
+      <FlowMeterCard
+        flowMeters={flowMeters}
+        bind:selectedFlowMeter
+        bind:flowGallons
+        onStartFlow={startFlow}
+        onStopFlow={stopFlow}
+      />
     </div>
-    <div class="status-badge {systemStatus.toLowerCase()}">
-      {systemStatus}
-    </div>
+    
+    <ECPHMonitorCard
+      {ecValue}
+      {phValue}
+      {ecPhMonitoring}
+      onStartMonitoring={startEcPhMonitoring}
+      onStopMonitoring={stopEcPhMonitoring}
+    />
   </div>
 
-  <div class="main-grid">
-    <div class="left-panel">
-      <RelayGrid {relays} onRelayControl={controlRelay} />
-      <PumpControl {pumps} bind:selectedPump bind:pumpAmount onDispensePump={dispensePump} onStopPump={stopPump} />
-      <FlowMeterControl {flowMeters} bind:selectedFlowMeter bind:flowGallons onStartFlow={startFlow} onStopFlow={stopFlow} />
-      <ECPHMonitor {ecValue} {phValue} {ecPhMonitoring} onStartMonitoring={startEcPhMonitoring} onStopMonitoring={stopEcPhMonitoring} />
-    </div>
-
-    <div class="right-panel">
-      <SystemLog {logs} />
-    </div>
+  <!-- System Log - Takes up 1 column -->
+  <div class="lg:col-span-1">
+    <SystemLogCard {logs} onClearLogs={clearLogs} />
   </div>
 </div>
-
-<style>
-  .dashboard-container {
-    width: 100%;
-    height: 100vh;
-    background: #1a1a1a;
-    color: white;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .dashboard-header {
-    background: #2d3748;
-    padding: 1.5rem 2rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #4a5568;
-  }
-
-  .header-info h2 {
-    margin: 0 0 4px 0;
-    color: white;
-    font-size: 1.4rem;
-    font-weight: 600;
-  }
-
-  .header-info p {
-    margin: 0;
-    color: #a0aec0;
-    font-size: 0.9rem;
-  }
-
-  .status-badge {
-    padding: 0.5rem 1rem;
-    border-radius: 0.5rem;
-    font-weight: bold;
-    text-transform: uppercase;
-    font-size: 0.875rem;
-  }
-
-  .status-badge.connected {
-    background: #22c55e;
-    color: white;
-  }
-
-  .status-badge.disconnected {
-    background: #ef4444;
-    color: white;
-  }
-
-  .status-badge.error {
-    background: #f97316;
-    color: white;
-  }
-
-  .main-grid {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: 1.5rem;
-    padding: 1.5rem;
-    overflow: hidden;
-    max-width: 100%;
-  }
-
-  .left-panel {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-    gap: 1.5rem;
-    overflow-y: auto;
-    padding-right: 0.5rem;
-  }
-
-  .right-panel {
-    background: #2d3748;
-    border-radius: 0.5rem;
-    border: 1px solid #4a5568;
-    min-height: 0;
-  }
-
-  @media (max-width: 1400px) {
-    .main-grid {
-      grid-template-columns: 1fr;
-      grid-template-rows: 1fr auto;
-      gap: 1rem;
-    }
-    
-    .right-panel {
-      height: 350px;
-    }
-    
-    .left-panel {
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    }
-  }
-
-  @media (max-width: 1000px) {
-    .left-panel {
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    }
-  }
-
-  @media (max-width: 768px) {
-    .dashboard-header {
-      flex-direction: column;
-      gap: 0.5rem;
-      padding: 1rem;
-    }
-    
-    .main-grid {
-      padding: 1rem;
-    }
-    
-    .left-panel {
-      grid-template-columns: 1fr;
-      gap: 1rem;
-    }
-    
-    .right-panel {
-      height: 300px;
-    }
-  }
-</style>

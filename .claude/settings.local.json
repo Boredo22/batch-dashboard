@@ -17,7 +17,14 @@
       "Read(/C:\\Users\\bored\\batch-dashboard\\frontend\\src\\components/**)",
       "Read(/C:\\Users\\bored\\batch-dashboard/**)",
       "Read(/C:\\Users\\bored\\batch-dashboard/**)",
-      "Read(/C:\\Users\\bored\\batch-dashboard/**)"
+      "Read(/C:\\Users\\bored\\batch-dashboard/**)",
+      "Bash(npx:*)",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(find:*)",
+      "Bash(/dev/null)",
+      "Bash(timeout 10s npm run dev)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

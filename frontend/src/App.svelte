@@ -1,184 +1,106 @@
 <script>
+  import { onMount } from 'svelte';
+  import DashboardLayout from '$lib/components/layout/dashboard-layout.svelte';
   import Dashboard from './Dashboard.svelte';
   import Stage2Testing from './Stage2Testing.svelte';
   import Settings from './Settings.svelte';
   import HeadGrower from './HeadGrower.svelte';
   import Nutrients from './Nutrients.svelte';
-  
+
   let currentPage = $state('headgrower');
-  
+  let systemStatus = $state('disconnected');
+
+  async function fetchSystemStatus() {
+    try {
+      const response = await fetch('/api/system/status');
+      if (response.ok) {
+        const data = await response.json();
+        systemStatus = data.status || 'connected';
+      }
+    } catch (error) {
+      console.error('Error fetching system status:', error);
+      systemStatus = 'error';
+    }
+  }
+
+  onMount(() => {
+    fetchSystemStatus();
+    // Poll system status every 5 seconds
+    const interval = setInterval(fetchSystemStatus, 5000);
+    return () => clearInterval(interval);
+  });
+
+  function getPageConfig() {
+    switch (currentPage) {
+      case 'headgrower':
+        return {
+          title: 'Head Grower Operations',
+          subtitle: 'Complete growing operations and job management',
+          breadcrumbs: [{ title: 'Head Grower' }]
+        };
+      case 'nutrients':
+        return {
+          title: 'Nutrient Management',
+          subtitle: 'Manual dispensing and recipe management',
+          breadcrumbs: [{ title: 'Nutrients' }]
+        };
+      case 'stage1':
+        return {
+          title: 'Hardware Testing Dashboard',
+          subtitle: 'Individual component testing and control',
+          breadcrumbs: [{ title: 'Stage 1', href: '#' }, { title: 'Hardware Testing' }]
+        };
+      case 'stage2':
+        return {
+          title: 'Stage 2 Testing',
+          subtitle: 'Complete job process testing',
+          breadcrumbs: [{ title: 'Stage 2', href: '#' }, { title: 'Job Testing' }]
+        };
+      case 'settings':
+        return {
+          title: 'System Settings',
+          subtitle: 'Configuration and preferences',
+          breadcrumbs: [{ title: 'Settings' }]
+        };
+      default:
+        return {
+          title: 'Nutrient Mixing System',
+          subtitle: '',
+          breadcrumbs: []
+        };
+    }
+  }
+
+  let pageConfig = $derived(getPageConfig());
+
+  // Navigation function for when we implement proper routing later
   function navigateTo(page) {
     currentPage = page;
   }
+
+  // Expose navigation globally for now (until we implement proper routing)
+  globalThis.navigateTo = navigateTo;
 </script>
 
-<div class="app-container">
-  <nav class="navigation">
-    <div class="nav-brand">
-      <h2>Nutrient System Dashboard</h2>
-    </div>
-    <div class="nav-tabs">
-      <button
-        class="nav-tab {currentPage === 'headgrower' ? 'active' : ''}"
-        onclick={() => navigateTo('headgrower')}
-        aria-label="Navigate to Head Grower operations"
-        aria-current={currentPage === 'headgrower' ? 'page' : false}
-      >
-        <i class="fas fa-leaf" aria-hidden="true"></i>
-        Head Grower
-      </button>
-      <button
-        class="nav-tab {currentPage === 'nutrients' ? 'active' : ''}"
-        onclick={() => navigateTo('nutrients')}
-        aria-label="Navigate to Nutrient Management"
-        aria-current={currentPage === 'nutrients' ? 'page' : false}
-      >
-        <i class="fas fa-tint" aria-hidden="true"></i>
-        Nutrients
-      </button>
-      <button
-        class="nav-tab {currentPage === 'stage1' ? 'active' : ''}"
-        onclick={() => navigateTo('stage1')}
-        aria-label="Navigate to Stage 1 Hardware Testing"
-        aria-current={currentPage === 'stage1' ? 'page' : false}
-      >
-        <i class="fas fa-tools" aria-hidden="true"></i>
-        Stage 1: Hardware Testing
-      </button>
-      <button
-        class="nav-tab {currentPage === 'stage2' ? 'active' : ''}"
-        onclick={() => navigateTo('stage2')}
-        aria-label="Navigate to Stage 2 Job Testing"
-        aria-current={currentPage === 'stage2' ? 'page' : false}
-      >
-        <i class="fas fa-cogs" aria-hidden="true"></i>
-        Stage 2: Job Testing
-      </button>
-      <button
-        class="nav-tab {currentPage === 'settings' ? 'active' : ''}"
-        onclick={() => navigateTo('settings')}
-        aria-label="Navigate to System Settings"
-        aria-current={currentPage === 'settings' ? 'page' : false}
-      >
-        <i class="fas fa-sliders-h" aria-hidden="true"></i>
-        Settings
-      </button>
-    </div>
-  </nav>
-
-  <div class="page-content">
-    {#if currentPage === 'headgrower'}
-      <HeadGrower />
-    {:else if currentPage === 'nutrients'}
-      <Nutrients />
-    {:else if currentPage === 'stage1'}
-      <Dashboard />
-    {:else if currentPage === 'stage2'}
-      <Stage2Testing />
-    {:else if currentPage === 'settings'}
-      <Settings />
-    {/if}
-  </div>
+<div class="min-h-screen bg-background text-foreground">
+  <DashboardLayout 
+    title={pageConfig.title}
+    subtitle={pageConfig.subtitle}
+    {systemStatus}
+    breadcrumbs={pageConfig.breadcrumbs}
+  >
+    {#snippet children()}
+      {#if currentPage === 'headgrower'}
+        <HeadGrower />
+      {:else if currentPage === 'nutrients'}
+        <Nutrients />
+      {:else if currentPage === 'stage1'}
+        <Dashboard />
+      {:else if currentPage === 'stage2'}
+        <Stage2Testing />
+      {:else if currentPage === 'settings'}
+        <Settings />
+      {/if}
+    {/snippet}
+  </DashboardLayout>
 </div>
-
-<style>
-  .app-container {
-    width: 100vw;
-    height: 100vh;
-    background: #1a1a1a;
-    color: white;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .navigation {
-    background: #0f172a;
-    padding: 0.75rem 2rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 2px solid #334155;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  }
-
-  .nav-brand h2 {
-    margin: 0;
-    color: #e2e8f0;
-    font-size: 1.2rem;
-    font-weight: 600;
-  }
-
-  .nav-tabs {
-    display: flex;
-    gap: 1rem;
-  }
-
-  .nav-tab {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0.75rem 1.5rem;
-    border: none;
-    border-radius: 0.5rem;
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    background: transparent;
-    color: #94a3b8;
-    border: 1px solid transparent;
-  }
-
-  .nav-tab:hover {
-    color: #e2e8f0;
-    background: #1e293b;
-    border-color: #475569;
-  }
-
-  .nav-tab.active {
-    color: #06b6d4;
-    background: #0f2419;
-    border-color: #06b6d4;
-  }
-
-  .nav-tab i {
-    font-size: 0.85rem;
-  }
-
-  .page-content {
-    flex: 1;
-    overflow-y: auto;
-    height: 0; /* This forces flex item to respect overflow */
-  }
-
-  @media (max-width: 768px) {
-    .navigation {
-      flex-direction: column;
-      gap: 1rem;
-      padding: 1rem;
-    }
-
-    .nav-tabs {
-      width: 100%;
-      justify-content: center;
-    }
-
-    .nav-tab {
-      flex: 1;
-      justify-content: center;
-      padding: 0.5rem 1rem;
-      font-size: 0.8rem;
-    }
-  }
-
-  @media (max-width: 480px) {
-    .nav-tabs {
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .nav-tab {
-      width: 100%;
-    }
-  }
-</style>
