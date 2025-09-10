@@ -118,7 +118,7 @@
     <div class="flex items-center gap-2 p-2">
       <div class="flex-1">
         <div class="text-sm font-medium">System Status</div>
-        <Badge class="status-badge status-{systemStatus.toLowerCase()}">
+        <Badge class="status-badge status-{String(systemStatus).toLowerCase()}">
           {systemStatus}
         </Badge>
       </div>
