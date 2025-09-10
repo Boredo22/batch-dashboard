@@ -8,15 +8,17 @@
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Activity, Play, Square } from "@lucide/svelte/icons";
 
-  let { 
-    flowMeters = [], 
-    selectedFlowMeter = $bindable(),
+  let {
+    flowMeters = [],
+    selectedFlowMeter = $bindable(""),
     flowGallons = $bindable(1.0),
     onStartFlow,
-    onStopFlow 
+    onStopFlow
   } = $props();
 
-  let selectedFlowMeterData = $derived(flowMeters.find(f => f.id === selectedFlowMeter));
+  // Ensure flowMeters is always an array to prevent null reference errors
+  let safeFlowMeters = $derived(Array.isArray(flowMeters) ? flowMeters : []);
+  let selectedFlowMeterData = $derived(selectedFlowMeter && selectedFlowMeter !== "" ? safeFlowMeters.find(f => f.id === selectedFlowMeter) : null);
   let isFlowing = $derived(selectedFlowMeterData?.status === 'flowing');
   let progress = $derived(() => {
     if (!selectedFlowMeterData || !isFlowing) return 0;
@@ -46,16 +48,20 @@
   <CardContent class="space-y-4">
     <div class="space-y-2">
       <Label for="flow-select">Select Flow Meter</Label>
-      <Select bind:selected={selectedFlowMeter}>
+      <Select bind:value={selectedFlowMeter}>
         <SelectTrigger>
-          <SelectValue placeholder="Choose a flow meter..." />
+          <SelectValue placeholder={safeFlowMeters.length > 0 ? "Choose a flow meter..." : "No flow meters available"} />
         </SelectTrigger>
         <SelectContent>
-          {#each flowMeters as flowMeter}
-            <SelectItem value={flowMeter.id}>
-              Flow Meter {flowMeter.id} - {flowMeter.name || 'Unnamed'}
-            </SelectItem>
-          {/each}
+          {#if safeFlowMeters.length > 0}
+            {#each safeFlowMeters as flowMeter}
+              <SelectItem value={flowMeter.id}>
+                Flow Meter {flowMeter.id} - {flowMeter.name || 'Unnamed'}
+              </SelectItem>
+            {/each}
+          {:else}
+            <SelectItem value="" disabled>No flow meters available</SelectItem>
+          {/if}
         </SelectContent>
       </Select>
     </div>

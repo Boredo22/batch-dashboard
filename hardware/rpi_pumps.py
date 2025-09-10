@@ -200,21 +200,97 @@ class EZOPumpController:
                 continue
                 
             try:
-                # Check calibration status
+                # Check calibration status - debug the full communication process
+                logger.info(f"Pump {pump_id}: Sending Cal,? command...")
                 cal_response = self.send_command(pump_id, "Cal,?")
-                if cal_response and "Cal" in cal_response:
-                    # Parse calibration status (0=uncalibrated, 1=single point, 2=dual point)
-                    if "," in cal_response:
-                        cal_status = int(cal_response.split(',')[1])
-                    else:
-                        cal_status = 0
-                    self.calibration_status[pump_id] = cal_status
-                    self.pump_info[pump_id]['calibrated'] = cal_status > 0
-                    logger.info(f"Pump {pump_id}: Calibration status {cal_status}")
+                
+                # Log exact response for debugging
+                if cal_response is None:
+                    logger.warning(f"Pump {pump_id}: Cal,? returned None")
+                elif cal_response == "":
+                    logger.warning(f"Pump {pump_id}: Cal,? returned empty string")
                 else:
-                    self.calibration_status[pump_id] = 0  # Default to uncalibrated
-                    self.pump_info[pump_id]['calibrated'] = False
-                    logger.warning(f"Pump {pump_id}: Could not read calibration status")
+                    logger.info(f"Pump {pump_id}: Cal,? response = '{cal_response}' (length: {len(cal_response)})")
+                
+                if cal_response:
+                    # Parse calibration status - EZO pump Cal,? returns ?CAL,n (uppercase) where n is calibration status
+                    if cal_response.startswith("?CAL,"):
+                        try:
+                            cal_status = int(cal_response.split(',')[1])
+                            self.calibration_status[pump_id] = cal_status
+                            self.pump_info[pump_id]['calibrated'] = cal_status > 0
+                            logger.info(f"Pump {pump_id}: ✓ Calibration status {cal_status} ({'calibrated' if cal_status > 0 else 'uncalibrated'})")
+                        except (IndexError, ValueError) as e:
+                            logger.warning(f"Pump {pump_id}: Failed to parse calibration response '{cal_response}': {e}")
+                            self.calibration_status[pump_id] = 0
+                            self.pump_info[pump_id]['calibrated'] = False
+                    elif cal_response.startswith("?Cal,"):
+                        # Handle mixed case format too
+                        try:
+                            cal_status = int(cal_response.split(',')[1])
+                            self.calibration_status[pump_id] = cal_status
+                            self.pump_info[pump_id]['calibrated'] = cal_status > 0
+                            logger.info(f"Pump {pump_id}: ✓ Calibration status {cal_status} ({'calibrated' if cal_status > 0 else 'uncalibrated'})")
+                        except (IndexError, ValueError) as e:
+                            logger.warning(f"Pump {pump_id}: Failed to parse calibration response '{cal_response}': {e}")
+                            self.calibration_status[pump_id] = 0
+                            self.pump_info[pump_id]['calibrated'] = False
+                    elif "CAL" in cal_response.upper():
+                        # Fallback: case-insensitive search for CAL
+                        logger.info(f"Pump {pump_id}: Alternative CAL response format: '{cal_response}'")
+                        try:
+                            # Try to find a number in the response
+                            import re
+                            numbers = re.findall(r'\d+', cal_response)
+                            if numbers:
+                                cal_status = int(numbers[-1])  # Take the last number found
+                                self.calibration_status[pump_id] = cal_status
+                                self.pump_info[pump_id]['calibrated'] = cal_status > 0
+                                logger.info(f"Pump {pump_id}: ✓ Parsed calibration status {cal_status} from '{cal_response}'")
+                            else:
+                                logger.warning(f"Pump {pump_id}: No numbers found in CAL response: '{cal_response}'")
+                                self.calibration_status[pump_id] = 0
+                                self.pump_info[pump_id]['calibrated'] = False
+                        except Exception as e:
+                            logger.warning(f"Pump {pump_id}: Error parsing alternative CAL format '{cal_response}': {e}")
+                            self.calibration_status[pump_id] = 0
+                            self.pump_info[pump_id]['calibrated'] = False
+                    else:
+                        # Response doesn't contain "CAL" at all
+                        logger.warning(f"Pump {pump_id}: Response doesn't contain 'CAL': '{cal_response}'")
+                        self.calibration_status[pump_id] = 0
+                        self.pump_info[pump_id]['calibrated'] = False
+                else:
+                    # Try alternative command format - maybe the pump expects different syntax
+                    logger.info(f"Pump {pump_id}: Trying alternative Cal? command (no comma)...")
+                    alt_response = self.send_command(pump_id, "Cal?")
+                    
+                    if alt_response:
+                        logger.info(f"Pump {pump_id}: Cal? response = '{alt_response}'")
+                        # Try to parse this response too
+                        if "Cal" in alt_response:
+                            try:
+                                import re
+                                numbers = re.findall(r'\d+', alt_response)
+                                if numbers:
+                                    cal_status = int(numbers[-1])
+                                    self.calibration_status[pump_id] = cal_status
+                                    self.pump_info[pump_id]['calibrated'] = cal_status > 0
+                                    logger.info(f"Pump {pump_id}: ✓ Parsed calibration status {cal_status} from alternative command")
+                                else:
+                                    self.calibration_status[pump_id] = 0
+                                    self.pump_info[pump_id]['calibrated'] = False
+                            except Exception as e:
+                                logger.warning(f"Pump {pump_id}: Error parsing Cal? response: {e}")
+                                self.calibration_status[pump_id] = 0
+                                self.pump_info[pump_id]['calibrated'] = False
+                        else:
+                            self.calibration_status[pump_id] = 0
+                            self.pump_info[pump_id]['calibrated'] = False
+                    else:
+                        logger.warning(f"Pump {pump_id}: Neither Cal,? nor Cal? commands returned valid response")
+                        self.calibration_status[pump_id] = 0
+                        self.pump_info[pump_id]['calibrated'] = False
                     
             except Exception as e:
                 logger.error(f"Error checking calibration for pump {pump_id}: {e}")

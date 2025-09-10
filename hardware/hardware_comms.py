@@ -208,17 +208,14 @@ class HardwareComms:
         Returns:
             bool: Success status
         """
-        from hardware.rpi_pumps import EZOPumpController
+        sys = self.get_system()
+        if not sys or not sys.pump_controller:
+            logger.error("System or pump controller not available for calibration")
+            return False
         
         try:
-            # Create pump controller instance
-            pump_controller = EZOPumpController()
-            
-            # Send calibration command (Cal,{actual_volume})
-            success = pump_controller.calibrate_pump(pump_id, actual_volume_ml)
-            
-            # Clean up
-            pump_controller.close()
+            # Use existing pump controller from main system
+            success = sys.pump_controller.calibrate_pump(pump_id, actual_volume_ml)
             
             if success:
                 pump_name = get_pump_name(pump_id)
@@ -242,18 +239,20 @@ class HardwareComms:
         Returns:
             bool: Success status
         """
-        from hardware.rpi_pumps import EZOPumpController
+        sys = self.get_system()
+        if not sys or not sys.pump_controller:
+            logger.error("System or pump controller not available for clearing calibration")
+            return False
         
         try:
-            pump_controller = EZOPumpController()
-            
-            # Send Cal,clear command
-            response = pump_controller.send_command(pump_id, "Cal,clear")
+            # Send Cal,clear command using existing controller
+            response = sys.pump_controller.send_command(pump_id, "Cal,clear")
             success = response is not None
             
-            pump_controller.close()
-            
             if success:
+                # Update cached calibration status
+                sys.pump_controller.calibration_status[pump_id] = 0
+                sys.pump_controller.pump_info[pump_id]['calibrated'] = False
                 pump_name = get_pump_name(pump_id)
                 logger.info(f"Cleared calibration for {pump_name}")
             
@@ -265,7 +264,7 @@ class HardwareComms:
 
     def check_pump_calibration_status(self, pump_id: int) -> dict:
         """
-        Check EZO pump calibration status using cached data where possible
+        Check EZO pump calibration status using live "Cal,?" command
         
         Args:
             pump_id: Pump ID
@@ -273,29 +272,69 @@ class HardwareComms:
         Returns:
             dict: Calibration status info
         """
-        from hardware.rpi_pumps import EZOPumpController
+        sys = self.get_system()
+        if not sys or not sys.pump_controller:
+            logger.error("System or pump controller not available for checking calibration")
+            return {
+                'success': False,
+                'pump_id': pump_id,
+                'error': 'System not available'
+            }
         
         try:
-            pump_controller = EZOPumpController()
+            # Send Cal,? command to get real-time calibration status
+            cal_response = sys.pump_controller.send_command(pump_id, "Cal,?")
+            logger.debug(f"Pump {pump_id}: Cal,? live response = '{cal_response}'")
             
-            # Use cached calibration status if available
-            cal_status = pump_controller.get_calibration_status(pump_id)
+            if cal_response:
+                # Parse calibration status - EZO pump Cal,? returns ?CAL,n (uppercase) where n is calibration status
+                if cal_response.startswith("?CAL,"):
+                    try:
+                        cal_status = int(cal_response.split(',')[1])
+                        
+                        # Update cached status
+                        sys.pump_controller.calibration_status[pump_id] = cal_status
+                        sys.pump_controller.pump_info[pump_id]['calibrated'] = cal_status > 0
+                        
+                        logger.info(f"Pump {pump_id}: Live calibration status {cal_status}")
+                    except (IndexError, ValueError) as e:
+                        logger.warning(f"Pump {pump_id}: Failed to parse live calibration response '{cal_response}': {e}")
+                        cal_status = 0
+                elif cal_response.startswith("?Cal,"):
+                    # Handle mixed case format too
+                    try:
+                        cal_status = int(cal_response.split(',')[1])
+                        
+                        # Update cached status
+                        sys.pump_controller.calibration_status[pump_id] = cal_status
+                        sys.pump_controller.pump_info[pump_id]['calibrated'] = cal_status > 0
+                        
+                        logger.info(f"Pump {pump_id}: Live calibration status {cal_status}")
+                    except (IndexError, ValueError) as e:
+                        logger.warning(f"Pump {pump_id}: Failed to parse live calibration response '{cal_response}': {e}")
+                        cal_status = 0
+                else:
+                    # Response doesn't match expected format
+                    logger.warning(f"Pump {pump_id}: Unexpected live calibration response format: '{cal_response}'")
+                    cal_status = 0
+            else:
+                cal_status = 0  # Default to uncalibrated if command failed
+                logger.warning(f"Pump {pump_id}: No response to live Cal,? command")
             
             status_map = {
                 0: "uncalibrated",
                 1: "single_point",
-                2: "volume_calibrated", 
+                2: "volume_calibrated",
                 3: "fully_calibrated"
             }
-            
-            pump_controller.close()
             
             return {
                 'success': True,
                 'pump_id': pump_id,
                 'calibration_status': status_map.get(cal_status, "unknown"),
                 'calibration_level': cal_status,
-                'calibrated': cal_status > 0
+                'calibrated': cal_status > 0,
+                'raw_response': cal_response
             }
             
         except Exception as e:
@@ -308,7 +347,7 @@ class HardwareComms:
 
     def get_pump_status(self, pump_id: int = None) -> dict:
         """
-        Get pump status without rechecking calibration (uses cached data)
+        Get pump status using cached data from existing controller (no new initialization!)
         
         Args:
             pump_id: Pump ID or None for all pumps
@@ -316,10 +355,13 @@ class HardwareComms:
         Returns:
             dict: Pump status information
         """
-        from hardware.rpi_pumps import EZOPumpController
+        sys = self.get_system()
+        if not sys or not sys.pump_controller:
+            logger.error("System or pump controller not available for getting pump status")
+            return {'error': 'System not available'}
         
         try:
-            pump_controller = EZOPumpController()
+            pump_controller = sys.pump_controller  # Use existing controller - no new initialization!
             
             if pump_id:
                 # Return single pump status using cached calibration
@@ -360,7 +402,6 @@ class HardwareComms:
                             'target_volume': pump_info.get('target_volume', 0)
                         }
             
-            pump_controller.close()
             return result
             
         except Exception as e:
@@ -369,17 +410,19 @@ class HardwareComms:
 
     def refresh_pump_calibrations(self) -> bool:
         """
-        Manually refresh calibration status for all pumps
+        Manually refresh calibration status for all pumps using existing controller
         
         Returns:
             bool: Success status
         """
-        from hardware.rpi_pumps import EZOPumpController
+        sys = self.get_system()
+        if not sys or not sys.pump_controller:
+            logger.error("System or pump controller not available for refreshing calibrations")
+            return False
         
         try:
-            pump_controller = EZOPumpController()
-            pump_controller._check_all_calibrations()
-            pump_controller.close()
+            # Use existing controller - this will update the cached calibration status
+            sys.pump_controller._check_all_calibrations()
             logger.info("Pump calibration status refreshed")
             return True
             
@@ -389,7 +432,7 @@ class HardwareComms:
 
     def pause_pump(self, pump_id: int) -> bool:
         """
-        Pause EZO pump during dispensing
+        Pause EZO pump during dispensing using existing controller
         
         Args:
             pump_id: Pump ID
@@ -397,16 +440,15 @@ class HardwareComms:
         Returns:
             bool: Success status
         """
-        from hardware.rpi_pumps import EZOPumpController
+        sys = self.get_system()
+        if not sys or not sys.pump_controller:
+            logger.error("System or pump controller not available for pausing pump")
+            return False
         
         try:
-            pump_controller = EZOPumpController()
-            
-            # Send P command to pause
-            response = pump_controller.send_command(pump_id, "P")
+            # Send P command to pause using existing controller
+            response = sys.pump_controller.send_command(pump_id, "P")
             success = response is not None
-            
-            pump_controller.close()
             
             if success:
                 pump_name = get_pump_name(pump_id)
@@ -420,7 +462,7 @@ class HardwareComms:
 
     def get_pump_voltage(self, pump_id: int) -> dict:
         """
-        Get EZO pump voltage
+        Get EZO pump voltage using existing controller
         
         Args:
             pump_id: Pump ID
@@ -428,20 +470,35 @@ class HardwareComms:
         Returns:
             dict: Voltage info
         """
-        from hardware.rpi_pumps import EZOPumpController
+        sys = self.get_system()
+        if not sys or not sys.pump_controller:
+            logger.error("System or pump controller not available for getting voltage")
+            return {
+                'success': False,
+                'pump_id': pump_id,
+                'error': 'System not available'
+            }
         
         try:
-            pump_controller = EZOPumpController()
+            # First try to get cached voltage info
+            pump_info = sys.pump_controller.get_pump_info(pump_id)
+            if pump_info and pump_info.get('voltage', 0) > 0:
+                return {
+                    'success': True,
+                    'pump_id': pump_id,
+                    'voltage': pump_info['voltage'],
+                    'cached': True
+                }
             
-            # Send PV,? command to get voltage
-            response = pump_controller.send_command(pump_id, "PV,?")
-            
-            pump_controller.close()
+            # If no cached voltage, get it fresh
+            response = sys.pump_controller.send_command(pump_id, "PV,?")
             
             if response and response.startswith("?PV,"):
                 voltage_str = response.split(",")[1] if "," in response else "0"
                 try:
                     voltage = float(voltage_str)
+                    # Update cached voltage
+                    sys.pump_controller.pump_info[pump_id]['voltage'] = voltage
                     return {
                         'success': True,
                         'pump_id': pump_id,
@@ -467,7 +524,7 @@ class HardwareComms:
 
     def get_current_dispensed_volume(self, pump_id: int) -> dict:
         """
-        Get current dispensed volume from EZO pump
+        Get current dispensed volume from EZO pump using existing controller
         
         Args:
             pump_id: Pump ID
@@ -475,15 +532,28 @@ class HardwareComms:
         Returns:
             dict: Volume info
         """
-        from hardware.rpi_pumps import EZOPumpController
+        sys = self.get_system()
+        if not sys or not sys.pump_controller:
+            logger.error("System or pump controller not available for getting current volume")
+            return {
+                'success': False,
+                'pump_id': pump_id,
+                'error': 'System not available'
+            }
         
         try:
-            pump_controller = EZOPumpController()
+            # First try to get cached volume info
+            pump_info = sys.pump_controller.get_pump_info(pump_id)
+            if pump_info and pump_info.get('is_dispensing', False):
+                return {
+                    'success': True,
+                    'pump_id': pump_id,
+                    'current_volume': pump_info.get('current_volume', 0),
+                    'cached': True
+                }
             
-            # Send R command to read current volume
-            response = pump_controller.send_command(pump_id, "R")
-            
-            pump_controller.close()
+            # If not dispensing or no cached data, get it fresh
+            response = sys.pump_controller.send_command(pump_id, "R")
             
             if response:
                 try:

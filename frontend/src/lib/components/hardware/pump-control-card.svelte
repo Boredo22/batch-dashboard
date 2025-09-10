@@ -8,15 +8,19 @@
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Droplets, Play, Square } from "@lucide/svelte/icons";
 
-  let { 
-    pumps = [], 
-    selectedPump = $bindable(),
+  let {
+    pumps = [],
+    selectedPump = $bindable(""),
     pumpAmount = $bindable(10),
     onDispensePump,
-    onStopPump 
+    onStopPump
   } = $props();
 
-  let selectedPumpData = $derived(pumps.find(p => p.id === selectedPump));
+  // Ensure pumps is always an array to prevent null reference errors
+  let safePumps = $derived(Array.isArray(pumps) ? pumps : []);
+  // Convert selectedPump to string to ensure compatibility
+  let selectedPumpStr = $derived(selectedPump ? String(selectedPump) : "");
+  let selectedPumpData = $derived(selectedPumpStr && selectedPumpStr !== "" ? safePumps.find(p => String(p.id) === selectedPumpStr) : null);
   let isDispensing = $derived(selectedPumpData?.status === 'dispensing');
   let progress = $derived(() => {
     if (!selectedPumpData || !isDispensing) return 0;
@@ -46,18 +50,22 @@
   <CardContent class="space-y-4">
     <div class="space-y-2">
       <Label for="pump-select">Select Pump</Label>
-      <Select bind:value={selectedPump}>
-        <SelectTrigger>
-          <SelectValue placeholder="Choose a pump..." />
-        </SelectTrigger>
-        <SelectContent>
-          {#each pumps as pump}
-            <SelectItem value={pump.id}>
+      <select
+        bind:value={selectedPumpStr}
+        onchange={(e) => selectedPump = e.target.value ? parseInt(e.target.value) : ""}
+        class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <option value="" disabled>
+          {safePumps.length > 0 ? "Choose a pump..." : "No pumps available"}
+        </option>
+        {#if safePumps.length > 0}
+          {#each safePumps as pump}
+            <option value={String(pump.id)}>
               Pump {pump.id} - {pump.name || 'Unnamed'}
-            </SelectItem>
+            </option>
           {/each}
-        </SelectContent>
-      </Select>
+        {/if}
+      </select>
     </div>
 
     {#if selectedPumpData}

@@ -6,6 +6,9 @@
 
   let { relays = [], onRelayControl } = $props();
 
+  // Ensure relays is always an array to prevent null reference errors
+  let safeRelays = $derived(Array.isArray(relays) ? relays : []);
+
   function handleRelayControl(relayId, action) {
     onRelayControl?.(relayId, action);
   }
@@ -20,7 +23,7 @@
   </CardHeader>
   <CardContent>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-      {#each relays as relay}
+      {#each safeRelays as relay}
         <div class="space-y-2">
           <div class="flex items-center justify-between">
             <span class="text-sm font-medium">Relay {relay.id}</span>

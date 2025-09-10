@@ -46,9 +46,9 @@
   let phValue = $state(0);
   
   // Form inputs
-  let selectedPump = $state(null);
+  let selectedPump = $state("");
   let pumpAmount = $state(10);
-  let selectedFlowMeter = $state(null);
+  let selectedFlowMeter = $state("");
   let flowGallons = $state(1);
   
   // Progress tracking for log messages
