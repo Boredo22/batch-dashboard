@@ -265,7 +265,7 @@ class HardwareComms:
 
     def check_pump_calibration_status(self, pump_id: int) -> dict:
         """
-        Check EZO pump calibration status
+        Check EZO pump calibration status using cached data where possible
         
         Args:
             pump_id: Pump ID
@@ -278,34 +278,24 @@ class HardwareComms:
         try:
             pump_controller = EZOPumpController()
             
-            # Send Cal,? command to check calibration status
-            response = pump_controller.send_command(pump_id, "Cal,?")
+            # Use cached calibration status if available
+            cal_status = pump_controller.get_calibration_status(pump_id)
+            
+            status_map = {
+                0: "uncalibrated",
+                1: "single_point",
+                2: "volume_calibrated", 
+                3: "fully_calibrated"
+            }
             
             pump_controller.close()
             
-            if response:
-                # Parse response: ?Cal,0=uncalibrated, ?Cal,1=single point, ?Cal,2=volume, ?Cal,3=both
-                if response.startswith("?Cal,"):
-                    cal_status = response.split(",")[1] if "," in response else "0"
-                    status_map = {
-                        "0": "uncalibrated",
-                        "1": "single_point",
-                        "2": "volume_calibrated", 
-                        "3": "fully_calibrated"
-                    }
-                    
-                    return {
-                        'success': True,
-                        'pump_id': pump_id,
-                        'calibration_status': status_map.get(cal_status, "unknown"),
-                        'raw_response': response
-                    }
-            
             return {
-                'success': False,
+                'success': True,
                 'pump_id': pump_id,
-                'calibration_status': 'unknown',
-                'error': 'Failed to get calibration status'
+                'calibration_status': status_map.get(cal_status, "unknown"),
+                'calibration_level': cal_status,
+                'calibrated': cal_status > 0
             }
             
         except Exception as e:
@@ -315,6 +305,87 @@ class HardwareComms:
                 'pump_id': pump_id,
                 'error': str(e)
             }
+
+    def get_pump_status(self, pump_id: int = None) -> dict:
+        """
+        Get pump status without rechecking calibration (uses cached data)
+        
+        Args:
+            pump_id: Pump ID or None for all pumps
+        
+        Returns:
+            dict: Pump status information
+        """
+        from hardware.rpi_pumps import EZOPumpController
+        
+        try:
+            pump_controller = EZOPumpController()
+            
+            if pump_id:
+                # Return single pump status using cached calibration
+                pump_info = pump_controller.get_pump_info(pump_id)
+                if pump_info:
+                    result = {
+                        'id': pump_id,
+                        'name': pump_info.get('name', f'Pump {pump_id}'),
+                        'voltage': pump_info.get('voltage', 0),
+                        'calibrated': pump_controller.is_calibrated(pump_id),  # Use cached status
+                        'status': 'ready' if pump_controller.is_calibrated(pump_id) else 'uncalibrated',
+                        'connected': pump_info.get('connected', False),
+                        'is_dispensing': pump_info.get('is_dispensing', False),
+                        'current_volume': pump_info.get('current_volume', 0),
+                        'target_volume': pump_info.get('target_volume', 0)
+                    }
+                else:
+                    result = {
+                        'id': pump_id,
+                        'name': f'Pump {pump_id}',
+                        'error': 'Pump not found'
+                    }
+            else:
+                # Return all pump statuses using cached calibration
+                result = {}
+                for pid in get_available_pumps():
+                    pump_info = pump_controller.get_pump_info(pid)
+                    if pump_info:
+                        result[pid] = {
+                            'id': pid,
+                            'name': pump_info.get('name', f'Pump {pid}'),
+                            'voltage': pump_info.get('voltage', 0),
+                            'calibrated': pump_controller.is_calibrated(pid),  # Use cached status
+                            'status': 'ready' if pump_controller.is_calibrated(pid) else 'uncalibrated',
+                            'connected': pump_info.get('connected', False),
+                            'is_dispensing': pump_info.get('is_dispensing', False),
+                            'current_volume': pump_info.get('current_volume', 0),
+                            'target_volume': pump_info.get('target_volume', 0)
+                        }
+            
+            pump_controller.close()
+            return result
+            
+        except Exception as e:
+            logger.error(f"Exception getting pump status: {e}")
+            return {'error': str(e)}
+
+    def refresh_pump_calibrations(self) -> bool:
+        """
+        Manually refresh calibration status for all pumps
+        
+        Returns:
+            bool: Success status
+        """
+        from hardware.rpi_pumps import EZOPumpController
+        
+        try:
+            pump_controller = EZOPumpController()
+            pump_controller._check_all_calibrations()
+            pump_controller.close()
+            logger.info("Pump calibration status refreshed")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Exception refreshing calibrations: {e}")
+            return False
 
     def pause_pump(self, pump_id: int) -> bool:
         """
@@ -783,6 +854,14 @@ def get_pump_voltage(pump_id: int) -> dict:
 def get_current_dispensed_volume(pump_id: int) -> dict:
     """Get current dispensed volume - convenience function"""
     return get_hardware_comms().get_current_dispensed_volume(pump_id)
+
+def get_pump_status(pump_id: int = None) -> dict:
+    """Get pump status - convenience function"""
+    return get_hardware_comms().get_pump_status(pump_id)
+
+def refresh_pump_calibrations() -> bool:
+    """Refresh pump calibrations - convenience function"""
+    return get_hardware_comms().refresh_pump_calibrations()
 
 def cleanup_hardware():
     """Cleanup hardware resources - convenience function"""

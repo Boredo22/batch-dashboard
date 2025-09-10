@@ -48,6 +48,7 @@ class EZOPumpController:
         
         # Pump information storage
         self.pump_info = {}
+        self.calibration_status = {}  # Add calibration cache
         for pump_id in PUMP_ADDRESSES.keys():
             self.pump_info[pump_id] = {
                 'name': get_pump_name(pump_id),
@@ -164,12 +165,6 @@ class EZOPumpController:
                 logger.info(f"Pump {pump_id}: {info}")
                 self.pump_info[pump_id]['connected'] = True
                 
-                # Get calibration status
-                cal_status = self.send_command(pump_id, "Cal,?")
-                if cal_status and cal_status.startswith("?Cal,"):
-                    cal_value = cal_status.split(",")[1] if "," in cal_status else "0"
-                    self.pump_info[pump_id]['calibrated'] = int(cal_value) > 0
-                
                 # Get voltage
                 voltage = self.send_command(pump_id, "PV,?")
                 if voltage and voltage.startswith("?PV,"):
@@ -192,6 +187,49 @@ class EZOPumpController:
         
         connected_pumps = sum(1 for info in self.pump_info.values() if info['connected'])
         logger.info(f"Initialized {connected_pumps}/{len(PUMP_ADDRESSES)} pumps")
+        
+        # After successful pump initialization, check calibration once
+        self._check_all_calibrations()
+    
+    def _check_all_calibrations(self):
+        """Check calibration status for all pumps once and cache results"""
+        logger.info("Checking pump calibration status...")
+        
+        for pump_id in range(1, 9):  # Pumps 1-8
+            if pump_id not in PUMP_ADDRESSES:
+                continue
+                
+            try:
+                # Check calibration status
+                cal_response = self.send_command(pump_id, "Cal,?")
+                if cal_response and "Cal" in cal_response:
+                    # Parse calibration status (0=uncalibrated, 1=single point, 2=dual point)
+                    if "," in cal_response:
+                        cal_status = int(cal_response.split(',')[1])
+                    else:
+                        cal_status = 0
+                    self.calibration_status[pump_id] = cal_status
+                    self.pump_info[pump_id]['calibrated'] = cal_status > 0
+                    logger.info(f"Pump {pump_id}: Calibration status {cal_status}")
+                else:
+                    self.calibration_status[pump_id] = 0  # Default to uncalibrated
+                    self.pump_info[pump_id]['calibrated'] = False
+                    logger.warning(f"Pump {pump_id}: Could not read calibration status")
+                    
+            except Exception as e:
+                logger.error(f"Error checking calibration for pump {pump_id}: {e}")
+                self.calibration_status[pump_id] = 0  # Default to uncalibrated
+                self.pump_info[pump_id]['calibrated'] = False
+                
+        logger.info("Calibration status check completed")
+        
+    def get_calibration_status(self, pump_id):
+        """Get cached calibration status"""
+        return self.calibration_status.get(pump_id, 0)
+        
+    def is_calibrated(self, pump_id):
+        """Check if pump is calibrated (cached)"""
+        return self.get_calibration_status(pump_id) > 0
     
     def start_dispense(self, pump_id, volume_ml):
         """Start dispensing specified volume"""
@@ -298,7 +336,9 @@ class EZOPumpController:
         response = self.send_command(pump_id, command)
         
         if response is not None:
+            # Update both pump info and cached calibration status
             self.pump_info[pump_id]['calibrated'] = True
+            self.calibration_status[pump_id] = 1  # At least single point calibration
             pump_name = get_pump_name(pump_id)
             logger.info(f"Calibrated {pump_name} with {volume_ml}ml")
             return True

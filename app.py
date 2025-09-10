@@ -22,7 +22,8 @@ from hardware.hardware_comms import (
     emergency_stop, get_system_status, get_available_hardware,
     all_relays_off, cleanup_hardware, start_ec_ph, stop_ec_ph,
     calibrate_pump, clear_pump_calibration, check_pump_calibration_status,
-    pause_pump, get_pump_voltage, get_current_dispensed_volume
+    pause_pump, get_pump_voltage, get_current_dispensed_volume,
+    get_pump_status, refresh_pump_calibrations
 )
 
 # Import configuration constants and all settings
@@ -462,29 +463,24 @@ def api_status():
             'mock_settings': raw_hardware.get('mock_settings', {})
         }
         
-        # Transform pump data to include voltage and actual status
+        # Get pump status using cached calibration data
+        pumps_status = get_pump_status()  # Get all pump statuses with cached calibration
         pumps_list = []
+        
         for pid in hardware['pumps']['ids']:
             pump_info = status.get('pumps', {}).get(pid, {})
-            
-            # Check actual calibration status from EZO pump
-            calibration_status = check_pump_calibration_status(pid)
-            is_calibrated = False
-            if calibration_status.get('success', False):
-                cal_status = calibration_status.get('calibration_status', 'uncalibrated')
-                # Consider any calibration status other than 'uncalibrated' as calibrated
-                is_calibrated = cal_status != 'uncalibrated'
+            cached_pump_status = pumps_status.get(pid, {})
             
             pump_data = {
                 'id': pid,
                 'name': hardware['pumps']['names'].get(pid, f'Pump {pid}'),
-                'status': 'running' if pump_info.get('is_dispensing', False) else 'stopped',
-                'is_dispensing': pump_info.get('is_dispensing', False),
-                'voltage': pump_info.get('voltage', 0.0),
-                'connected': pump_info.get('connected', False),
-                'calibrated': is_calibrated,
-                'current_volume': pump_info.get('current_volume', 0.0),
-                'target_volume': pump_info.get('target_volume', 0.0),
+                'status': cached_pump_status.get('status', 'stopped'),
+                'is_dispensing': cached_pump_status.get('is_dispensing', False),
+                'voltage': cached_pump_status.get('voltage', 0.0),
+                'connected': cached_pump_status.get('connected', False),
+                'calibrated': cached_pump_status.get('calibrated', False),  # Use cached calibration
+                'current_volume': cached_pump_status.get('current_volume', 0.0),
+                'target_volume': cached_pump_status.get('target_volume', 0.0),
                 'last_error': pump_info.get('last_error', '')
             }
             pumps_list.append(pump_data)
@@ -665,55 +661,6 @@ def api_stop_pump(pump_id):
             'error': str(e)
         }), 500
 
-@app.route('/api/pumps/<int:pump_id>/calibrate', methods=['POST'])
-def api_calibrate_pump(pump_id):
-    """Calibrate pump with actual measured volume"""
-    try:
-        data = request.get_json() or {}
-        target_volume = float(data.get('target_volume', 0))
-        actual_volume = float(data.get('actual_volume', 0))
-        
-        if not target_volume or not actual_volume:
-            return jsonify({
-                'success': False,
-                'error': 'Both target_volume and actual_volume parameters required'
-            }), 400
-        
-        if target_volume <= 0 or actual_volume <= 0:
-            return jsonify({
-                'success': False,
-                'error': 'Volumes must be greater than 0'
-            }), 400
-        
-        # Calculate calibration factor for logging
-        calibration_factor = actual_volume / target_volume
-        
-        # Log the calibration for debugging
-        logger.info(f"Calibrating pump {pump_id}: target={target_volume}ml, actual={actual_volume}ml, factor={calibration_factor:.4f}")
-        
-        # FIXED: Actually calibrate the pump using hardware_comms
-        success = calibrate_pump(pump_id, actual_volume)
-        
-        return jsonify({
-            'success': success,
-            'pump_id': pump_id,
-            'target_volume': target_volume,
-            'actual_volume': actual_volume,
-            'calibration_factor': calibration_factor,
-            'message': f"Pump {pump_id} calibrated successfully (factor: {calibration_factor:.4f})" if success else "Calibration failed - check logs"
-        })
-        
-    except ValueError as e:
-        return jsonify({
-            'success': False,
-            'error': f'Invalid volume values: {e}'
-        }), 400
-    except Exception as e:
-        logger.error(f"Error calibrating pump {pump_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
 
 @app.route('/api/pumps/<int:pump_id>/calibration/clear', methods=['POST'])
 def api_clear_pump_calibration(pump_id):
@@ -805,6 +752,80 @@ def api_get_current_volume(pump_id):
         
     except Exception as e:
         logger.error(f"Error getting pump {pump_id} current volume: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/pumps/refresh-calibration', methods=['POST'])
+def api_refresh_calibration():
+    """Manually refresh calibration status for all pumps"""
+    try:
+        success = refresh_pump_calibrations()
+        
+        return jsonify({
+            'success': success,
+            'message': 'Calibration status refreshed' if success else 'Failed to refresh calibration status'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error refreshing calibration: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/pumps/<int:pump_id>/calibrate', methods=['POST'])
+def api_calibrate_pump_with_refresh(pump_id):
+    """Calibrate a specific pump and update cache"""
+    try:
+        data = request.get_json() or {}
+        target_volume = float(data.get('target_volume', 0))
+        actual_volume = float(data.get('actual_volume', 0))
+        
+        if not target_volume or not actual_volume:
+            return jsonify({
+                'success': False,
+                'error': 'Both target_volume and actual_volume parameters required'
+            }), 400
+        
+        if target_volume <= 0 or actual_volume <= 0:
+            return jsonify({
+                'success': False,
+                'error': 'Volumes must be greater than 0'
+            }), 400
+        
+        # Calculate calibration factor for logging
+        calibration_factor = actual_volume / target_volume
+        
+        # Log the calibration for debugging
+        logger.info(f"Calibrating pump {pump_id}: target={target_volume}ml, actual={actual_volume}ml, factor={calibration_factor:.4f}")
+        
+        # Calibrate the pump using hardware_comms
+        success = calibrate_pump(pump_id, actual_volume)
+        
+        if success:
+            # Update cached calibration status after successful calibration
+            refresh_success = refresh_pump_calibrations()
+            if not refresh_success:
+                logger.warning(f"Calibration succeeded but cache refresh failed for pump {pump_id}")
+        
+        return jsonify({
+            'success': success,
+            'pump_id': pump_id,
+            'target_volume': target_volume,
+            'actual_volume': actual_volume,
+            'calibration_factor': calibration_factor,
+            'message': f"Pump {pump_id} calibrated successfully (factor: {calibration_factor:.4f})" if success else "Calibration failed - check logs"
+        })
+        
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': f'Invalid volume values: {e}'
+        }), 400
+    except Exception as e:
+        logger.error(f"Error calibrating pump {pump_id}: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -1308,6 +1329,7 @@ def init_hardware():
         status = get_system_status()
         if status.get('system_ready'):
             logger.info("✓ Hardware communications ready")
+            logger.info("✓ EZO pump controller initialized with calibration status")
             return status
         else:
             logger.warning(f"⚠ Hardware system not fully ready: {status}")
