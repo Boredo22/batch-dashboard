@@ -45,7 +45,7 @@
   </div>
 
   <div class="ml-auto px-4">
-    <Badge class="status-badge status-{systemStatus.toLowerCase()}">
+    <Badge class="status-badge status-{String(systemStatus).toLowerCase()}">
       {systemStatus}
     </Badge>
   </div>
