@@ -436,6 +436,7 @@
 </script>
 
 <!-- System Status Header -->
+<div class="scaled-dashboard">
 <div class="dashboard-header">
   <div class="status-bar">
     <div class="system-info">
@@ -938,8 +939,17 @@
     </Card>
   </div>
 </div>
+</div>
 
 <style>
+  /* Global 15% scale reduction */
+  .scaled-dashboard {
+    transform: scale(0.85);
+    transform-origin: top left;
+    width: 117.647%; /* 100% / 0.85 to compensate for scaling */
+    height: 117.647%; /* 100% / 0.85 to compensate for scaling */
+  }
+
   :root {
     /* Design System Foundation */
     --bg-primary: #1a1a1a;
@@ -1004,8 +1014,8 @@
   .dashboard-header {
     background: var(--bg-primary);
     border-bottom: 2px solid var(--bg-tertiary);
-    padding: var(--space-lg);
-    margin-bottom: var(--space-xl);
+    padding: calc(var(--space-lg) / 2);
+    margin-bottom: calc(var(--space-xl) / 2);
   }
 
   .status-bar {
@@ -2109,7 +2119,7 @@
     }
 
     .dashboard-header {
-      padding: var(--space-md);
+      padding: calc(var(--space-md) / 2);
     }
 
     .status-bar {
