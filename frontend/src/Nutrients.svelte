@@ -339,10 +339,10 @@
           <div class="overall-progress">
             <div class="progress-header">
               <span class="progress-label">Overall Progress</span>
-              <span class="progress-percent">{overallProgress.toFixed(1)}%</span>
+              <span class="progress-percent">{overallProgress().toFixed(1)}%</span>
             </div>
             <div class="progress-bar-container">
-              <div class="progress-bar-fill" style="width: {overallProgress}%"></div>
+              <div class="progress-bar-fill" style="width: {overallProgress()}%"></div>
             </div>
           </div>
         {/if}
