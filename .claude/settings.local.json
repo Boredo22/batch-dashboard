@@ -24,7 +24,9 @@
       "Bash(find:*)",
       "Bash(/dev/null)",
       "Bash(timeout 10s npm run dev)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

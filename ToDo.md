@@ -1,467 +1,218 @@
-"""
-CODING AGENT INSTRUCTIONS - Flask Hardware Control System Fixes
-===============================================================
+# Fix Pump Calibration Checks - Claude Code Instructions
 
-PROBLEM: Flask app keeps restarting in debug mode, causing GPIO conflicts and I2C race conditions
-that make pumps go haywire. Multiple instances compete for same hardware resources.
+## Problem Analysis
+From the logs, the system is repeatedly checking pump calibration status every time the nutrients page is accessed, causing:
+- Multiple `NO_DATA` errors 
+- Slow page loading
+- Unnecessary I2C bus operations
+- System instability
 
-SOLUTION: This module provides comprehensive hardware safety and resource management.
+## Required Changes
 
-STATUS: ✅ COMPLETED - All integration steps have been successfully implemented
+### 1. Modify Hardware Initialization (hardware/rpi_pumps.py)
 
-INTEGRATION STEPS FOR CODING AGENT:
+**Current Issue:** Calibration status is checked every time pumps are accessed
 
-1. SAVE THIS FILE as 'hardware_safety.py' in the same directory as app.py
+**Fix:** Check calibration status once during initialization and cache results
 
-2. MODIFY app.py - ADD these imports at the very top:
-   ```python
-   from hardware_safety import setup_hardware_safety
-   import sys
-   ```
-
-3. MODIFY app.py - ADD safety setup BEFORE any hardware initialization:
-   ```python
-   app = Flask(__name__)
-   
-   # CRITICAL: Setup hardware safety FIRST
-   safety_manager = setup_hardware_safety(app)
-   if not safety_manager:
-       print("Another instance running or safety setup failed")
-       sys.exit(1)
-   ```
-
-4. MODIFY app.py - WRAP existing hardware initialization in safety wrapper:
-   ```python
-   def init_hardware():
-       # Move ALL existing hardware init code here:
-       # - pump controller setup
-       # - relay controller setup  
-       # - flow meter setup
-       # - Arduino communication setup
-       return hardware_objects  # return whatever your init normally returns
-   
-   # Replace direct hardware init with:
-   try:
-       hardware = safety_manager.safe_hardware_init(init_hardware)
-   except Exception as e:
-       print(f"Hardware init failed: {e}")
-       sys.exit(1)
-   ```
-
-5. MODIFY app.py - CHANGE Flask run command to disable debug mode:
-   ```python
-   if __name__ == '__main__':
-       app.run(
-           host='0.0.0.0',
-           port=5000,
-           debug=False,           # CRITICAL: Stops auto-restart
-           use_reloader=False,    # CRITICAL: Stops file watching
-           threaded=True
-       )
-   ```
-
-6. OPTIONAL - Use safety managers in hardware modules:
-   For GPIO operations: safety_manager.gpio_manager.safe_gpio_setup(pin, mode)
-   For I2C operations: safety_manager.i2c_manager.get_bus()
-
-CRITICAL NOTES FOR CODING AGENT:
-- This MUST be imported before any hardware initialization
-- Flask debug=False is ESSENTIAL to stop restart loop
-- The instance lock prevents multiple processes fighting for hardware
-- All cleanup is automatic via atexit and signal handlers
-- Test by running once - should not restart automatically anymore
-
-EXPECTED RESULT: App starts once, stays running, no GPIO conflicts, no pump chaos.
-
-Flask Hardware Control System - Restart and Resource Conflict Fixes
-==================================================================
-
-This module provides fixes for:
-1. Flask debug mode auto-restarts
-2. GPIO resource conflicts 
-3. I2C bus race conditions
-4. Multiple instance prevention
-5. Proper cleanup on shutdown
-"""
-
-import os
-import sys
-import time
-import atexit
-import signal
-import threading
-import logging
-from contextlib import contextmanager
-from typing import Optional, Any
-
-try:
-    import RPi.GPIO as GPIO
-except ImportError:
-    # Mock GPIO for development/testing
-    class MockGPIO:
-        def cleanup(self): pass
-        def setup(self, pin, mode): pass
-        def setmode(self, mode): pass
-        OUT = 1
-        BCM = 1
-    GPIO = MockGPIO()
-
-logger = logging.getLogger(__name__)
-
-# =============================================================================
-# 1. INSTANCE LOCK MANAGER
-# =============================================================================
-
-class InstanceLockManager:
-    """Prevents multiple instances from running simultaneously"""
-    
-    def __init__(self, lock_file_path: str = '/tmp/feed_control.lock'):
-        self.lock_file = lock_file_path
-        self.pid = os.getpid()
-    
-    def acquire_lock(self) -> bool:
-        """Acquire instance lock, return True if successful"""
-        if os.path.exists(self.lock_file):
-            try:
-                with open(self.lock_file, 'r') as f:
-                    old_pid = int(f.read().strip())
-                
-                # Check if old process is still running
-                try:
-                    os.kill(old_pid, 0)  # Signal 0 just checks if process exists
-                    print(f"Another instance (PID {old_pid}) is already running. Exiting...")
-                    return False
-                except OSError:
-                    # Process doesn't exist, remove stale lock file
-                    print(f"Removing stale lock file (PID {old_pid} not running)")
-                    os.remove(self.lock_file)
-            except (ValueError, FileNotFoundError):
-                # Invalid lock file, remove it
-                print("Removing invalid lock file")
-                try:
-                    os.remove(self.lock_file)
-                except FileNotFoundError:
-                    pass
-        
-        # Create new lock file
-        try:
-            with open(self.lock_file, 'w') as f:
-                f.write(str(self.pid))
-            print(f"Instance lock acquired (PID {self.pid})")
-            return True
-        except Exception as e:
-            print(f"Failed to create lock file: {e}")
-            return False
-    
-    def release_lock(self):
-        """Release instance lock"""
-        try:
-            if os.path.exists(self.lock_file):
-                with open(self.lock_file, 'r') as f:
-                    lock_pid = int(f.read().strip())
-                
-                if lock_pid == self.pid:
-                    os.remove(self.lock_file)
-                    print(f"Instance lock released (PID {self.pid})")
-        except Exception as e:
-            print(f"Error releasing lock: {e}")
-
-# =============================================================================
-# 2. GPIO RESOURCE MANAGER
-# =============================================================================
-
-class GPIOResourceManager:
-    """Manages GPIO resources and prevents conflicts"""
-    
+```python
+class RPiPumps:
     def __init__(self):
-        self._initialized = False
-        self._used_pins = set()
-    
-    def is_gpio_in_use(self, pin: int) -> bool:
-        """Check if GPIO pin is already in use"""
-        try:
-            GPIO.setup(pin, GPIO.OUT)
-            GPIO.cleanup(pin)
-            return False
-        except Exception as e:
-            logger.warning(f"GPIO pin {pin} appears to be in use: {e}")
-            return True
-    
-    def safe_gpio_setup(self, pin: int, mode, retries: int = 3) -> bool:
-        """Safely setup GPIO with retries"""
-        for attempt in range(retries):
+        self.pumps = {}
+        self.calibration_status = {}  # Add this cache
+        # ... existing initialization
+        
+    def initialize_pumps(self):
+        """Initialize pumps and check calibration once"""
+        # ... existing pump initialization code
+        
+        # After successful pump initialization, check calibration once
+        self._check_all_calibrations()
+        
+    def _check_all_calibrations(self):
+        """Check calibration status for all pumps once and cache results"""
+        logger.info("Checking pump calibration status...")
+        
+        for pump_id in range(1, 9):  # Pumps 1-8
             try:
-                if not self.is_gpio_in_use(pin):
-                    GPIO.setup(pin, mode)
-                    self._used_pins.add(pin)
-                    return True
+                # Check calibration status
+                cal_response = self._send_command(pump_id, "CAL,?")
+                if cal_response and "CAL" in cal_response:
+                    # Parse calibration status (0=uncalibrated, 1=single point, 2=dual point)
+                    cal_status = int(cal_response.split(',')[1]) if ',' in cal_response else 0
+                    self.calibration_status[pump_id] = cal_status
+                    logger.info(f"Pump {pump_id}: Calibration status {cal_status}")
                 else:
-                    print(f"GPIO pin {pin} is busy, waiting... (attempt {attempt + 1})")
-                    time.sleep(1)
+                    self.calibration_status[pump_id] = 0  # Default to uncalibrated
+                    logger.warning(f"Pump {pump_id}: Could not read calibration status")
+                    
             except Exception as e:
-                logger.error(f"GPIO setup failed for pin {pin}: {e}")
-                time.sleep(1)
-        
-        logger.error(f"Failed to setup GPIO pin {pin} after {retries} attempts")
-        return False
-    
-    def cleanup_gpio(self):
-        """Clean up all GPIO resources"""
-        try:
-            GPIO.cleanup()
-            self._used_pins.clear()
-            logger.info("GPIO cleaned up successfully")
-        except Exception as e:
-            logger.error(f"GPIO cleanup error: {e}")
-
-# =============================================================================
-# 3. I2C BUS MANAGER
-# =============================================================================
-
-class I2CBusManager:
-    """Thread-safe singleton I2C bus manager"""
-    
-    _instance: Optional['I2CBusManager'] = None
-    _lock = threading.Lock()
-    
-    def __new__(cls) -> 'I2CBusManager':
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
-        return cls._instance
-    
-    def __init__(self):
-        if not self._initialized:
-            self._i2c_lock = threading.Lock()
-            self._bus = None
-            self._bus_number = 1
-            self._initialized = True
-    
-    @contextmanager
-    def get_bus(self, bus_number: int = 1):
-        """Get I2C bus with thread-safe locking"""
-        with self._i2c_lock:
-            try:
-                if self._bus is None or self._bus_number != bus_number:
-                    # Import here to avoid issues if not available
-                    try:
-                        import board
-                        import busio
-                        self._bus = busio.I2C(board.SCL, board.SDA)
-                        self._bus_number = bus_number
-                        logger.info(f"I2C bus {bus_number} initialized")
-                    except ImportError:
-                        logger.warning("I2C libraries not available, using mock")
-                        self._bus = MockI2CBus()
+                logger.error(f"Error checking calibration for pump {pump_id}: {e}")
+                self.calibration_status[pump_id] = 0  # Default to uncalibrated
                 
-                yield self._bus
-            except Exception as e:
-                logger.error(f"I2C bus error: {e}")
-                self._bus = None
-                raise
-    
-    def close_bus(self):
-        """Close I2C bus connection"""
-        with self._i2c_lock:
-            if self._bus:
-                try:
-                    if hasattr(self._bus, 'deinit'):
-                        self._bus.deinit()
-                    logger.info("I2C bus closed")
-                except Exception as e:
-                    logger.error(f"Error closing I2C bus: {e}")
-                finally:
-                    self._bus = None
-
-class MockI2CBus:
-    """Mock I2C bus for testing/development"""
-    def deinit(self): pass
-
-# =============================================================================
-# 4. HARDWARE SAFETY MANAGER
-# =============================================================================
-
-class HardwareSafetyManager:
-    """Main hardware safety and resource management"""
-    
-    def __init__(self):
-        self.lock_manager = InstanceLockManager()
-        self.gpio_manager = GPIOResourceManager()
-        self.i2c_manager = I2CBusManager()
-        self._shutdown_handlers_registered = False
-    
-    def setup_safety_systems(self) -> bool:
-        """Setup all safety systems"""
-        print("Setting up hardware safety systems...")
+        logger.info("Calibration status check completed")
         
-        # 1. Check for existing instance
-        if not self.lock_manager.acquire_lock():
-            return False
+    def get_calibration_status(self, pump_id):
+        """Get cached calibration status"""
+        return self.calibration_status.get(pump_id, 0)
         
-        # 2. Register shutdown handlers
-        self._register_shutdown_handlers()
-        
-        # 3. Setup GPIO mode
-        try:
-            GPIO.setmode(GPIO.BCM)
-            logger.info("GPIO mode set to BCM")
-        except Exception as e:
-            logger.error(f"Failed to set GPIO mode: {e}")
-        
-        print("Hardware safety systems initialized successfully")
-        return True
-    
-    def _register_shutdown_handlers(self):
-        """Register cleanup handlers for various shutdown scenarios"""
-        if self._shutdown_handlers_registered:
-            return
-        
-        def cleanup_handler():
-            """Main cleanup handler"""
-            print("Performing hardware cleanup...")
-            self.gpio_manager.cleanup_gpio()
-            self.i2c_manager.close_bus()
-            self.lock_manager.release_lock()
-        
-        def signal_handler(signum, frame):
-            """Handle shutdown signals"""
-            print(f"Received signal {signum}, shutting down gracefully...")
-            cleanup_handler()
-            sys.exit(0)
-        
-        # Register handlers
-        atexit.register(cleanup_handler)
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
-        
-        self._shutdown_handlers_registered = True
-        logger.info("Shutdown handlers registered")
-    
-    def safe_hardware_init(self, init_function, max_retries: int = 3):
-        """Safely initialize hardware with retries"""
-        for attempt in range(max_retries):
-            try:
-                print(f"Hardware initialization attempt {attempt + 1}/{max_retries}")
-                result = init_function()
-                print("Hardware initialization successful")
-                return result
-            except Exception as e:
-                logger.error(f"Hardware init attempt {attempt + 1} failed: {e}")
-                if attempt < max_retries - 1:
-                    print(f"Retrying in 2 seconds...")
-                    time.sleep(2)
-                else:
-                    print("Hardware initialization failed after all retries")
-                    raise
-    
-    def emergency_stop(self):
-        """Emergency stop all hardware"""
-        print("EMERGENCY STOP INITIATED")
-        try:
-            # Add your emergency stop logic here
-            self.gpio_manager.cleanup_gpio()
-            self.i2c_manager.close_bus()
-            logger.warning("Emergency stop completed")
-        except Exception as e:
-            logger.error(f"Error during emergency stop: {e}")
+    def is_calibrated(self, pump_id):
+        """Check if pump is calibrated (cached)"""
+        return self.get_calibration_status(pump_id) > 0
+```
 
-# =============================================================================
-# 5. FLASK APP CONFIGURATION FIXES
-# =============================================================================
+### 2. Update Main Hardware Communications (hardware/hardware_comms.py)
 
-def configure_flask_for_hardware(app):
-    """Configure Flask app for hardware control"""
-    
-    # Disable debug mode in production
-    app.config['DEBUG'] = False
-    
-    # Disable auto-reload to prevent hardware conflicts
-    app.config['TEMPLATES_AUTO_RELOAD'] = False
-    
-    # Set other safe defaults
-    app.config['TESTING'] = False
-    
-    print("Flask configured for hardware control (debug=False)")
+**Fix:** Remove repeated calibration checks from status methods
 
-# =============================================================================
-# 6. MAIN SETUP FUNCTION
-# =============================================================================
+```python
+def get_pump_status(self, pump_id=None):
+    """Get pump status without rechecking calibration"""
+    if pump_id:
+        # Return single pump status using cached calibration
+        pump_info = self.pumps.get_pump_info(pump_id)
+        return {
+            'id': pump_id,
+            'name': pump_info.get('name', f'Pump {pump_id}'),
+            'voltage': pump_info.get('voltage', 0),
+            'calibrated': self.pumps.is_calibrated(pump_id),  # Use cached status
+            'status': 'ready' if self.pumps.is_calibrated(pump_id) else 'uncalibrated'
+        }
+    else:
+        # Return all pump statuses using cached calibration
+        statuses = {}
+        for pid in range(1, 9):
+            statuses[pid] = self.get_pump_status(pid)
+        return statuses
+```
 
-def setup_hardware_safety(app=None) -> HardwareSafetyManager:
-    """
-    Main function to setup all hardware safety systems
-    
-    Usage:
-        safety_manager = setup_hardware_safety(app)
-        if not safety_manager:
-            sys.exit(1)
-    """
-    
-    safety_manager = HardwareSafetyManager()
-    
-    # Setup safety systems
-    if not safety_manager.setup_safety_systems():
-        print("Failed to setup safety systems - another instance may be running")
-        return None
-    
-    # Configure Flask if provided
-    if app:
-        configure_flask_for_hardware(app)
-    
-    return safety_manager
+### 3. Update Web Routes (app.py or routes)
 
-# =============================================================================
-# 7. USAGE EXAMPLE
-# =============================================================================
+**Fix:** Remove calibration checks from page load routes
 
-if __name__ == "__main__":
-    # Example usage in your app.py:
-    
-    from flask import Flask
-    
-    app = Flask(__name__)
-    
-    # Setup hardware safety FIRST, before any hardware initialization
-    safety_manager = setup_hardware_safety(app)
-    if not safety_manager:
-        sys.exit(1)
-    
-    # Now safely initialize your hardware
-    def init_my_hardware():
-        # Your existing hardware initialization code goes here
-        # Use safety_manager.gpio_manager.safe_gpio_setup() for GPIO
-        # Use safety_manager.i2c_manager.get_bus() for I2C
-        print("Hardware initialized safely")
-        return True
-    
-    # Initialize hardware with safety wrapper
+```python
+@app.route('/nutrients')
+def nutrients_page():
+    """Nutrients page - use cached pump status"""
     try:
-        safety_manager.safe_hardware_init(init_my_hardware)
+        # Get pump statuses (using cached calibration data)
+        pump_statuses = hardware_comm.get_pump_status()
+        
+        # No need to re-check calibration here
+        return render_template('nutrients.html', 
+                             pumps=pump_statuses,
+                             system_ready=True)
+                             
     except Exception as e:
-        print(f"Hardware initialization failed: {e}")
-        sys.exit(1)
-    
-    @app.route('/')
-    def index():
-        return "Hardware control system running safely!"
-    
-    # Run Flask with safe settings
-    if __name__ == '__main__':
-        try:
-            print("Starting Flask application...")
-            app.run(
-                host='0.0.0.0', 
-                port=5000, 
-                debug=False,  # CRITICAL: Disable debug mode
-                use_reloader=False,  # CRITICAL: Disable auto-reload
-                threaded=True
-            )
-        except KeyboardInterrupt:
-            print("Application interrupted by user")
-        except Exception as e:
-            print(f"Application error: {e}")
-            safety_manager.emergency_stop()
-        finally:
-            print("Application shutdown complete")
+        logger.error(f"Error loading nutrients page: {e}")
+        return render_template('nutrients.html', 
+                             error="System not ready",
+                             system_ready=False)
+
+@app.route('/api/pump/status')
+def api_pump_status():
+    """API endpoint for pump status - no calibration recheck"""
+    try:
+        statuses = hardware_comm.get_pump_status()
+        return jsonify(statuses)
+    except Exception as e:
+        logger.error(f"Error getting pump status: {e}")
+        return jsonify({'error': str(e)}), 500
+```
+
+### 4. Add Manual Calibration Refresh (Optional)
+
+**Add:** Manual calibration recheck for maintenance
+
+```python
+@app.route('/api/pump/refresh-calibration', methods=['POST'])
+def refresh_calibration():
+    """Manually refresh calibration status for all pumps"""
+    try:
+        hardware_comm.pumps._check_all_calibrations()
+        return jsonify({'success': True, 'message': 'Calibration status refreshed'})
+    except Exception as e:
+        logger.error(f"Error refreshing calibration: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/pump/<int:pump_id>/calibrate', methods=['POST'])
+def calibrate_pump(pump_id):
+    """Calibrate a specific pump and update cache"""
+    try:
+        # Perform calibration
+        result = hardware_comm.calibrate_pump(pump_id)
+        
+        # Update cached calibration status
+        hardware_comm.pumps._check_all_calibrations()
+        
+        return jsonify({'success': True, 'result': result})
+    except Exception as e:
+        logger.error(f"Error calibrating pump {pump_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+```
+
+### 5. Update Startup Sequence (main.py or app.py)
+
+**Fix:** Ensure calibration check happens once during startup
+
+```python
+def initialize_hardware():
+    """Initialize hardware with single calibration check"""
+    try:
+        logger.info("Starting hardware initialization...")
+        
+        # Initialize pump controller (includes calibration check)
+        feed_control.initialize_pumps()  # This now includes calibration check
+        logger.info("✓ EZO pump controller initialized with calibration status")
+        
+        # Initialize other hardware...
+        # ... existing initialization code
+        
+        logger.info("Hardware initialization completed successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Hardware initialization failed: {e}")
+        return False
+```
+
+## Implementation Steps
+
+1. **Backup Current Code:**
+   ```bash
+   git add -A && git commit -m "Backup before calibration fix"
+   ```
+
+2. **Apply Changes in Order:**
+   - First: Update `hardware/rpi_pumps.py` with calibration caching
+   - Second: Update `hardware/hardware_comms.py` to use cached status
+   - Third: Update web routes to remove repeated checks
+   - Fourth: Test the system
+
+3. **Test the Fix:**
+   - Start the Flask app and verify single calibration check in logs
+   - Load nutrients page multiple times - should be fast with no repeated checks
+   - Verify pump status is still accurate
+
+4. **Verification:**
+   - Look for single "Checking pump calibration status..." message at startup
+   - No more "NO_DATA" errors when loading nutrients page
+   - Faster page loading times
+   - System remains stable
+
+## Benefits
+
+- **Performance:** Eliminates repeated I2C bus operations
+- **Reliability:** Reduces "NO_DATA" errors
+- **Speed:** Faster page loading
+- **Maintainability:** Clear separation of initialization vs runtime operations
+- **Flexibility:** Manual calibration refresh when needed
+
+## Rollback Plan
+
+If issues occur:
+```bash
+git reset --hard HEAD~1
+```
+
+This will restore the previous working state while you debug any issues.
