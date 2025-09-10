@@ -5,6 +5,10 @@ Provides REST API endpoints for Svelte frontend
 Uses hardware_comms.py for reliable hardware control like simple_gui.py
 """
 
+# CRITICAL: Import hardware safety FIRST
+from hardware_safety import setup_hardware_safety
+import sys
+
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import logging
@@ -65,6 +69,12 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 app.secret_key = 'nutrient_mixing_system_2024'
+
+# CRITICAL: Setup hardware safety FIRST
+safety_manager = setup_hardware_safety(app)
+if not safety_manager:
+    print("Another instance running or safety setup failed")
+    sys.exit(1)
 
 # Register cleanup on app shutdown
 atexit.register(cleanup_hardware)
@@ -1289,29 +1299,54 @@ def internal_error(error):
 # STARTUP AND MAIN
 # =============================================================================
 
-def initialize_app():
-    """Initialize the application"""
-    logger.info("Starting Flask application...")
+def init_hardware():
+    """Initialize hardware with safety wrapper"""
+    logger.info("Starting hardware initialization...")
     
     # Test hardware communications
     try:
         status = get_system_status()
         if status.get('system_ready'):
             logger.info("✓ Hardware communications ready")
+            return status
         else:
             logger.warning(f"⚠ Hardware system not fully ready: {status}")
+            return status
     except Exception as e:
         logger.error(f"✗ Hardware initialization error: {e}")
+        raise
+
+def initialize_app():
+    """Initialize the application with safety manager"""
+    logger.info("Starting Flask application...")
+    
+    # Initialize hardware with safety wrapper
+    try:
+        hardware = safety_manager.safe_hardware_init(init_hardware)
+        logger.info("✓ Hardware initialization completed safely")
+    except Exception as e:
+        logger.error(f"Hardware init failed: {e}")
+        sys.exit(1)
     
     logger.info("Flask application initialized")
 
 if __name__ == '__main__':
     initialize_app()
     
-    # Run the Flask app
-    app.run(
-        host='0.0.0.0',  # Allow external connections
-        port=5000,       # Default Flask port
-        debug=True,      # Enable debug mode for development
-        threaded=True    # Handle multiple requests
-    )
+    # Run the Flask app with safe settings
+    try:
+        print("Starting Flask application...")
+        app.run(
+            host='0.0.0.0',     # Allow external connections
+            port=5000,          # Default Flask port
+            debug=False,        # CRITICAL: Disable debug mode to stop auto-restart
+            use_reloader=False, # CRITICAL: Disable auto-reload to prevent file watching
+            threaded=True       # Handle multiple requests
+        )
+    except KeyboardInterrupt:
+        print("Application interrupted by user")
+    except Exception as e:
+        print(f"Application error: {e}")
+        safety_manager.emergency_stop()
+    finally:
+        print("Application shutdown complete")
