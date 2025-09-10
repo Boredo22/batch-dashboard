@@ -43,16 +43,12 @@
   let activeSection = $state('dispense');
   
   // Computed values
-  let totalVolume = $derived(() => {
-    return Object.values(dispenseAmounts).reduce((sum, vol) => sum + vol, 0);
-  });
+  let totalVolume = $derived(Object.values(dispenseAmounts).reduce((sum, vol) => sum + vol, 0));
   
-  let dispensingSummary = $derived(() => {
-    return Object.entries(dispenseAmounts)
-      .filter(([id, amount]) => amount > 0)
-      .map(([id, amount]) => `${amount}ml ${pumpNames[id]}`)
-      .join(', ');
-  });
+  let dispensingSummary = $derived(Object.entries(dispenseAmounts)
+    .filter(([id, amount]) => amount > 0)
+    .map(([id, amount]) => `${amount}ml ${pumpNames[id]}`)
+    .join(', '));
   
   let overallProgress = $derived(() => {
     if (!isDispensing || dispensingPumps.size === 0) return 0;

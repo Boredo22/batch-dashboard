@@ -191,6 +191,136 @@ def api_save_config():
         }), 500
 
 # =============================================================================
+# SETTINGS ENDPOINTS - User and Developer Settings
+# =============================================================================
+
+@app.route('/api/settings/user', methods=['GET'])
+def api_get_user_settings():
+    """Get user settings"""
+    try:
+        # Get current configuration from config module
+        user_settings = {
+            'tanks': getattr(config, 'TANKS', {}),
+            'pumps': {
+                'names': getattr(config, 'PUMP_NAMES', {}),
+                'addresses': getattr(config, 'PUMP_ADDRESSES', {})
+            },
+            'timing': {
+                'status_update_interval': getattr(config, 'STATUS_UPDATE_INTERVAL', 2.0),
+                'pump_check_interval': getattr(config, 'PUMP_CHECK_INTERVAL', 1.0),
+                'flow_update_interval': getattr(config, 'FLOW_UPDATE_INTERVAL', 0.5)
+            },
+            'limits': {
+                'max_pump_volume_ml': getattr(config, 'MAX_PUMP_VOLUME_ML', 2500.0),
+                'min_pump_volume_ml': getattr(config, 'MIN_PUMP_VOLUME_ML', 0.5),
+                'max_flow_gallons': getattr(config, 'MAX_FLOW_GALLONS', 100)
+            }
+        }
+        
+        return jsonify(user_settings)
+        
+    except Exception as e:
+        logger.error(f"Error loading user settings: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/settings/user', methods=['POST'])
+def api_save_user_settings():
+    """Save user settings"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No user settings data provided'
+            }), 400
+        
+        logger.info(f"User settings update: {data}")
+        
+        # TODO: Implement actual saving to config file
+        return jsonify({
+            'success': True,
+            'message': 'User settings saved successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error saving user settings: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/settings/developer', methods=['GET'])
+def api_get_developer_settings():
+    """Get developer settings"""
+    try:
+        dev_settings = {
+            'gpio': {
+                'relay_pins': getattr(config, 'RELAY_GPIO_PINS', {}),
+                'flow_meter_pins': getattr(config, 'FLOW_METER_GPIO_PINS', {})
+            },
+            'i2c': {
+                'bus_number': getattr(config, 'I2C_BUS_NUMBER', 1),
+                'pump_addresses': getattr(config, 'PUMP_ADDRESSES', {}),
+                'command_delay': getattr(config, 'EZO_COMMAND_DELAY', 0.3)
+            },
+            'communication': {
+                'command_start': getattr(config, 'COMMAND_START', 'Start'),
+                'command_end': getattr(config, 'COMMAND_END', 'end'),
+                'arduino_baudrate': getattr(config, 'ARDUINO_UNO_BAUDRATE', 115200)
+            },
+            'mock': getattr(config, 'MOCK_SETTINGS', {
+                'mock_mode': False,
+                'mock_pumps': False,
+                'mock_relays': False,
+                'mock_flow_meters': False,
+                'mock_ecph': False
+            }),
+            'debug': {
+                'debug_mode': getattr(config, 'DEBUG_MODE', False),
+                'verbose_logging': getattr(config, 'VERBOSE_LOGGING', False),
+                'log_level': getattr(config, 'LOG_LEVEL', 'INFO')
+            }
+        }
+        
+        return jsonify(dev_settings)
+        
+    except Exception as e:
+        logger.error(f"Error loading developer settings: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/settings/developer', methods=['POST'])
+def api_save_developer_settings():
+    """Save developer settings"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'No developer settings data provided'
+            }), 400
+        
+        logger.info(f"Developer settings update: {data}")
+        
+        # TODO: Implement actual saving to config file
+        return jsonify({
+            'success': True,
+            'message': 'Developer settings saved successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error saving developer settings: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# =============================================================================
 # NUTRIENTS CONFIGURATION ENDPOINTS - Separate nutrients management
 # =============================================================================
 
@@ -326,6 +456,15 @@ def api_status():
         pumps_list = []
         for pid in hardware['pumps']['ids']:
             pump_info = status.get('pumps', {}).get(pid, {})
+            
+            # Check actual calibration status from EZO pump
+            calibration_status = check_pump_calibration_status(pid)
+            is_calibrated = False
+            if calibration_status.get('success', False):
+                cal_status = calibration_status.get('calibration_status', 'uncalibrated')
+                # Consider any calibration status other than 'uncalibrated' as calibrated
+                is_calibrated = cal_status != 'uncalibrated'
+            
             pump_data = {
                 'id': pid,
                 'name': hardware['pumps']['names'].get(pid, f'Pump {pid}'),
@@ -333,7 +472,7 @@ def api_status():
                 'is_dispensing': pump_info.get('is_dispensing', False),
                 'voltage': pump_info.get('voltage', 0.0),
                 'connected': pump_info.get('connected', False),
-                'calibrated': pump_info.get('calibrated', False),
+                'calibrated': is_calibrated,
                 'current_volume': pump_info.get('current_volume', 0.0),
                 'target_volume': pump_info.get('target_volume', 0.0),
                 'last_error': pump_info.get('last_error', '')

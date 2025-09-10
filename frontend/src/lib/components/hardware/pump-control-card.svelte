@@ -46,7 +46,7 @@
   <CardContent class="space-y-4">
     <div class="space-y-2">
       <Label for="pump-select">Select Pump</Label>
-      <Select bind:selected={selectedPump}>
+      <Select bind:value={selectedPump}>
         <SelectTrigger>
           <SelectValue placeholder="Choose a pump..." />
         </SelectTrigger>
