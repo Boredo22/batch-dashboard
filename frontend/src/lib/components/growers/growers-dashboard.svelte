@@ -119,6 +119,9 @@
     }
   }
 
+  // Track pending relay operations to prevent race conditions
+  let pendingRelayOperations = $state(new Set());
+
   // API Functions
   async function fetchSystemStatus() {
     try {
@@ -129,7 +132,11 @@
         if (data.relays) {
           relays = relays.map(relay => {
             const apiRelay = data.relays.find(r => r.id === relay.id);
-            return apiRelay ? { ...relay, status: apiRelay.state ? 'on' : 'off' } : relay;
+            // Only update relay status if there's no pending operation for this relay
+            if (apiRelay && !pendingRelayOperations.has(relay.id)) {
+              return { ...relay, status: apiRelay.state ? 'on' : 'off' };
+            }
+            return relay;
           });
         }
 
@@ -252,7 +259,15 @@
 
   // Relay Control
   async function controlRelay(relayId, action) {
+    // Mark this relay as having a pending operation to prevent race conditions
+    pendingRelayOperations.add(relayId);
+    
     try {
+      // Update local state immediately for responsive UI
+      relays = relays.map(relay => 
+        relay.id === relayId ? { ...relay, status: action } : relay
+      );
+
       const response = await fetch(`/api/relay/${relayId}/${action}`, {
         method: 'POST'
       });
@@ -261,23 +276,29 @@
         const result = await response.json();
         addLog(`Relay ${relayId} ${action.toUpperCase()}: ${result.message || 'Success'}`);
         
-        // Update local state
-        relays = relays.map(relay => 
-          relay.id === relayId ? { ...relay, status: action } : relay
-        );
+        // Clear the pending operation after a short delay to allow the hardware to respond
+        setTimeout(() => {
+          pendingRelayOperations.delete(relayId);
+        }, 1000);
       } else {
         const error = await response.json();
         addLog(`Relay ${relayId} error: ${error.error}`);
+        
+        // Revert the optimistic update on error and clear pending
+        relays = relays.map(relay => 
+          relay.id === relayId ? { ...relay, status: relay.status === 'on' ? 'off' : 'on' } : relay
+        );
+        pendingRelayOperations.delete(relayId);
       }
     } catch (error) {
       addLog(`Relay ${relayId} error: ${error.message}`);
+      
+      // Revert the optimistic update on error and clear pending
+      relays = relays.map(relay => 
+        relay.id === relayId ? { ...relay, status: relay.status === 'on' ? 'off' : 'on' } : relay
+      );
+      pendingRelayOperations.delete(relayId);
     }
-  }
-
-  async function toggleRelay(relayId) {
-    const relay = relays.find(r => r.id === relayId);
-    const newAction = relay.status === 'on' ? 'off' : 'on';
-    await controlRelay(relayId, newAction);
   }
 
   // Pump Control
@@ -576,17 +597,30 @@
             <div class="tank-relays">
               {#each [1, 4, 7] as relayId}
                 {@const relay = relays.find(r => r.id === relayId)}
-                <Button
-                  class="relay-btn tank1-relay {relay.status === 'on' ? 'relay-active' : 'relay-inactive'}"
-                  onclick={() => toggleRelay(relay.id)}
-                  variant="ghost"
-                >
-                  <div class="relay-content">
+                <div class="relay-card tank1-relay">
+                  <div class="relay-header">
                     <div class="relay-id">{relay.id}</div>
                     <div class="relay-name">{relay.name}</div>
-                    <div class="relay-status">{relay.status.toUpperCase()}</div>
                   </div>
-                </Button>
+                  <div class="relay-buttons">
+                    <Button
+                      class="relay-btn-half on-btn {relay.status === 'on' ? 'active' : 'inactive'}"
+                      onclick={() => controlRelay(relay.id, 'on')}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      ON
+                    </Button>
+                    <Button
+                      class="relay-btn-half off-btn {relay.status === 'off' ? 'active' : 'inactive'}"
+                      onclick={() => controlRelay(relay.id, 'off')}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      OFF
+                    </Button>
+                  </div>
+                </div>
               {/each}
             </div>
           </div>
@@ -597,17 +631,30 @@
             <div class="tank-relays">
               {#each [2, 5, 8] as relayId}
                 {@const relay = relays.find(r => r.id === relayId)}
-                <Button
-                  class="relay-btn tank2-relay {relay.status === 'on' ? 'relay-active' : 'relay-inactive'}"
-                  onclick={() => toggleRelay(relay.id)}
-                  variant="ghost"
-                >
-                  <div class="relay-content">
+                <div class="relay-card tank2-relay">
+                  <div class="relay-header">
                     <div class="relay-id">{relay.id}</div>
                     <div class="relay-name">{relay.name}</div>
-                    <div class="relay-status">{relay.status.toUpperCase()}</div>
                   </div>
-                </Button>
+                  <div class="relay-buttons">
+                    <Button
+                      class="relay-btn-half on-btn {relay.status === 'on' ? 'active' : 'inactive'}"
+                      onclick={() => controlRelay(relay.id, 'on')}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      ON
+                    </Button>
+                    <Button
+                      class="relay-btn-half off-btn {relay.status === 'off' ? 'active' : 'inactive'}"
+                      onclick={() => controlRelay(relay.id, 'off')}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      OFF
+                    </Button>
+                  </div>
+                </div>
               {/each}
             </div>
           </div>
@@ -618,17 +665,30 @@
             <div class="tank-relays">
               {#each [3, 6, 9] as relayId}
                 {@const relay = relays.find(r => r.id === relayId)}
-                <Button
-                  class="relay-btn tank3-relay {relay.status === 'on' ? 'relay-active' : 'relay-inactive'}"
-                  onclick={() => toggleRelay(relay.id)}
-                  variant="ghost"
-                >
-                  <div class="relay-content">
+                <div class="relay-card tank3-relay">
+                  <div class="relay-header">
                     <div class="relay-id">{relay.id}</div>
                     <div class="relay-name">{relay.name}</div>
-                    <div class="relay-status">{relay.status.toUpperCase()}</div>
                   </div>
-                </Button>
+                  <div class="relay-buttons">
+                    <Button
+                      class="relay-btn-half on-btn {relay.status === 'on' ? 'active' : 'inactive'}"
+                      onclick={() => controlRelay(relay.id, 'on')}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      ON
+                    </Button>
+                    <Button
+                      class="relay-btn-half off-btn {relay.status === 'off' ? 'active' : 'inactive'}"
+                      onclick={() => controlRelay(relay.id, 'off')}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      OFF
+                    </Button>
+                  </div>
+                </div>
               {/each}
             </div>
           </div>
@@ -639,17 +699,30 @@
             <div class="tank-relays">
               {#each [10, 11, 12, 13] as relayId}
                 {@const relay = relays.find(r => r.id === relayId)}
-                <Button
-                  class="relay-btn rooms-relay {relay.status === 'on' ? 'relay-active' : 'relay-inactive'}"
-                  onclick={() => toggleRelay(relay.id)}
-                  variant="ghost"
-                >
-                  <div class="relay-content">
+                <div class="relay-card rooms-relay">
+                  <div class="relay-header">
                     <div class="relay-id">{relay.id}</div>
                     <div class="relay-name">{relay.name}</div>
-                    <div class="relay-status">{relay.status.toUpperCase()}</div>
                   </div>
-                </Button>
+                  <div class="relay-buttons">
+                    <Button
+                      class="relay-btn-half on-btn {relay.status === 'on' ? 'active' : 'inactive'}"
+                      onclick={() => controlRelay(relay.id, 'on')}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      ON
+                    </Button>
+                    <Button
+                      class="relay-btn-half off-btn {relay.status === 'off' ? 'active' : 'inactive'}"
+                      onclick={() => controlRelay(relay.id, 'off')}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      OFF
+                    </Button>
+                  </div>
+                </div>
               {/each}
             </div>
           </div>
@@ -1289,137 +1362,175 @@
     gap: var(--space-sm);
   }
 
-  :global(.relay-btn) {
-    padding: var(--space-lg) !important;
-    border-radius: var(--radius-md) !important;
-    border: 2px solid var(--bg-tertiary) !important;
+  .relay-card {
+    background: var(--bg-secondary);
+    border: 2px solid var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    min-height: 80px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    transition: all 0.15s ease;
+  }
+
+  .relay-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex: 1;
+  }
+
+  .relay-buttons {
+    display: flex;
+    gap: var(--space-xs);
+  }
+
+  :global(.relay-btn-half) {
+    flex: 1 !important;
+    padding: var(--space-xs) var(--space-sm) !important;
+    border-radius: var(--radius-sm) !important;
+    font-weight: 700 !important;
+    font-size: var(--text-sm) !important;
     transition: all 0.15s ease !important;
-    min-height: 80px !important;
-    height: 80px !important;
-    width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    background: var(--bg-secondary) !important;
-    color: var(--text-muted) !important;
-    box-shadow: none !important;
+    border: 1px solid transparent !important;
     transform: scale(1) !important;
   }
 
-  :global(.relay-btn:active) {
+  :global(.relay-btn-half:active) {
     transform: scale(0.95) !important;
-    box-shadow: inset 0 4px 8px rgba(0, 0, 0, 0.3) !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3) !important;
   }
 
   /* Tank 1 Relay Colors (Blue Theme) */
-  :global(.relay-btn.tank1-relay.relay-active) {
-    background: var(--accent-blue) !important;
-    border-color: var(--accent-blue) !important;
-    color: var(--text-button) !important;
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.6), 0 0 40px rgba(59, 130, 246, 0.3) !important;
+  .relay-card.tank1-relay {
+    border-color: var(--accent-blue);
   }
 
-  :global(.relay-btn.tank1-relay.relay-inactive) {
-    background: rgba(59, 130, 246, 0.1) !important;
+  :global(.tank1-relay .relay-btn-half.on-btn.active) {
+    background: var(--accent-blue) !important;
+    color: var(--text-button) !important;
     border-color: var(--accent-blue) !important;
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.5) !important;
+  }
+
+  :global(.tank1-relay .relay-btn-half.off-btn.active) {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-muted) !important;
+    border-color: var(--bg-tertiary) !important;
+  }
+
+  :global(.tank1-relay .relay-btn-half.inactive) {
+    background: rgba(59, 130, 246, 0.1) !important;
     color: var(--accent-blue) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
   }
 
   /* Tank 2 Relay Colors (Green Theme) */
-  :global(.relay-btn.tank2-relay.relay-active) {
-    background: var(--accent-green) !important;
-    border-color: var(--accent-green) !important;
-    color: var(--text-button) !important;
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.6), 0 0 40px rgba(16, 185, 129, 0.3) !important;
+  .relay-card.tank2-relay {
+    border-color: var(--accent-green);
   }
 
-  :global(.relay-btn.tank2-relay.relay-inactive) {
-    background: rgba(16, 185, 129, 0.1) !important;
+  :global(.tank2-relay .relay-btn-half.on-btn.active) {
+    background: var(--accent-green) !important;
+    color: var(--text-button) !important;
     border-color: var(--accent-green) !important;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.5) !important;
+  }
+
+  :global(.tank2-relay .relay-btn-half.off-btn.active) {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-muted) !important;
+    border-color: var(--bg-tertiary) !important;
+  }
+
+  :global(.tank2-relay .relay-btn-half.inactive) {
+    background: rgba(16, 185, 129, 0.1) !important;
     color: var(--accent-green) !important;
+    border-color: rgba(16, 185, 129, 0.3) !important;
   }
 
   /* Tank 3 Relay Colors (Yellow Theme) */
-  :global(.relay-btn.tank3-relay.relay-active) {
-    background: var(--accent-yellow) !important;
-    border-color: var(--accent-yellow) !important;
-    color: var(--bg-primary) !important;
-    box-shadow: 0 0 20px rgba(245, 158, 11, 0.6), 0 0 40px rgba(245, 158, 11, 0.3) !important;
+  .relay-card.tank3-relay {
+    border-color: var(--accent-yellow);
   }
 
-  :global(.relay-btn.tank3-relay.relay-inactive) {
-    background: rgba(245, 158, 11, 0.1) !important;
+  :global(.tank3-relay .relay-btn-half.on-btn.active) {
+    background: var(--accent-yellow) !important;
+    color: var(--bg-primary) !important;
     border-color: var(--accent-yellow) !important;
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.5) !important;
+  }
+
+  :global(.tank3-relay .relay-btn-half.off-btn.active) {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-muted) !important;
+    border-color: var(--bg-tertiary) !important;
+  }
+
+  :global(.tank3-relay .relay-btn-half.inactive) {
+    background: rgba(245, 158, 11, 0.1) !important;
     color: var(--accent-yellow) !important;
+    border-color: rgba(245, 158, 11, 0.3) !important;
   }
 
   /* Rooms & Drain Relay Colors (Purple Theme) */
-  :global(.relay-btn.rooms-relay.relay-active) {
+  .relay-card.rooms-relay {
+    border-color: var(--accent-purple);
+  }
+
+  :global(.rooms-relay .relay-btn-half.on-btn.active) {
     background: var(--accent-purple) !important;
-    border-color: var(--accent-purple) !important;
     color: var(--text-button) !important;
-    box-shadow: 0 0 20px rgba(139, 92, 246, 0.6), 0 0 40px rgba(139, 92, 246, 0.3) !important;
-  }
-
-  :global(.relay-btn.rooms-relay.relay-inactive) {
-    background: rgba(139, 92, 246, 0.1) !important;
     border-color: var(--accent-purple) !important;
-    color: var(--accent-purple) !important;
+    box-shadow: 0 0 15px rgba(139, 92, 246, 0.5) !important;
   }
 
-  .relay-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-xs);
-    text-align: center;
-    width: 100%;
-    height: 100%;
+  :global(.rooms-relay .relay-btn-half.off-btn.active) {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-muted) !important;
+    border-color: var(--bg-tertiary) !important;
+  }
+
+  :global(.rooms-relay .relay-btn-half.inactive) {
+    background: rgba(139, 92, 246, 0.1) !important;
+    color: var(--accent-purple) !important;
+    border-color: rgba(139, 92, 246, 0.3) !important;
   }
 
   .relay-id {
     font-weight: 700;
     font-size: var(--text-base);
-    margin-bottom: var(--space-xs);
+    color: var(--text-primary);
   }
 
   .relay-name {
-    font-size: var(--text-xl);
+    font-size: var(--text-sm);
     line-height: 1.3;
-    font-weight: 700;
-    margin-bottom: var(--space-xs);
-    color: inherit;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: right;
   }
 
-  .relay-status {
-    font-size: var(--text-lg);
-    font-weight: 700;
-    padding: 4px 10px;
-    border-radius: var(--radius-sm);
-    background: rgba(0, 0, 0, 0.3);
-    color: inherit;
+  /* Tank-specific relay text colors */
+  .tank1-relay .relay-id,
+  .tank1-relay .relay-name {
+    color: var(--accent-blue);
   }
 
-  /* Tank-specific text shadows */
-  :global(.relay-btn.tank1-relay .relay-name),
-  :global(.relay-btn.tank1-relay .relay-status) {
-    text-shadow: 0 1px 2px rgba(59, 130, 246, 0.8);
+  .tank2-relay .relay-id,
+  .tank2-relay .relay-name {
+    color: var(--accent-green);
   }
 
-  :global(.relay-btn.tank2-relay .relay-name),
-  :global(.relay-btn.tank2-relay .relay-status) {
-    text-shadow: 0 1px 2px rgba(16, 185, 129, 0.8);
+  .tank3-relay .relay-id,
+  .tank3-relay .relay-name {
+    color: var(--accent-yellow);
   }
 
-  :global(.relay-btn.tank3-relay .relay-name),
-  :global(.relay-btn.tank3-relay .relay-status) {
-    text-shadow: 0 1px 2px rgba(245, 158, 11, 0.8);
-  }
-
-  :global(.relay-btn.rooms-relay .relay-name),
-  :global(.relay-btn.rooms-relay .relay-status) {
-    text-shadow: 0 1px 2px rgba(139, 92, 246, 0.8);
+  .rooms-relay .relay-id,
+  .rooms-relay .relay-name {
+    color: var(--accent-purple);
   }
 
   /* Dosing Panel */
