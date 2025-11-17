@@ -10,7 +10,7 @@
   let logs = $state([]);
   let systemStatus = $state('Disconnected');
   let errorMessage = $state('');
-  
+
   // Hardware data with defaults to show all hardware
   let relays = $state([
     { id: 1, name: 'Relay 1', status: 'off' },
@@ -44,16 +44,16 @@
   let ecPhMonitoring = $state(false);
   let ecValue = $state(0);
   let phValue = $state(0);
-  
+
   // Form inputs
   let selectedPump = $state("");
   let pumpAmount = $state(10);
   let selectedFlowMeter = $state("");
   let flowGallons = $state(1);
-  
+
   // Progress tracking for log messages
   let lastProgressReported = $state(new Map()); // pump_id -> last_percentage
-  
+
   let statusInterval;
 
   // API functions
@@ -65,9 +65,9 @@
         // Merge API data with defaults, keeping defaults if API doesn't provide
         if (data.relays && data.relays.length > 0) {
           // Update relays data, converting state to status for consistency
-          relays = data.relays.map(relay => ({ 
-            ...relay, 
-            status: relay.state ? 'on' : 'off' 
+          relays = data.relays.map(relay => ({
+            ...relay,
+            status: relay.state ? 'on' : 'off'
           }));
           console.log('Loaded relays:', relays);
         }
@@ -104,7 +104,7 @@
         ecValue = data.ec_value || 0;
         phValue = data.ph_value || 0;
         ecPhMonitoring = data.ec_ph_monitoring || false;
-        
+
         // Update pump progress information from detailed status
         if (data.pumps) {
           pumps = pumps.map(pump => {
@@ -114,21 +114,21 @@
               if (statusInfo.is_dispensing && statusInfo.current_volume > 0 && statusInfo.target_volume > 0) {
                 const currentPercent = Math.floor((statusInfo.current_volume / statusInfo.target_volume) * 100 / 10) * 10; // Round to nearest 10%
                 const lastPercent = lastProgressReported.get(pump.id) || -10;
-                
+
                 if (currentPercent > lastPercent && currentPercent >= 10) {
                   const progressMsg = `Pump ${pump.id} (${pump.name}): ${statusInfo.current_volume.toFixed(1)}ml / ${statusInfo.target_volume.toFixed(1)}ml (${currentPercent}% complete)`;
                   addLog(progressMsg);
                   lastProgressReported.set(pump.id, currentPercent);
                 }
               }
-              
+
               // Check if pump just finished dispensing
               if (!statusInfo.is_dispensing && pump.is_dispensing) {
                 const completionMsg = `Pump ${pump.id} (${pump.name}) completed dispensing: ${statusInfo.current_volume?.toFixed(1) || 0}ml dispensed`;
                 addLog(completionMsg);
                 lastProgressReported.delete(pump.id); // Clean up tracking
               }
-              
+
               return {
                 ...pump,
                 status: statusInfo.is_dispensing ? 'dispensing' : 'idle',
@@ -153,22 +153,22 @@
       await allRelaysOff();
       return;
     }
-    
+
     try {
       const response = await fetch(`/api/relay/${relayId}/${action}`, {
         method: 'POST'
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         const userMessage = result.message || `Relay ${relayId} ${action.toUpperCase()}`;
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
-        
+
         addLog(userMessage);
         addLog(rawMessage);
-        
+
         // Update local state for responsive UI
-        relays = relays.map(relay => 
+        relays = relays.map(relay =>
           relay.id === relayId ? { ...relay, status: action } : relay
         );
       } else {
@@ -187,15 +187,15 @@
       const response = await fetch('/api/relay/all/off', {
         method: 'POST'
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         const userMessage = result.message || 'All relays turned off';
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
-        
+
         addLog(userMessage);
         addLog(rawMessage);
-        
+
         // Update local state to turn all relays off
         relays = relays.map(relay => ({ ...relay, status: 'off' }));
       } else {
@@ -214,22 +214,22 @@
       addLog('Please select a pump and amount');
       return;
     }
-    
+
     try {
       const response = await fetch(`/api/pump/${pumpId}/dispense`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: amount })
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         const userMessage = result.message || `Dispensing ${amount}ml from pump ${pumpId}`;
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
-        
+
         addLog(userMessage);
         addLog(rawMessage);
-        
+
         // Reset progress tracking for this pump
         lastProgressReported.set(parseInt(pumpId), -10);
       } else {
@@ -248,17 +248,17 @@
       addLog('Please select a pump');
       return;
     }
-    
+
     try {
       const response = await fetch(`/api/pump/${pumpId}/stop`, {
         method: 'POST'
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         const userMessage = result.message || `Stopped pump ${pumpId}`;
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
-        
+
         addLog(userMessage);
         addLog(rawMessage);
       } else {
@@ -277,19 +277,19 @@
       addLog('Please select a flow meter and gallons');
       return;
     }
-    
+
     try {
       const response = await fetch(`/api/flow/${flowMeterId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gallons: gallons })
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         const userMessage = result.message || `Started flow meter ${flowMeterId} for ${gallons} gallons`;
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
-        
+
         addLog(userMessage);
         addLog(rawMessage);
       } else {
@@ -308,17 +308,17 @@
       addLog('Please select a flow meter');
       return;
     }
-    
+
     try {
       const response = await fetch(`/api/flow/${flowMeterId}/stop`, {
         method: 'POST'
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         const userMessage = result.message || `Stopped flow meter ${flowMeterId}`;
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
-        
+
         addLog(userMessage);
         addLog(rawMessage);
       } else {
@@ -335,12 +335,12 @@
   async function startEcPhMonitoring() {
     try {
       const response = await fetch('/api/ecph/start', { method: 'POST' });
-      
+
       if (response.ok) {
         const result = await response.json();
         const userMessage = result.message || 'Started EC/pH monitoring';
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
-        
+
         addLog(userMessage);
         addLog(rawMessage);
         ecPhMonitoring = true;
@@ -358,12 +358,12 @@
   async function stopEcPhMonitoring() {
     try {
       const response = await fetch('/api/ecph/stop', { method: 'POST' });
-      
+
       if (response.ok) {
         const result = await response.json();
         const userMessage = result.message || 'Stopped EC/pH monitoring';
         const rawMessage = `Raw: ${JSON.stringify(result)}`;
-        
+
         addLog(userMessage);
         addLog(rawMessage);
         ecPhMonitoring = false;
@@ -391,12 +391,12 @@
     addLog('System starting...');
     await fetchHardwareData();
     await fetchSystemStatus();
-    
+
     // Set up polling for system status
     statusInterval = setInterval(async () => {
       await fetchSystemStatus();
     }, 2000);
-    
+
     if (pumps.length > 0) selectedPump = pumps[0].id;
     if (flowMeters.length > 0) selectedFlowMeter = flowMeters[0].id;
   });
@@ -408,68 +408,159 @@
   });
 </script>
 
-<!-- Tablet-optimized dashboard - Single column layout with compact spacing -->
-<div class="flex flex-col gap-3 max-w-3xl mx-auto">
+<div class="dashboard">
   <!-- Status Banner -->
-  <div class="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b pb-2 mb-2">
-    <div class="flex items-center justify-between px-1">
-      <div class="flex items-center gap-2">
-        <div class="flex items-center gap-2">
-          <div class="size-2.5 rounded-full {systemStatus === 'Connected' ? 'bg-green-500' : 'bg-red-500'}"></div>
-          <span class="text-sm font-medium">{systemStatus}</span>
-        </div>
-        {#if ecPhMonitoring}
-          <div class="text-xs bg-muted px-2 py-1 rounded">
-            EC: {ecValue.toFixed(2)} | pH: {phValue.toFixed(2)}
-          </div>
-        {/if}
+  <div class="status-banner">
+    <div class="status-left">
+      <div class="connection-status">
+        <div class="status-indicator status-{systemStatus.toLowerCase()}"></div>
+        <span class="status-text">{systemStatus}</span>
       </div>
-      {#if errorMessage}
-        <span class="text-xs text-destructive">{errorMessage}</span>
+      {#if ecPhMonitoring}
+        <div class="quick-metrics">
+          EC: {ecValue.toFixed(2)} | pH: {phValue.toFixed(2)}
+        </div>
       {/if}
     </div>
+    {#if errorMessage}
+      <span class="error-message">{errorMessage}</span>
+    {/if}
   </div>
 
-  <!-- Relay Control - Compact 3-column grid -->
-  <RelayControlCard {relays} onRelayControl={controlRelay} />
+  <!-- Hardware Control Cards -->
+  <div class="cards-container">
+    <RelayControlCard {relays} onRelayControl={controlRelay} />
 
-  <!-- Pump Control - Full width -->
-  <PumpControlCard
-    {pumps}
-    bind:selectedPump
-    bind:pumpAmount
-    onDispensePump={dispensePump}
-    onStopPump={stopPump}
-  />
+    <PumpControlCard
+      {pumps}
+      bind:selectedPump
+      bind:pumpAmount
+      onDispensePump={dispensePump}
+      onStopPump={stopPump}
+    />
 
-  <!-- Flow Meter Control - Full width -->
-  <FlowMeterCard
-    flowMeters={flowMeters}
-    bind:selectedFlowMeter
-    bind:flowGallons
-    onStartFlow={startFlow}
-    onStopFlow={stopFlow}
-  />
+    <FlowMeterCard
+      flowMeters={flowMeters}
+      bind:selectedFlowMeter
+      bind:flowGallons
+      onStartFlow={startFlow}
+      onStopFlow={stopFlow}
+    />
 
-  <!-- EC/pH Monitor - Compact -->
-  <ECPHMonitorCard
-    {ecValue}
-    {phValue}
-    {ecPhMonitoring}
-    onStartMonitoring={startEcPhMonitoring}
-    onStopMonitoring={stopEcPhMonitoring}
-  />
+    <ECPHMonitorCard
+      {ecValue}
+      {phValue}
+      {ecPhMonitoring}
+      onStartMonitoring={startEcPhMonitoring}
+      onStopMonitoring={stopEcPhMonitoring}
+    />
 
-  <!-- System Log - Fixed height with scroll -->
-  <div class="mt-2">
     <SystemLogCard {logs} onClearLogs={clearLogs} />
   </div>
 </div>
 
 <style>
-  /* Tablet-specific optimizations */
+  :root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+
+    --accent-steel: #64748b;
+
+    --status-success: #059669;
+    --status-error: #dc2626;
+
+    --text-primary: #f1f5f9;
+    --text-secondary: #e2e8f0;
+    --text-muted: #94a3b8;
+
+    --border-subtle: #334155;
+
+    --space-sm: 0.5rem;
+    --space-md: 0.75rem;
+
+    --text-xs: 0.6875rem;
+    --text-sm: 0.8125rem;
+  }
+
   :global(body) {
-    touch-action: manipulation; /* Disable double-tap zoom */
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    max-width: 48rem;
+    margin: 0 auto;
+  }
+
+  .status-banner {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: var(--space-sm) var(--space-md) var(--space-md);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .status-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .connection-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .status-indicator {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 50%;
+  }
+
+  .status-indicator.status-connected {
+    background: var(--status-success);
+  }
+
+  .status-indicator.status-disconnected {
+    background: var(--status-error);
+  }
+
+  .status-text {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .quick-metrics {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    padding: 0.25rem 0.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 0.25rem;
+  }
+
+  .error-message {
+    font-size: var(--text-xs);
+    color: var(--status-error);
+  }
+
+  .cards-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+    padding: 0 var(--space-md) var(--space-md);
   }
 </style>

@@ -473,80 +473,60 @@
   <!-- Tank Operations Panel -->
   <div class="operations-panel">
     
-    <!-- Tank Visual Status -->
+    <!-- Tank Status - Compact -->
     <Card class="tank-status-card">
       <CardHeader>
         <CardTitle class="section-title">
-          <svg class="section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="section-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="2" y="6" width="20" height="12" rx="2"/>
             <path d="m2 12 20 0"/>
           </svg>
-          Tank Status Overview
+          Tank Status
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div class="tank-overview">
+        <div class="tank-compact-grid">
           {#each [1, 2, 3] as tankId}
             {@const config = TANK_CONFIG[tankId]}
             {@const status = tankStatus[tankId]}
-            {@const tankInfo = getTankIcon(tankId)}
             {@const statusBadge = getTankStatusBadge(status.status)}
-            
-            <div class="tank-visual-card tank-{config.color}">
-              <div class="tank-header">
-                <div class="tank-number">Tank {tankId}</div>
-                <Badge class={statusBadge.class}>{statusBadge.text}</Badge>
-              </div>
-              
-              <div class="tank-visual">
-                <div class="tank-container">
-                  <div 
-                    class="tank-fill"
-                    style="height: {Math.max(status.volume / 100 * 100, 5)}%"
-                  ></div>
-                  <div class="tank-level">{status.volume} gal</div>
+
+            <div class="tank-compact-card">
+              <div class="tank-compact-header">
+                <div class="tank-compact-info">
+                  <span class="tank-compact-label">Tank {tankId}</span>
+                  <Badge class={statusBadge.class}>{statusBadge.text}</Badge>
                 </div>
+                <div class="tank-compact-volume">{status.volume} gal</div>
               </div>
-              
-              <div class="tank-controls">
+
+              <Progress value={status.volume} max={100} class="tank-progress" />
+
+              <div class="tank-compact-controls">
                 <Button
-                  class="tank-action-btn fill-btn"
+                  class="tank-compact-btn"
                   onclick={() => fillTank(tankId)}
                   disabled={isProcessing}
                   size="sm"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M7 16.5V19a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3v-2.5"/>
-                    <path d="M8 8s0-2 2.5-4.5S15 1 15 1s3 2 3 7c0 1.657-.895 3-2 3s-2-1.343-2-3c0-2.5-1.5-4-2-4s-2 1.5-2 4"/>
-                  </svg>
                   Fill
                 </Button>
-                
+
                 <Button
-                  class="tank-action-btn mix-btn"
+                  class="tank-compact-btn"
                   onclick={() => mixTank(tankId)}
                   disabled={isProcessing}
                   size="sm"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M8 2v4l-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8l-2-2V2"/>
-                    <path d="M8 6h8"/>
-                    <path d="m10 8 4 4"/>
-                    <path d="m14 8-4 4"/>
-                  </svg>
                   Mix
                 </Button>
-                
+
                 <Button
-                  class="tank-action-btn send-btn"
+                  class="tank-compact-btn"
                   onclick={() => sendTank(tankId)}
                   disabled={isProcessing}
                   size="sm"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M5 12h14"/>
-                    <path d="m12 5 7 7-7 7"/>
-                  </svg>
                   Send
                 </Button>
               </div>
@@ -942,43 +922,36 @@
 </div>
 
 <style>
-  /* Global 15% scale reduction */
-  .scaled-dashboard {
-    transform: scale(0.85);
-    transform-origin: top left;
-    width: 117.647%; /* 100% / 0.85 to compensate for scaling */
-    height: 117.647%; /* 100% / 0.85 to compensate for scaling */
-  }
-
   :root {
-    /* Design System Foundation */
-    --bg-primary: #1a1a1a;
-    --bg-secondary: #2d2d2d;
-    --bg-tertiary: #3a3a3a;
-    --bg-card: #0f172a;
-    --bg-card-hover: #1e293b;
+    /* Professional Industrial Color Palette */
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-card: #1e293b;
+    --bg-card-hover: #334155;
 
-    /* Accent Colors */
-    --accent-purple: #8b5cf6;
-    --accent-purple-light: #a855f7;
-    --accent-green: #10b981;
-    --accent-green-light: #34d399;
-    --accent-blue: #3b82f6;
-    --accent-yellow: #f59e0b;
+    /* Muted Accent Colors */
+    --accent-steel: #64748b;
+    --accent-slate: #475569;
+    --accent-blue-muted: #3b82f6;
 
-    /* Status Colors */
-    --status-success: #10b981;
-    --status-warning: #f59e0b;
-    --status-error: #ef4444;
-    --status-info: #3b82f6;
-    --status-development: #f59e0b;
+    /* Professional Status Colors (Muted) */
+    --status-success: #059669;
+    --status-warning: #d97706;
+    --status-error: #dc2626;
+    --status-info: #0284c7;
+    --status-development: #ca8a04;
 
     /* Text Colors */
-    --text-primary: #f8fafc;
+    --text-primary: #f1f5f9;
     --text-secondary: #e2e8f0;
-    --text-muted: #cbd5e1;
-    --text-accent: #06b6d4;
-    --text-button: #f1f5f9;
+    --text-muted: #94a3b8;
+    --text-disabled: #64748b;
+    --text-button: #f8fafc;
+
+    /* Borders */
+    --border-subtle: #334155;
+    --border-emphasis: #475569;
 
     /* Spacing Scale */
     --space-xs: 0.25rem;
@@ -997,106 +970,99 @@
     --text-sm: 0.875rem;
     --text-xs: 0.75rem;
 
-    /* Shadows */
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.2);
-    --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.25);
+    /* Shadows - Subtle */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.5);
 
-    /* Border Radius */
-    --radius-sm: 0.375rem;
-    --radius-md: 0.5rem;
-    --radius-lg: 0.75rem;
-    --radius-xl: 1rem;
+    /* Border Radius - Professional */
+    --radius-sm: 0.25rem;
+    --radius-md: 0.375rem;
+    --radius-lg: 0.5rem;
   }
 
   /* Global Styles */
   .dashboard-header {
     background: var(--bg-primary);
-    border-bottom: 2px solid var(--bg-tertiary);
-    padding: calc(var(--space-lg) / 2);
-    margin-bottom: calc(var(--space-xl) / 2);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: var(--space-md);
+    margin-bottom: var(--space-md);
   }
 
   .status-bar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    max-width: 1400px;
-    margin: 0 auto;
+    max-width: 100%;
   }
 
   .system-info {
     display: flex;
     flex-direction: column;
-    gap: var(--space-sm);
+    gap: var(--space-xs);
   }
 
   .dashboard-title {
-    font-size: var(--text-2xl);
-    font-weight: 700;
+    font-size: var(--text-lg);
+    font-weight: 600;
     color: var(--text-primary);
+    letter-spacing: -0.025em;
   }
 
   .system-health {
     display: flex;
-    gap: var(--space-md);
+    gap: var(--space-sm);
     align-items: center;
   }
 
   .emergency-stop-btn {
-    background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+    background: var(--status-error) !important;
     color: var(--text-button) !important;
-    border: none !important;
-    font-weight: 700 !important;
-    font-size: var(--text-lg) !important;
-    padding: var(--space-lg) var(--space-2xl) !important;
-    border-radius: var(--radius-lg) !important;
-    box-shadow: 0 0 20px rgba(220, 38, 38, 0.5) !important;
-    animation: emergency-glow 2s infinite !important;
-    transition: all 0.15s ease !important;
-    transform: scale(1) !important;
+    border: 1px solid rgba(220, 38, 38, 0.4) !important;
+    font-weight: 600 !important;
+    font-size: var(--text-sm) !important;
+    padding: var(--space-sm) var(--space-md) !important;
+    border-radius: var(--radius-sm) !important;
+    transition: all 0.2s ease !important;
+    letter-spacing: 0.025em;
   }
 
   .emergency-stop-btn:active {
-    transform: scale(0.92) !important;
-    box-shadow: inset 0 6px 12px rgba(0, 0, 0, 0.4), 0 0 30px rgba(220, 38, 38, 0.8) !important;
+    background: #b91c1c !important;
+    opacity: 0.9;
   }
 
   .emergency-stop-btn:hover {
-    background: linear-gradient(135deg, #b91c1c, #991b1b) !important;
-    transform: scale(1.05) !important;
+    background: #b91c1c !important;
+    border-color: rgba(220, 38, 38, 0.6) !important;
   }
 
   .emergency-icon {
-    width: 20px;
-    height: 20px;
+    width: 16px;
+    height: 16px;
   }
 
-  @keyframes emergency-glow {
-    0%, 100% { box-shadow: 0 0 10px rgba(220, 38, 38, 0.5); }
-    50% { box-shadow: 0 0 30px rgba(220, 38, 38, 0.8); }
-  }
-
-  /* Main Dashboard Layout */
+  /* Main Dashboard Layout - Optimized for 10" Tablet */
   .dashboard-grid {
     display: grid;
-    grid-template-columns: 1fr 350px 300px;
-    gap: var(--space-xl);
+    grid-template-columns: 1fr 300px 280px;
+    gap: var(--space-md);
     width: 100%;
-    padding: 0 var(--space-lg);
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 0 var(--space-md);
   }
 
   /* Operations Panel */
   .operations-panel {
     display: flex;
     flex-direction: column;
-    gap: var(--space-xl);
+    gap: var(--space-md);
   }
 
   .tank-status-card {
     background: var(--bg-card) !important;
-    border: 2px solid var(--bg-tertiary) !important;
+    border: 1px solid var(--border-subtle) !important;
   }
 
   .section-title {
@@ -1109,262 +1075,157 @@
   }
 
   .section-icon {
-    color: var(--accent-purple);
+    color: var(--accent-steel);
   }
 
-  .tank-overview {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-xl);
-  }
-
-  .tank-visual-card {
-    background: var(--bg-secondary);
-    border: 2px solid var(--bg-tertiary);
-    border-radius: var(--radius-lg);
-    padding: var(--space-xl);
-    transition: all 0.3s ease;
-    min-height: 200px;
-  }
-
-  .tank-visual-card:hover {
-    border-color: var(--accent-purple);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
-  }
-
-  .tank-blue { border-left: 4px solid var(--accent-blue); }
-  .tank-green { border-left: 4px solid var(--accent-green); }
-  .tank-yellow { border-left: 4px solid var(--accent-yellow); }
-
-  .tank-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-md);
-  }
-
-  .tank-number {
-    font-weight: 600;
-    color: var(--text-primary);
-    font-size: var(--text-base);
-  }
-
-  .tank-visual {
-    display: flex;
-    justify-content: center;
-    margin: var(--space-lg) 0;
-  }
-
-  .tank-container {
-    width: 80px;
-    height: 100px;
-    border: 3px solid var(--accent-purple);
-    border-radius: var(--radius-md);
-    position: relative;
-    background: var(--bg-primary);
-    overflow: hidden;
-  }
-
-  .tank-fill {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(180deg, var(--accent-blue), var(--accent-green));
-    transition: height 0.5s ease;
-    border-radius: 0 0 calc(var(--radius-md) - 3px) calc(var(--radius-md) - 3px);
-  }
-
-  .tank-level {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: var(--text-xs);
-    font-weight: 600;
-    color: var(--text-primary);
-    z-index: 2;
-  }
-
-  .tank-controls {
-    display: flex;
-    gap: var(--space-sm);
-    justify-content: space-between;
-  }
-
-  .tank-action-btn {
-    flex: 1;
-    font-size: var(--text-xs) !important;
-    padding: var(--space-sm) !important;
-    border-radius: var(--radius-sm) !important;
-    font-weight: 600 !important;
-    transition: all 0.15s ease !important;
-    transform: scale(1) !important;
-  }
-
-  .tank-action-btn:active {
-    transform: scale(0.95) !important;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3) !important;
-  }
-
-  .fill-btn {
-    background: var(--accent-blue) !important;
-    color: var(--text-button) !important;
-    border: none !important;
-  }
-
-  .mix-btn {
-    background: var(--accent-yellow) !important;
-    color: var(--bg-primary) !important;
-    border: none !important;
-  }
-
-  .send-btn {
-    background: var(--accent-green) !important;
-    color: var(--text-button) !important;
-    border: none !important;
-  }
-
-  /* Relay Control */
-  .relay-control-card {
-    background: var(--bg-card) !important;
-    border: 2px solid var(--bg-tertiary) !important;
-  }
-
-  .relay-tank-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--space-lg);
-  }
-
-  .relay-tank-section {
+  /* Compact Tank Grid */
+  .tank-compact-grid {
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
   }
 
-  .tank-relay-header {
-    font-weight: 700;
-    color: var(--text-primary);
-    text-align: center;
-    font-size: var(--text-xl);
-    padding: var(--space-sm);
+  .tank-compact-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
+    padding: var(--space-md);
+    transition: all 0.2s ease;
+  }
+
+  .tank-compact-card:hover {
+    border-color: var(--border-emphasis);
+    background: var(--bg-card-hover);
+  }
+
+  .tank-compact-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: var(--space-sm);
   }
 
-  /* Tank Header Colors */
-  .relay-tank-section:first-child .tank-relay-header {
-    background: rgba(59, 130, 246, 0.2);
-    border: 1px solid var(--accent-blue);
-    color: var(--accent-blue);
-    text-shadow: 0 1px 2px rgba(59, 130, 246, 0.8);
+  .tank-compact-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
   }
 
-  .relay-tank-section:nth-child(2) .tank-relay-header {
-    background: rgba(16, 185, 129, 0.2);
-    border: 1px solid var(--accent-green);
-    color: var(--accent-green);
-    text-shadow: 0 1px 2px rgba(16, 185, 129, 0.8);
+  .tank-compact-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: var(--text-sm);
   }
 
-  .relay-tank-section:nth-child(3) .tank-relay-header {
-    background: rgba(245, 158, 11, 0.2);
-    border: 1px solid var(--accent-yellow);
-    color: var(--accent-yellow);
-    text-shadow: 0 1px 2px rgba(245, 158, 11, 0.8);
+  .tank-compact-volume {
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
   }
 
-  .relay-tank-section:nth-child(4) .tank-relay-header {
-    background: rgba(139, 92, 246, 0.2);
-    border: 1px solid var(--accent-purple);
-    color: var(--accent-purple);
-    text-shadow: 0 1px 2px rgba(139, 92, 246, 0.8);
+  :global(.tank-progress) {
+    margin-bottom: var(--space-md);
+    height: 6px !important;
+    background: var(--bg-tertiary) !important;
   }
 
-  .tank-relays {
+  .tank-compact-controls {
+    display: flex;
+    gap: var(--space-sm);
+  }
+
+  :global(.tank-compact-btn) {
+    flex: 1;
+    font-size: var(--text-xs) !important;
+    padding: var(--space-sm) !important;
+    border-radius: var(--radius-sm) !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-subtle) !important;
+  }
+
+  :global(.tank-compact-btn:hover) {
+    background: var(--accent-steel) !important;
+    border-color: var(--border-emphasis) !important;
+  }
+
+  :global(.tank-compact-btn:active) {
+    opacity: 0.85;
+  }
+
+  /* Relay Control */
+  .relay-control-card {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-subtle) !important;
+  }
+
+  .relay-tank-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-md);
+  }
+
+  .relay-tank-section {
     display: flex;
     flex-direction: column;
     gap: var(--space-sm);
   }
 
+  .tank-relay-header {
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: center;
+    font-size: var(--text-xs);
+    padding: var(--space-xs) var(--space-sm);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--space-xs);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .tank-relays {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
   :global(.relay-btn) {
-    padding: var(--space-lg) !important;
-    border-radius: var(--radius-md) !important;
-    border: 2px solid var(--bg-tertiary) !important;
-    transition: all 0.15s ease !important;
-    min-height: 80px !important;
-    height: 80px !important;
+    padding: var(--space-sm) !important;
+    border-radius: var(--radius-sm) !important;
+    border: 1px solid var(--border-subtle) !important;
+    transition: all 0.2s ease !important;
+    min-height: 56px !important;
+    height: 56px !important;
     width: 100% !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     background: var(--bg-secondary) !important;
     color: var(--text-muted) !important;
-    box-shadow: none !important;
-    transform: scale(1) !important;
   }
 
   :global(.relay-btn:active) {
-    transform: scale(0.95) !important;
-    box-shadow: inset 0 4px 8px rgba(0, 0, 0, 0.3) !important;
+    opacity: 0.85;
   }
 
-  /* Tank 1 Relay Colors (Blue Theme) */
-  :global(.relay-btn.tank1-relay.relay-active) {
-    background: var(--accent-blue) !important;
-    border-color: var(--accent-blue) !important;
-    color: var(--text-button) !important;
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.6), 0 0 40px rgba(59, 130, 246, 0.3) !important;
+  /* Unified Relay Styling - No Color Coding */
+  :global(.relay-btn.relay-active) {
+    background: var(--accent-steel) !important;
+    border-color: var(--border-emphasis) !important;
+    color: var(--text-primary) !important;
   }
 
-  :global(.relay-btn.tank1-relay.relay-inactive) {
-    background: rgba(59, 130, 246, 0.1) !important;
-    border-color: var(--accent-blue) !important;
-    color: var(--accent-blue) !important;
+  :global(.relay-btn.relay-inactive) {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-subtle) !important;
+    color: var(--text-muted) !important;
   }
 
-  /* Tank 2 Relay Colors (Green Theme) */
-  :global(.relay-btn.tank2-relay.relay-active) {
-    background: var(--accent-green) !important;
-    border-color: var(--accent-green) !important;
-    color: var(--text-button) !important;
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.6), 0 0 40px rgba(16, 185, 129, 0.3) !important;
-  }
-
-  :global(.relay-btn.tank2-relay.relay-inactive) {
-    background: rgba(16, 185, 129, 0.1) !important;
-    border-color: var(--accent-green) !important;
-    color: var(--accent-green) !important;
-  }
-
-  /* Tank 3 Relay Colors (Yellow Theme) */
-  :global(.relay-btn.tank3-relay.relay-active) {
-    background: var(--accent-yellow) !important;
-    border-color: var(--accent-yellow) !important;
-    color: var(--bg-primary) !important;
-    box-shadow: 0 0 20px rgba(245, 158, 11, 0.6), 0 0 40px rgba(245, 158, 11, 0.3) !important;
-  }
-
-  :global(.relay-btn.tank3-relay.relay-inactive) {
-    background: rgba(245, 158, 11, 0.1) !important;
-    border-color: var(--accent-yellow) !important;
-    color: var(--accent-yellow) !important;
-  }
-
-  /* Rooms & Drain Relay Colors (Purple Theme) */
-  :global(.relay-btn.rooms-relay.relay-active) {
-    background: var(--accent-purple) !important;
-    border-color: var(--accent-purple) !important;
-    color: var(--text-button) !important;
-    box-shadow: 0 0 20px rgba(139, 92, 246, 0.6), 0 0 40px rgba(139, 92, 246, 0.3) !important;
-  }
-
-  :global(.relay-btn.rooms-relay.relay-inactive) {
-    background: rgba(139, 92, 246, 0.1) !important;
-    border-color: var(--accent-purple) !important;
-    color: var(--accent-purple) !important;
+  :global(.relay-btn.relay-inactive:hover) {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-emphasis) !important;
   }
 
   .relay-content {
@@ -1379,47 +1240,28 @@
   }
 
   .relay-id {
-    font-weight: 700;
-    font-size: var(--text-base);
-    margin-bottom: var(--space-xs);
+    font-weight: 500;
+    font-size: 0.625rem;
+    margin-bottom: 2px;
+    opacity: 0.7;
   }
 
   .relay-name {
-    font-size: var(--text-xl);
-    line-height: 1.3;
-    font-weight: 700;
-    margin-bottom: var(--space-xs);
+    font-size: var(--text-xs);
+    line-height: 1.2;
+    font-weight: 600;
+    margin-bottom: 2px;
     color: inherit;
   }
 
   .relay-status {
-    font-size: var(--text-lg);
-    font-weight: 700;
-    padding: 4px 10px;
+    font-size: 0.625rem;
+    font-weight: 500;
+    padding: 1px 6px;
     border-radius: var(--radius-sm);
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.2);
     color: inherit;
-  }
-
-  /* Tank-specific text shadows */
-  :global(.relay-btn.tank1-relay .relay-name),
-  :global(.relay-btn.tank1-relay .relay-status) {
-    text-shadow: 0 1px 2px rgba(59, 130, 246, 0.8);
-  }
-
-  :global(.relay-btn.tank2-relay .relay-name),
-  :global(.relay-btn.tank2-relay .relay-status) {
-    text-shadow: 0 1px 2px rgba(16, 185, 129, 0.8);
-  }
-
-  :global(.relay-btn.tank3-relay .relay-name),
-  :global(.relay-btn.tank3-relay .relay-status) {
-    text-shadow: 0 1px 2px rgba(245, 158, 11, 0.8);
-  }
-
-  :global(.relay-btn.rooms-relay .relay-name),
-  :global(.relay-btn.rooms-relay .relay-status) {
-    text-shadow: 0 1px 2px rgba(139, 92, 246, 0.8);
+    letter-spacing: 0.05em;
   }
 
   /* Dosing Panel */
@@ -1430,7 +1272,7 @@
 
   .dosing-card {
     background: var(--bg-card) !important;
-    border: 2px solid var(--bg-tertiary) !important;
+    border: 1px solid var(--border-subtle) !important;
     height: fit-content;
   }
 
@@ -1456,17 +1298,18 @@
   .amount-display {
     display: flex;
     align-items: baseline;
-    gap: var(--space-sm);
+    gap: var(--space-xs);
   }
 
   .amount-value {
-    font-size: 3.5rem;
-    font-weight: 700;
-    color: var(--accent-purple);
+    font-size: 2rem;
+    font-weight: 600;
+    color: var(--text-primary);
   }
 
   .amount-unit {
-    font-size: 2rem;
+    font-size: 1rem;
+    font-weight: 500;
     color: var(--text-muted);
   }
 
@@ -1492,16 +1335,15 @@
   }
 
   .marker-line {
-    width: 2px;
-    height: 8px;
-    background: var(--text-primary);
+    width: 1px;
+    height: 6px;
+    background: var(--border-emphasis);
     border-radius: 1px;
-    opacity: 0.6;
   }
 
   .marker-label {
     position: absolute;
-    top: 16px;
+    top: 14px;
     left: 50%;
     transform: translateX(-50%);
     font-size: var(--text-xs);
@@ -1512,11 +1354,11 @@
   }
 
   .dosing-slider {
-    width: calc(100% + 24px);
-    margin-left: -12px;
-    height: 8px;
+    width: calc(100% + 20px);
+    margin-left: -10px;
+    height: 6px;
     background: var(--bg-tertiary);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-sm);
     outline: none;
     appearance: none;
     cursor: pointer;
@@ -1524,22 +1366,21 @@
 
   .dosing-slider::-webkit-slider-thumb {
     appearance: none;
-    width: 24px;
-    height: 24px;
-    background: linear-gradient(135deg, var(--accent-purple), var(--accent-purple-light));
+    width: 20px;
+    height: 20px;
+    background: var(--accent-steel);
+    border: 2px solid var(--border-emphasis);
     border-radius: 50%;
     cursor: pointer;
-    box-shadow: var(--shadow-md);
   }
 
   .dosing-slider::-moz-range-thumb {
-    width: 24px;
-    height: 24px;
-    background: linear-gradient(135deg, var(--accent-purple), var(--accent-purple-light));
+    width: 20px;
+    height: 20px;
+    background: var(--accent-steel);
+    border: 2px solid var(--border-emphasis);
     border-radius: 50%;
     cursor: pointer;
-    border: none;
-    box-shadow: var(--shadow-md);
   }
 
   .preset-controls {
@@ -1555,24 +1396,23 @@
   }
 
   .preset-btn {
-    background: var(--bg-secondary) !important;
-    border: 2px solid var(--accent-purple) !important;
-    color: var(--accent-purple) !important;
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border-subtle) !important;
+    color: var(--text-secondary) !important;
     font-size: var(--text-xs) !important;
-    font-weight: 600 !important;
+    font-weight: 500 !important;
     padding: var(--space-sm) var(--space-md) !important;
-    transition: all 0.15s ease !important;
-    transform: scale(1) !important;
+    transition: all 0.2s ease !important;
   }
 
   .preset-btn:active {
-    transform: scale(0.9) !important;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+    opacity: 0.85;
   }
 
   .preset-btn:hover {
-    background: var(--accent-purple) !important;
-    color: white !important;
+    background: var(--accent-steel) !important;
+    border-color: var(--border-emphasis) !important;
+    color: var(--text-primary) !important;
   }
 
   /* Pump Grid */
@@ -1583,110 +1423,34 @@
   }
 
   :global(.pump-btn) {
-    padding: var(--space-lg) !important;
-    border-radius: var(--radius-lg) !important;
-    border: 2px solid var(--bg-tertiary) !important;
-    transition: all 0.15s ease !important;
-    min-height: 120px !important;
-    transform: scale(1) !important;
+    padding: var(--space-sm) !important;
+    border-radius: var(--radius-sm) !important;
+    border: 1px solid var(--border-subtle) !important;
+    transition: all 0.2s ease !important;
+    min-height: 80px !important;
     height: auto !important;
   }
 
   :global(.pump-btn:active) {
-    transform: scale(0.97) !important;
-    box-shadow: inset 0 4px 8px rgba(0, 0, 0, 0.3) !important;
+    opacity: 0.85;
   }
 
+  /* Unified Pump Styling - No Nutrient Color Coding */
   :global(.pump-idle) {
     background: var(--bg-secondary) !important;
-    border-color: var(--accent-purple) !important;
+    border-color: var(--border-subtle) !important;
     color: var(--text-primary) !important;
   }
 
   :global(.pump-idle:hover) {
-    background: var(--accent-purple) !important;
-    border-color: var(--accent-purple-light) !important;
-    transform: translateY(-2px) !important;
-    box-shadow: var(--shadow-lg) !important;
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-emphasis) !important;
   }
 
   :global(.pump-active) {
-    background: linear-gradient(135deg, var(--status-error), #dc2626) !important;
-    border-color: var(--status-error) !important;
-    color: var(--text-button) !important;
-    animation: pump-pulse 2s infinite !important;
-  }
-
-  /* Nutrient Color Coding */
-  :global(.pump-idle.nutrient-veg) {
-    background: rgba(34, 197, 94, 0.1) !important;
-    border-color: #22c55e !important;
-    color: #22c55e !important;
-  }
-
-  :global(.pump-idle.nutrient-veg:hover) {
-    background: #22c55e !important;
-    color: white !important;
-  }
-
-  :global(.pump-idle.nutrient-bloom) {
-    background: rgba(239, 68, 68, 0.1) !important;
-    border-color: #ef4444 !important;
-    color: #ef4444 !important;
-  }
-
-  :global(.pump-idle.nutrient-bloom:hover) {
-    background: #ef4444 !important;
-    color: white !important;
-  }
-
-  :global(.pump-idle.nutrient-pk) {
-    background: rgba(249, 115, 22, 0.1) !important;
-    border-color: #f97316 !important;
-    color: #f97316 !important;
-  }
-
-  :global(.pump-idle.nutrient-pk:hover) {
-    background: #f97316 !important;
-    color: white !important;
-  }
-
-  :global(.pump-idle.nutrient-runclean) {
-    background: rgba(6, 182, 212, 0.1) !important;
-    border-color: #06b6d4 !important;
-    color: #06b6d4 !important;
-  }
-
-  :global(.pump-idle.nutrient-runclean:hover) {
-    background: #06b6d4 !important;
-    color: white !important;
-  }
-
-  :global(.pump-idle.nutrient-ph) {
-    background: rgba(6, 182, 212, 0.1) !important;
-    border-color: #06b6d4 !important;
-    color: #06b6d4 !important;
-  }
-
-  :global(.pump-idle.nutrient-ph:hover) {
-    background: #06b6d4 !important;
-    color: white !important;
-  }
-
-  :global(.pump-idle.nutrient-cake) {
-    background: rgba(255, 255, 255, 0.1) !important;
-    border-color: #ffffff !important;
-    color: #ffffff !important;
-  }
-
-  :global(.pump-idle.nutrient-cake:hover) {
-    background: #ffffff !important;
+    background: var(--status-warning) !important;
+    border-color: var(--status-warning) !important;
     color: var(--bg-primary) !important;
-  }
-
-  @keyframes pump-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.8; }
   }
 
   .pump-content {
@@ -1704,34 +1468,28 @@
   }
 
   .pump-id {
-    font-weight: 700;
-    font-size: var(--text-sm);
-    color: var(--accent-purple);
-  }
-
-  .pump-active .pump-id {
-    color: var(--text-button);
+    font-weight: 500;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
   }
 
   .stop-btn {
     background: var(--status-error) !important;
     color: var(--text-button) !important;
     border: none !important;
-    font-weight: 600 !important;
+    font-weight: 500 !important;
     font-size: var(--text-xs) !important;
     padding: var(--space-xs) var(--space-sm) !important;
-    transition: all 0.15s ease !important;
-    transform: scale(1) !important;
+    transition: all 0.2s ease !important;
   }
 
   .stop-btn:active {
-    transform: scale(0.85) !important;
-    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.4) !important;
+    opacity: 0.85;
   }
 
   .pump-nutrient {
-    font-size: var(--text-xl);
-    font-weight: 700;
+    font-size: var(--text-sm);
+    font-weight: 600;
     text-align: center;
     line-height: 1.2;
     flex: 1;
@@ -1748,88 +1506,28 @@
   }
 
   .progress-bar {
-    height: 6px !important;
-    background: rgba(255, 255, 255, 0.2) !important;
+    height: 4px !important;
+    background: rgba(0, 0, 0, 0.3) !important;
   }
 
   .progress-text {
     font-size: var(--text-xs);
     text-align: center;
-    font-weight: 600;
+    font-weight: 500;
   }
 
   .pump-amount {
     font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--accent-purple);
+    font-weight: 500;
+    color: var(--text-muted);
     text-align: center;
-  }
-
-  .pump-active .pump-amount {
-    color: var(--text-button);
-  }
-
-  /* Pump ID and Amount Colors by Nutrient Type */
-  :global(.pump-idle.nutrient-veg .pump-id),
-  :global(.pump-idle.nutrient-veg .pump-amount) {
-    color: #22c55e !important;
-  }
-
-  :global(.pump-idle.nutrient-bloom .pump-id),
-  :global(.pump-idle.nutrient-bloom .pump-amount) {
-    color: #ef4444 !important;
-  }
-
-  :global(.pump-idle.nutrient-pk .pump-id),
-  :global(.pump-idle.nutrient-pk .pump-amount) {
-    color: #f97316 !important;
-  }
-
-  :global(.pump-idle.nutrient-runclean .pump-id),
-  :global(.pump-idle.nutrient-runclean .pump-amount) {
-    color: #06b6d4 !important;
-  }
-
-  :global(.pump-idle.nutrient-ph .pump-id),
-  :global(.pump-idle.nutrient-ph .pump-amount) {
-    color: #06b6d4 !important;
-  }
-
-  :global(.pump-idle.nutrient-cake .pump-id),
-  :global(.pump-idle.nutrient-cake .pump-amount) {
-    color: #ffffff !important;
-  }
-
-  /* Pump Nutrient Name Text Shadows */
-  :global(.pump-idle.nutrient-veg .pump-nutrient) {
-    text-shadow: 0 1px 2px rgba(34, 197, 94, 0.8);
-  }
-
-  :global(.pump-idle.nutrient-bloom .pump-nutrient) {
-    text-shadow: 0 1px 2px rgba(239, 68, 68, 0.8);
-  }
-
-  :global(.pump-idle.nutrient-pk .pump-nutrient) {
-    text-shadow: 0 1px 2px rgba(249, 115, 22, 0.8);
-  }
-
-  :global(.pump-idle.nutrient-runclean .pump-nutrient) {
-    text-shadow: 0 1px 2px rgba(6, 182, 212, 0.8);
-  }
-
-  :global(.pump-idle.nutrient-ph .pump-nutrient) {
-    text-shadow: 0 1px 2px rgba(139, 92, 246, 0.8);
-  }
-
-  :global(.pump-idle.nutrient-cake .pump-nutrient) {
-    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
   }
 
   /* Active Operations Alert */
   .active-operations-alert {
-    background: rgba(239, 68, 68, 0.1) !important;
-    border: 2px solid var(--status-error) !important;
-    border-radius: var(--radius-lg) !important;
+    background: rgba(217, 119, 6, 0.1) !important;
+    border: 1px solid var(--status-warning) !important;
+    border-radius: var(--radius-md) !important;
   }
 
   .alert-content {
@@ -1843,7 +1541,7 @@
     align-items: center;
     gap: var(--space-sm);
     font-weight: 600;
-    color: var(--status-error);
+    color: var(--status-warning);
   }
 
   .alert-item {
@@ -1859,26 +1557,24 @@
     background: var(--status-error) !important;
     color: var(--text-button) !important;
     border: none !important;
-    font-weight: 600 !important;
-    transition: all 0.15s ease !important;
-    transform: scale(1) !important;
+    font-weight: 500 !important;
+    transition: all 0.2s ease !important;
   }
 
   .alert-stop-btn:active {
-    transform: scale(0.9) !important;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+    opacity: 0.85;
   }
 
   /* Monitoring Panel */
   .monitoring-panel {
     display: flex;
     flex-direction: column;
-    gap: var(--space-lg);
+    gap: var(--space-md);
   }
 
   .monitoring-card {
     background: var(--bg-card) !important;
-    border: 2px solid var(--bg-tertiary) !important;
+    border: 1px solid var(--border-subtle) !important;
   }
 
   .flow-monitors {
@@ -1888,31 +1584,32 @@
   }
 
   .flow-meter {
-    padding: var(--space-lg);
-    border-radius: var(--radius-lg);
-    border: 2px solid var(--bg-tertiary);
+    padding: var(--space-md);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-secondary);
   }
 
   .flow-active {
-    background: rgba(59, 130, 246, 0.1);
-    border-color: var(--accent-blue);
+    border-color: var(--accent-steel);
   }
 
   .flow-development {
-    background: rgba(245, 158, 11, 0.1);
     border-color: var(--status-development);
+    opacity: 0.7;
   }
 
   .meter-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--space-md);
+    margin-bottom: var(--space-sm);
   }
 
   .meter-name {
     font-weight: 600;
     color: var(--text-primary);
+    font-size: var(--text-sm);
   }
 
   .meter-status {
@@ -1920,7 +1617,7 @@
     align-items: center;
     gap: var(--space-sm);
     color: var(--status-development);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
   }
 
   .meter-readings {
@@ -1930,13 +1627,13 @@
   }
 
   .flow-rate {
-    font-size: var(--text-xl);
-    font-weight: 700;
-    color: var(--accent-blue);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--text-primary);
   }
 
   .total-flow {
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     color: var(--text-muted);
   }
 
@@ -1954,14 +1651,15 @@
   }
 
   .sensor-card {
-    padding: var(--space-lg);
-    border-radius: var(--radius-lg);
-    border: 2px solid var(--bg-tertiary);
+    padding: var(--space-md);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-secondary);
   }
 
   .sensor-development {
-    background: rgba(245, 158, 11, 0.1);
     border-color: var(--status-development);
+    opacity: 0.7;
   }
 
   .sensor-header {
@@ -1974,6 +1672,7 @@
   .sensor-name {
     font-weight: 600;
     color: var(--text-primary);
+    font-size: var(--text-sm);
   }
 
   .sensor-status {
@@ -1981,13 +1680,13 @@
     align-items: center;
     gap: var(--space-sm);
     color: var(--status-development);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
   }
 
   /* Activity Log */
   .log-card {
     background: var(--bg-card) !important;
-    border: 2px solid var(--bg-tertiary) !important;
+    border: 1px solid var(--border-subtle) !important;
   }
 
   .log-header {
@@ -1998,9 +1697,14 @@
 
   .clear-logs-btn {
     background: var(--bg-secondary) !important;
-    border: 2px solid var(--bg-tertiary) !important;
+    border: 1px solid var(--border-subtle) !important;
     color: var(--text-muted) !important;
     font-size: var(--text-xs) !important;
+  }
+
+  .clear-logs-btn:hover {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-emphasis) !important;
   }
 
   .log-container {
@@ -2015,13 +1719,14 @@
     padding: var(--space-sm) var(--space-md);
     background: var(--bg-secondary);
     border-radius: var(--radius-sm);
-    border-left: 3px solid var(--accent-purple);
+    border-left: 2px solid var(--accent-steel);
   }
 
   .log-time {
     font-size: var(--text-xs);
     color: var(--text-muted);
     margin-bottom: var(--space-xs);
+    font-variant-numeric: tabular-nums;
   }
 
   .log-message {
@@ -2041,66 +1746,86 @@
   .status-connected {
     background: var(--status-success) !important;
     color: var(--text-button) !important;
+    font-size: var(--text-xs) !important;
+    font-weight: 500 !important;
   }
 
   .status-error {
     background: var(--status-error) !important;
     color: var(--text-button) !important;
+    font-size: var(--text-xs) !important;
+    font-weight: 500 !important;
   }
 
   .status-active {
     background: var(--status-warning) !important;
     color: var(--bg-primary) !important;
-    animation: status-pulse 2s infinite !important;
+    font-size: var(--text-xs) !important;
+    font-weight: 500 !important;
   }
 
   .status-idle {
     background: var(--bg-tertiary) !important;
     color: var(--text-muted) !important;
+    font-size: var(--text-xs) !important;
+    font-weight: 500 !important;
   }
 
   .status-filling {
-    background: var(--accent-blue) !important;
+    background: var(--status-info) !important;
     color: var(--text-button) !important;
+    font-size: var(--text-xs) !important;
+    font-weight: 500 !important;
   }
 
   .status-mixing {
     background: var(--status-warning) !important;
     color: var(--bg-primary) !important;
+    font-size: var(--text-xs) !important;
+    font-weight: 500 !important;
   }
 
   .status-sending {
     background: var(--status-success) !important;
     color: var(--text-button) !important;
+    font-size: var(--text-xs) !important;
+    font-weight: 500 !important;
   }
 
   .status-ready {
-    background: var(--accent-purple) !important;
+    background: var(--accent-steel) !important;
     color: var(--text-button) !important;
+    font-size: var(--text-xs) !important;
+    font-weight: 500 !important;
   }
 
   .status-development {
     background: var(--status-development) !important;
     color: var(--bg-primary) !important;
+    font-size: var(--text-xs) !important;
+    font-weight: 500 !important;
   }
 
   .status-operational {
     background: var(--status-success) !important;
     color: var(--text-button) !important;
-  }
-
-  @keyframes status-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
+    font-size: var(--text-xs) !important;
+    font-weight: 500 !important;
   }
 
   /* Responsive Design */
+  @media (max-width: 1400px) {
+    .dashboard-grid {
+      grid-template-columns: 1fr 340px 280px;
+    }
+  }
+
   @media (max-width: 1200px) {
     .dashboard-grid {
-      grid-template-columns: 1fr 300px;
+      grid-template-columns: 1fr 320px;
       gap: var(--space-lg);
     }
-    
+
     .monitoring-panel {
       grid-column: 1 / -1;
       grid-row: 3;
@@ -2119,12 +1844,12 @@
     }
 
     .dashboard-header {
-      padding: calc(var(--space-md) / 2);
+      padding: var(--space-md);
     }
 
     .status-bar {
       flex-direction: column;
-      gap: var(--space-lg);
+      gap: var(--space-md);
       text-align: center;
     }
 
@@ -2163,42 +1888,43 @@
     .relay-btn,
     .pump-btn,
     .preset-btn {
-      min-height: 48px !important;
+      min-height: 44px !important;
       touch-action: manipulation !important;
     }
 
     .dosing-slider {
-      height: 12px !important;
+      height: 10px !important;
     }
 
     .dosing-slider::-webkit-slider-thumb {
-      width: 32px !important;
-      height: 32px !important;
+      width: 28px !important;
+      height: 28px !important;
     }
 
     .dosing-slider::-moz-range-thumb {
-      width: 32px !important;
-      height: 32px !important;
+      width: 28px !important;
+      height: 28px !important;
     }
   }
 
-  /* High Contrast Mode */
+  /* Accessibility - High Contrast Mode */
   @media (prefers-contrast: high) {
     :root {
       --bg-primary: #000000;
       --bg-secondary: #1a1a1a;
-      --bg-tertiary: #333333;
+      --bg-tertiary: #2d2d2d;
+      --border-subtle: #4a5568;
+      --border-emphasis: #64748b;
       --text-primary: #ffffff;
-      --text-secondary: #ffffff;
-      --text-muted: #cccccc;
+      --text-secondary: #f8fafc;
+      --text-muted: #d1d5db;
     }
   }
 
-  /* Reduced Motion */
+  /* Accessibility - Reduced Motion */
   @media (prefers-reduced-motion: reduce) {
     * {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
+      animation: none !important;
       transition-duration: 0.01ms !important;
     }
   }
