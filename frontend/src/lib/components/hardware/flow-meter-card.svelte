@@ -39,17 +39,17 @@
 </script>
 
 <Card>
-  <CardHeader>
-    <CardTitle class="flex items-center gap-2">
-      <Activity class="size-5" />
+  <CardHeader class="pb-3">
+    <CardTitle class="flex items-center gap-2 text-base">
+      <Activity class="size-4" />
       Flow Meter Control
     </CardTitle>
   </CardHeader>
-  <CardContent class="space-y-4">
-    <div class="space-y-2">
-      <Label for="flow-select">Select Flow Meter</Label>
+  <CardContent class="space-y-3 pb-4">
+    <div class="space-y-1.5">
+      <Label for="flow-select" class="text-xs">Select Flow Meter</Label>
       <Select bind:value={selectedFlowMeter}>
-        <SelectTrigger>
+        <SelectTrigger class="h-11">
           <SelectValue placeholder={safeFlowMeters.length > 0 ? "Choose a flow meter..." : "No flow meters available"} />
         </SelectTrigger>
         <SelectContent>
@@ -69,25 +69,29 @@
     {#if selectedFlowMeterData}
       <div class="space-y-3">
         <div class="flex items-center justify-between">
-          <span class="text-sm font-medium">Status</span>
-          <Badge variant={selectedFlowMeterData.status === 'idle' ? 'secondary' : 'default'}>
+          <span class="text-xs font-medium">Status</span>
+          <Badge
+            variant={selectedFlowMeterData.status === 'idle' ? 'secondary' : 'default'}
+            class="h-5 px-2 text-xs"
+          >
             {selectedFlowMeterData.status.toUpperCase()}
           </Badge>
         </div>
 
         {#if isFlowing}
-          <div class="space-y-2">
-            <div class="flex justify-between text-sm">
-              <span>Progress</span>
-              <span>{selectedFlowMeterData.current_gallons || 0} gal / {selectedFlowMeterData.target_gallons || 0} gal</span>
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <span class="font-medium">Progress</span>
+              <span class="font-mono">{selectedFlowMeterData.current_gallons || 0} / {selectedFlowMeterData.target_gallons || 0} gal</span>
             </div>
-            <Progress value={progress} class="h-2" />
+            <Progress value={progress} class="h-2.5" />
           </div>
         {/if}
 
-        <div class="flex gap-3">
+        <!-- Tablet-optimized layout: horizontal control panel -->
+        <div class="flex gap-2 items-end">
           <div class="flex-1">
-            <Label for="flow-gallons">Volume (gallons)</Label>
+            <Label for="flow-gallons" class="text-xs">Volume (gallons)</Label>
             <Input
               id="flow-gallons"
               type="number"
@@ -96,27 +100,26 @@
               max="100"
               step="0.1"
               disabled={isFlowing}
+              class="h-11 text-base"
             />
           </div>
-          <div class="flex flex-col justify-end gap-2">
-            <Button
-              onclick={handleStartFlow}
-              disabled={isFlowing || !selectedFlowMeter}
-              size="sm"
-            >
-              <Play class="size-4 mr-2" />
-              Start Flow
-            </Button>
-            <Button
-              onclick={handleStopFlow}
-              disabled={!isFlowing}
-              variant="destructive"
-              size="sm"
-            >
-              <Square class="size-4 mr-2" />
-              Stop Flow
-            </Button>
-          </div>
+          <Button
+            onclick={handleStartFlow}
+            disabled={isFlowing || !selectedFlowMeter}
+            class="h-11 px-4"
+          >
+            <Play class="size-4 mr-1.5" />
+            Start
+          </Button>
+          <Button
+            onclick={handleStopFlow}
+            disabled={!isFlowing}
+            variant="destructive"
+            class="h-11 px-4"
+          >
+            <Square class="size-4 mr-1.5" />
+            Stop
+          </Button>
         </div>
       </div>
     {/if}

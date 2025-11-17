@@ -25,41 +25,42 @@
   }
 </script>
 
-<Card class="flex flex-col h-full">
-  <CardHeader>
+<Card class="flex flex-col">
+  <CardHeader class="pb-3">
     <div class="flex items-center justify-between">
-      <CardTitle class="flex items-center gap-2">
-        <ScrollText class="size-5" />
+      <CardTitle class="flex items-center gap-2 text-base">
+        <ScrollText class="size-4" />
         System Log
-        <Badge variant="secondary">{logs.length}</Badge>
+        <Badge variant="secondary" class="h-5 px-2 text-xs">{logs.length}</Badge>
       </CardTitle>
-      <div class="flex gap-2">
-        <Button size="sm" variant="outline" onclick={exportLogs} disabled={logs.length === 0}>
-          <Download class="size-4" />
+      <div class="flex gap-1.5">
+        <Button size="sm" variant="outline" onclick={exportLogs} disabled={logs.length === 0} class="h-8 w-8 p-0">
+          <Download class="size-3.5" />
         </Button>
-        <Button size="sm" variant="outline" onclick={onClearLogs} disabled={logs.length === 0}>
-          <Trash2 class="size-4" />
+        <Button size="sm" variant="outline" onclick={onClearLogs} disabled={logs.length === 0} class="h-8 w-8 p-0">
+          <Trash2 class="size-3.5" />
         </Button>
       </div>
     </div>
   </CardHeader>
-  <CardContent class="flex-1 min-h-0">
-    <div class="space-y-2 h-full overflow-y-auto">
+  <CardContent class="pb-4">
+    <!-- Tablet-optimized: Fixed height with scroll, compact spacing -->
+    <div class="space-y-1.5 h-64 overflow-y-auto pr-2">
       {#each logs as log}
-        <div class="flex items-start gap-2 text-sm p-2 rounded border">
-          <Badge 
-            variant={getLogLevel(log.message) === 'error' ? 'destructive' : 
+        <div class="flex items-start gap-1.5 text-sm p-2 rounded border bg-muted/30">
+          <Badge
+            variant={getLogLevel(log.message) === 'error' ? 'destructive' :
                     getLogLevel(log.message) === 'warning' ? 'outline' : 'secondary'}
-            class="text-xs shrink-0"
+            class="text-[10px] shrink-0 h-4 px-1.5"
           >
             {log.time}
           </Badge>
-          <span class="flex-1 font-mono text-xs break-all">
+          <span class="flex-1 font-mono text-[11px] leading-tight break-all">
             {log.message}
           </span>
         </div>
       {:else}
-        <div class="text-center text-muted-foreground py-8">
+        <div class="text-center text-muted-foreground py-12 text-sm">
           No log entries yet
         </div>
       {/each}

@@ -26,57 +26,61 @@
 </script>
 
 <Card>
-  <CardHeader>
-    <CardTitle class="flex items-center gap-2">
-      <TestTube class="size-5" />
-      EC/pH Monitor
-      <Badge variant={ecPhMonitoring ? 'default' : 'secondary'} class="ml-auto">
+  <CardHeader class="pb-3">
+    <CardTitle class="flex items-center justify-between text-base">
+      <div class="flex items-center gap-2">
+        <TestTube class="size-4" />
+        EC/pH Monitor
+      </div>
+      <Badge
+        variant={ecPhMonitoring ? 'default' : 'secondary'}
+        class="h-5 px-2 text-xs"
+      >
         {ecPhMonitoring ? 'ACTIVE' : 'INACTIVE'}
       </Badge>
     </CardTitle>
   </CardHeader>
-  <CardContent class="space-y-4">
-    <div class="grid grid-cols-2 gap-4">
-      <div class="text-center space-y-2">
-        <div class="text-2xl font-bold {getValueColor(ecValue, 'ec')}">
+  <CardContent class="space-y-3 pb-4">
+    <div class="grid grid-cols-2 gap-3">
+      <div class="text-center space-y-1.5 bg-muted/50 rounded-lg py-3">
+        <div class="text-3xl font-bold tabular-nums {getValueColor(ecValue, 'ec')}">
           {ecValue.toFixed(1)}
         </div>
-        <div class="text-sm text-muted-foreground">EC (µS/cm)</div>
-        <div class="text-xs">
-          <span class="text-green-400">●</span> 800-1200 Optimal
+        <div class="text-xs font-medium text-muted-foreground">EC (µS/cm)</div>
+        <div class="text-[10px] leading-tight">
+          <span class="text-green-400">●</span> 800-1200
         </div>
       </div>
-      
-      <div class="text-center space-y-2">
-        <div class="text-2xl font-bold {getValueColor(phValue, 'ph')}">
+
+      <div class="text-center space-y-1.5 bg-muted/50 rounded-lg py-3">
+        <div class="text-3xl font-bold tabular-nums {getValueColor(phValue, 'ph')}">
           {phValue.toFixed(2)}
         </div>
-        <div class="text-sm text-muted-foreground">pH Level</div>
-        <div class="text-xs">
-          <span class="text-green-400">●</span> 5.5-6.5 Optimal
+        <div class="text-xs font-medium text-muted-foreground">pH Level</div>
+        <div class="text-[10px] leading-tight">
+          <span class="text-green-400">●</span> 5.5-6.5
         </div>
       </div>
     </div>
 
+    <!-- Tablet-optimized: larger touch targets -->
     <div class="flex gap-2">
       <Button
         onclick={onStartMonitoring}
         disabled={ecPhMonitoring}
-        class="flex-1"
-        size="sm"
+        class="flex-1 h-11"
       >
-        <Play class="size-4 mr-2" />
-        Start Monitoring
+        <Play class="size-4 mr-1.5" />
+        Start
       </Button>
       <Button
         onclick={onStopMonitoring}
         disabled={!ecPhMonitoring}
         variant="destructive"
-        class="flex-1"
-        size="sm"
+        class="flex-1 h-11"
       >
-        <Square class="size-4 mr-2" />
-        Stop Monitoring
+        <Square class="size-4 mr-1.5" />
+        Stop
       </Button>
     </div>
   </CardContent>

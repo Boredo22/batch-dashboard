@@ -17,7 +17,8 @@
   <AppSidebar {systemStatus} />
   <SidebarInset>
     <SiteHeader {title} {subtitle} {systemStatus} {breadcrumbs} />
-    <div class="flex flex-1 flex-col gap-4 p-4 pt-0">
+    <!-- Tablet-optimized: reduced padding for more screen space -->
+    <div class="flex flex-1 flex-col gap-3 p-3 pt-0">
       {@render children()}
     </div>
   </SidebarInset>

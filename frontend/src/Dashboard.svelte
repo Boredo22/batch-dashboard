@@ -408,41 +408,68 @@
   });
 </script>
 
-<!-- Main dashboard grid -->
-<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-  <!-- Hardware Controls - Takes up 2 columns on large screens -->
-  <div class="lg:col-span-2 space-y-4">
-    <RelayControlCard {relays} onRelayControl={controlRelay} />
-    
-    <div class="grid gap-4 md:grid-cols-2">
-      <PumpControlCard 
-        {pumps} 
-        bind:selectedPump 
-        bind:pumpAmount 
-        onDispensePump={dispensePump} 
-        onStopPump={stopPump} 
-      />
-      
-      <FlowMeterCard
-        flowMeters={flowMeters}
-        bind:selectedFlowMeter
-        bind:flowGallons
-        onStartFlow={startFlow}
-        onStopFlow={stopFlow}
-      />
+<!-- Tablet-optimized dashboard - Single column layout with compact spacing -->
+<div class="flex flex-col gap-3 max-w-3xl mx-auto">
+  <!-- Status Banner -->
+  <div class="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b pb-2 mb-2">
+    <div class="flex items-center justify-between px-1">
+      <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2">
+          <div class="size-2.5 rounded-full {systemStatus === 'Connected' ? 'bg-green-500' : 'bg-red-500'}"></div>
+          <span class="text-sm font-medium">{systemStatus}</span>
+        </div>
+        {#if ecPhMonitoring}
+          <div class="text-xs bg-muted px-2 py-1 rounded">
+            EC: {ecValue.toFixed(2)} | pH: {phValue.toFixed(2)}
+          </div>
+        {/if}
+      </div>
+      {#if errorMessage}
+        <span class="text-xs text-destructive">{errorMessage}</span>
+      {/if}
     </div>
-    
-    <ECPHMonitorCard
-      {ecValue}
-      {phValue}
-      {ecPhMonitoring}
-      onStartMonitoring={startEcPhMonitoring}
-      onStopMonitoring={stopEcPhMonitoring}
-    />
   </div>
 
-  <!-- System Log - Takes up 1 column -->
-  <div class="lg:col-span-1">
+  <!-- Relay Control - Compact 3-column grid -->
+  <RelayControlCard {relays} onRelayControl={controlRelay} />
+
+  <!-- Pump Control - Full width -->
+  <PumpControlCard
+    {pumps}
+    bind:selectedPump
+    bind:pumpAmount
+    onDispensePump={dispensePump}
+    onStopPump={stopPump}
+  />
+
+  <!-- Flow Meter Control - Full width -->
+  <FlowMeterCard
+    flowMeters={flowMeters}
+    bind:selectedFlowMeter
+    bind:flowGallons
+    onStartFlow={startFlow}
+    onStopFlow={stopFlow}
+  />
+
+  <!-- EC/pH Monitor - Compact -->
+  <ECPHMonitorCard
+    {ecValue}
+    {phValue}
+    {ecPhMonitoring}
+    onStartMonitoring={startEcPhMonitoring}
+    onStopMonitoring={stopEcPhMonitoring}
+  />
+
+  <!-- System Log - Fixed height with scroll -->
+  <div class="mt-2">
     <SystemLogCard {logs} onClearLogs={clearLogs} />
   </div>
 </div>
+
+<style>
+  /* Tablet-specific optimizations */
+  :global(body) {
+    touch-action: manipulation; /* Disable double-tap zoom */
+    -webkit-tap-highlight-color: transparent;
+  }
+</style>

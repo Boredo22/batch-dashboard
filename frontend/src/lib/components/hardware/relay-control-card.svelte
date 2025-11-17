@@ -15,28 +15,43 @@
 </script>
 
 <Card>
-  <CardHeader>
-    <CardTitle class="flex items-center gap-2">
-      <Zap class="size-5" />
-      Relay Control
+  <CardHeader class="pb-3">
+    <CardTitle class="flex items-center justify-between text-base">
+      <div class="flex items-center gap-2">
+        <Zap class="size-4" />
+        Relay Control
+      </div>
+      <Button
+        size="sm"
+        variant="outline"
+        onclick={() => handleRelayControl(0, 'off')}
+        class="h-8 text-xs"
+      >
+        All OFF
+      </Button>
     </CardTitle>
   </CardHeader>
-  <CardContent>
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+  <CardContent class="pb-4">
+    <!-- Tablet-optimized: 3 columns for better touch targets -->
+    <div class="grid grid-cols-3 gap-2">
       {#each safeRelays as relay}
-        <div class="space-y-2">
+        <div class="space-y-1.5">
           <div class="flex items-center justify-between">
-            <span class="text-sm font-medium">Relay {relay.id}</span>
-            <Badge variant={relay.status === 'on' ? 'default' : 'secondary'}>
-              {relay.status.toUpperCase()}
+            <span class="text-xs font-medium">R{relay.id}</span>
+            <Badge
+              variant={relay.status === 'on' ? 'default' : 'secondary'}
+              class="h-4 px-1.5 text-[10px]"
+            >
+              {relay.status === 'on' ? 'ON' : 'OFF'}
             </Badge>
           </div>
+          <!-- Larger touch targets: min 44px height -->
           <div class="flex gap-1">
             <Button
               size="sm"
               variant={relay.status === 'on' ? 'default' : 'outline'}
               onclick={() => handleRelayControl(relay.id, 'on')}
-              class="flex-1"
+              class="flex-1 h-11 text-xs font-semibold"
             >
               ON
             </Button>
@@ -44,7 +59,7 @@
               size="sm"
               variant={relay.status === 'off' ? 'default' : 'outline'}
               onclick={() => handleRelayControl(relay.id, 'off')}
-              class="flex-1"
+              class="flex-1 h-11 text-xs font-semibold"
             >
               OFF
             </Button>

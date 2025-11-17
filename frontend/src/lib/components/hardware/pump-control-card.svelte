@@ -41,19 +41,19 @@
 </script>
 
 <Card>
-  <CardHeader>
-    <CardTitle class="flex items-center gap-2">
-      <Droplets class="size-5" />
+  <CardHeader class="pb-3">
+    <CardTitle class="flex items-center gap-2 text-base">
+      <Droplets class="size-4" />
       Pump Control
     </CardTitle>
   </CardHeader>
-  <CardContent class="space-y-4">
-    <div class="space-y-2">
-      <Label for="pump-select">Select Pump</Label>
+  <CardContent class="space-y-3 pb-4">
+    <div class="space-y-1.5">
+      <Label for="pump-select" class="text-xs">Select Pump</Label>
       <select
         bind:value={selectedPumpStr}
         onchange={(e) => selectedPump = e.target.value ? parseInt(e.target.value) : ""}
-        class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        class="flex h-11 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <option value="" disabled>
           {safePumps.length > 0 ? "Choose a pump..." : "No pumps available"}
@@ -71,25 +71,29 @@
     {#if selectedPumpData}
       <div class="space-y-3">
         <div class="flex items-center justify-between">
-          <span class="text-sm font-medium">Status</span>
-          <Badge variant={selectedPumpData.status === 'idle' ? 'secondary' : 'default'}>
+          <span class="text-xs font-medium">Status</span>
+          <Badge
+            variant={selectedPumpData.status === 'idle' ? 'secondary' : 'default'}
+            class="h-5 px-2 text-xs"
+          >
             {selectedPumpData.status.toUpperCase()}
           </Badge>
         </div>
 
         {#if isDispensing}
-          <div class="space-y-2">
-            <div class="flex justify-between text-sm">
-              <span>Progress</span>
-              <span>{selectedPumpData.current_volume || 0}ml / {selectedPumpData.target_volume || 0}ml</span>
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <span class="font-medium">Progress</span>
+              <span class="font-mono">{selectedPumpData.current_volume || 0}ml / {selectedPumpData.target_volume || 0}ml</span>
             </div>
-            <Progress value={progress} class="h-2" />
+            <Progress value={progress} class="h-2.5" />
           </div>
         {/if}
 
-        <div class="flex gap-3">
+        <!-- Tablet-optimized layout: horizontal control panel -->
+        <div class="flex gap-2 items-end">
           <div class="flex-1">
-            <Label for="pump-amount">Amount (ml)</Label>
+            <Label for="pump-amount" class="text-xs">Amount (ml)</Label>
             <Input
               id="pump-amount"
               type="number"
@@ -97,27 +101,26 @@
               min="1"
               max="1000"
               disabled={isDispensing}
+              class="h-11 text-base"
             />
           </div>
-          <div class="flex flex-col justify-end gap-2">
-            <Button
-              onclick={handleDispense}
-              disabled={isDispensing || !selectedPump}
-              size="sm"
-            >
-              <Play class="size-4 mr-2" />
-              Dispense
-            </Button>
-            <Button
-              onclick={handleStop}
-              disabled={!isDispensing}
-              variant="destructive"
-              size="sm"
-            >
-              <Square class="size-4 mr-2" />
-              Stop
-            </Button>
-          </div>
+          <Button
+            onclick={handleDispense}
+            disabled={isDispensing || !selectedPump}
+            class="h-11 px-4"
+          >
+            <Play class="size-4 mr-1.5" />
+            Start
+          </Button>
+          <Button
+            onclick={handleStop}
+            disabled={!isDispensing}
+            variant="destructive"
+            class="h-11 px-4"
+          >
+            <Square class="size-4 mr-1.5" />
+            Stop
+          </Button>
         </div>
       </div>
     {/if}
