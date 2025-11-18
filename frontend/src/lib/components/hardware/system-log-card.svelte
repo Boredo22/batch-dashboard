@@ -101,6 +101,9 @@
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
     border-radius: 0.375rem;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
   }
 
   .card-header {
@@ -116,6 +119,10 @@
 
   .card-content {
     padding: var(--space-md);
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   .icon {
@@ -166,12 +173,13 @@
   }
 
   .log-container {
-    height: 16rem;
+    flex: 1;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: var(--space-xs);
     padding-right: var(--space-sm);
+    min-height: 0;
   }
 
   .log-container::-webkit-scrollbar {

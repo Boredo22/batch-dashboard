@@ -427,35 +427,44 @@
     {/if}
   </div>
 
-  <!-- Hardware Control Cards -->
+  <!-- Hardware Control Cards - Grid Layout -->
   <div class="cards-container">
-    <RelayControlCard {relays} onRelayControl={controlRelay} />
+    <!-- Left Column - Hardware Controls -->
+    <div class="controls-column">
+      <RelayControlCard {relays} onRelayControl={controlRelay} />
 
-    <PumpControlCard
-      {pumps}
-      bind:selectedPump
-      bind:pumpAmount
-      onDispensePump={dispensePump}
-      onStopPump={stopPump}
-    />
+      <PumpControlCard
+        {pumps}
+        bind:selectedPump
+        bind:pumpAmount
+        onDispensePump={dispensePump}
+        onStopPump={stopPump}
+      />
+    </div>
 
-    <FlowMeterCard
-      flowMeters={flowMeters}
-      bind:selectedFlowMeter
-      bind:flowGallons
-      onStartFlow={startFlow}
-      onStopFlow={stopFlow}
-    />
+    <!-- Middle Column - Sensors -->
+    <div class="sensors-column">
+      <FlowMeterCard
+        flowMeters={flowMeters}
+        bind:selectedFlowMeter
+        bind:flowGallons
+        onStartFlow={startFlow}
+        onStopFlow={stopFlow}
+      />
 
-    <ECPHMonitorCard
-      {ecValue}
-      {phValue}
-      {ecPhMonitoring}
-      onStartMonitoring={startEcPhMonitoring}
-      onStopMonitoring={stopEcPhMonitoring}
-    />
+      <ECPHMonitorCard
+        {ecValue}
+        {phValue}
+        {ecPhMonitoring}
+        onStartMonitoring={startEcPhMonitoring}
+        onStopMonitoring={stopEcPhMonitoring}
+      />
+    </div>
 
-    <SystemLogCard {logs} onClearLogs={clearLogs} />
+    <!-- Right Column - System Log -->
+    <div class="log-column">
+      <SystemLogCard {logs} onClearLogs={clearLogs} />
+    </div>
   </div>
 </div>
 
@@ -494,7 +503,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
-    max-width: 48rem;
+    max-width: 100%;
     margin: 0 auto;
   }
 
@@ -558,9 +567,54 @@
   }
 
   .cards-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr 320px;
+    gap: var(--space-md);
+    padding: 0 var(--space-md) var(--space-md);
+    max-width: 100%;
+    margin: 0 auto;
+  }
+
+  .controls-column,
+  .sensors-column {
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
-    padding: 0 var(--space-md) var(--space-md);
+  }
+
+  .log-column {
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 4rem;
+    height: calc(100vh - 5rem);
+    align-self: start;
+  }
+
+  /* Responsive Design for Tablet */
+  @media (max-width: 1400px) {
+    .cards-container {
+      grid-template-columns: 1fr 1fr 300px;
+    }
+  }
+
+  @media (max-width: 1200px) {
+    .cards-container {
+      grid-template-columns: 1fr 1fr 280px;
+      gap: var(--space-sm);
+    }
+  }
+
+  @media (max-width: 768px) {
+    .cards-container {
+      grid-template-columns: 1fr;
+      gap: var(--space-md);
+    }
+
+    .log-column {
+      position: relative;
+      height: auto;
+      top: 0;
+    }
   }
 </style>

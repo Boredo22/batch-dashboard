@@ -27,7 +27,9 @@
       "Bash(node:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(i2cdetect:*)",
+      "Bash(i2cget:*)"
     ],
     "deny": [],
     "ask": []
