@@ -29,7 +29,8 @@
       "Bash(git commit:*)",
       "Bash(cat:*)",
       "Bash(i2cdetect:*)",
-      "Bash(i2cget:*)"
+      "Bash(i2cget:*)",
+      "Bash(/home/pi/batch-dashboard/.venv/bin/python:*)"
     ],
     "deny": [],
     "ask": []

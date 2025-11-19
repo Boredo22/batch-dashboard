@@ -703,7 +703,7 @@ class HardwareComms:
     def stop_ec_ph(self) -> bool:
         """
         Stop EC/pH monitoring using exact same command as simple_gui.py
-        
+
         Returns:
             bool: Success status
         """
@@ -711,22 +711,155 @@ class HardwareComms:
         if not sys:
             logger.error("System not available for EC/pH control")
             return False
-        
+
         # Exact same command format as simple_gui.py
         command = "Start;EcPh;OFF;end"
-        
+
         try:
             success = sys.send_command(command)
-            
+
             if success:
                 logger.info("EC/pH monitoring stopped")
             else:
                 logger.error("Failed to stop EC/pH monitoring")
-            
+
             return success
         except Exception as e:
             logger.error(f"Exception stopping EC/pH monitoring: {e}")
             return False
+
+    def read_ec_ph_sensors(self) -> dict:
+        """
+        Read EC and pH sensor values directly via I2C
+
+        Returns:
+            dict: EC and pH readings with timestamp
+        """
+        sys = self.get_system()
+        if not sys or not sys.sensor_controller:
+            logger.error("Sensor controller not available")
+            return {
+                'success': False,
+                'error': 'Sensor controller not available'
+            }
+
+        try:
+            readings = sys.sensor_controller.read_sensors()
+            return {
+                'success': True,
+                'ph': readings.get('ph'),
+                'ec': readings.get('ec'),
+                'timestamp': readings.get('timestamp')
+            }
+        except Exception as e:
+            logger.error(f"Exception reading EC/pH sensors: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def calibrate_ph(self, point: str, value: float = None) -> bool:
+        """
+        Calibrate pH sensor
+
+        Args:
+            point: Calibration point ('mid', 'low', 'high', or 'clear')
+            value: Optional pH value (uses defaults from config if None)
+
+        Returns:
+            bool: Success status
+        """
+        sys = self.get_system()
+        if not sys or not sys.sensor_controller:
+            logger.error("Sensor controller not available for pH calibration")
+            return False
+
+        try:
+            if point == 'mid':
+                return sys.sensor_controller.calibrate_ph_mid(value)
+            elif point == 'low':
+                return sys.sensor_controller.calibrate_ph_low(value)
+            elif point == 'high':
+                return sys.sensor_controller.calibrate_ph_high(value)
+            elif point == 'clear':
+                return sys.sensor_controller.clear_ph_calibration()
+            else:
+                logger.error(f"Invalid pH calibration point: {point}")
+                return False
+        except Exception as e:
+            logger.error(f"Exception calibrating pH: {e}")
+            return False
+
+    def calibrate_ec(self, point: str, value: int = None) -> bool:
+        """
+        Calibrate EC sensor
+
+        Args:
+            point: Calibration point ('dry', 'single', 'low', 'high', or 'clear')
+            value: Optional EC value in μS/cm (uses defaults from config if None)
+
+        Returns:
+            bool: Success status
+        """
+        sys = self.get_system()
+        if not sys or not sys.sensor_controller:
+            logger.error("Sensor controller not available for EC calibration")
+            return False
+
+        try:
+            if point == 'dry':
+                return sys.sensor_controller.calibrate_ec_dry()
+            elif point == 'single':
+                return sys.sensor_controller.calibrate_ec_single(value)
+            elif point == 'low':
+                return sys.sensor_controller.calibrate_ec_low(value)
+            elif point == 'high':
+                return sys.sensor_controller.calibrate_ec_high(value)
+            elif point == 'clear':
+                return sys.sensor_controller.clear_ec_calibration()
+            else:
+                logger.error(f"Invalid EC calibration point: {point}")
+                return False
+        except Exception as e:
+            logger.error(f"Exception calibrating EC: {e}")
+            return False
+
+    def get_sensor_calibration_status(self) -> dict:
+        """
+        Get calibration status for both pH and EC sensors
+
+        Returns:
+            dict: Calibration status information
+        """
+        sys = self.get_system()
+        if not sys or not sys.sensor_controller:
+            logger.error("Sensor controller not available")
+            return {
+                'success': False,
+                'error': 'Sensor controller not available'
+            }
+
+        try:
+            ph_status = sys.sensor_controller.get_ph_calibration_status()
+            ec_status = sys.sensor_controller.get_ec_calibration_status()
+
+            return {
+                'success': True,
+                'ph': {
+                    'calibration_points': ph_status,
+                    'status': 'calibrated' if ph_status and ph_status > 0 else 'uncalibrated'
+                },
+                'ec': {
+                    'calibration_state': ec_status,
+                    'status': 'calibrated' if ec_status and ec_status > 0 else 'uncalibrated'
+                }
+            }
+        except Exception as e:
+            logger.error(f"Exception getting sensor calibration status: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
 
     # =========================================================================
     # EMERGENCY CONTROLS - Same as simple_gui.py
@@ -932,6 +1065,22 @@ def get_pump_status(pump_id: int = None) -> dict:
 def refresh_pump_calibrations() -> bool:
     """Refresh pump calibrations - convenience function"""
     return get_hardware_comms().refresh_pump_calibrations()
+
+def read_ec_ph_sensors() -> dict:
+    """Read EC/pH sensors - convenience function"""
+    return get_hardware_comms().read_ec_ph_sensors()
+
+def calibrate_ph(point: str, value: float = None) -> bool:
+    """Calibrate pH sensor - convenience function"""
+    return get_hardware_comms().calibrate_ph(point, value)
+
+def calibrate_ec(point: str, value: int = None) -> bool:
+    """Calibrate EC sensor - convenience function"""
+    return get_hardware_comms().calibrate_ec(point, value)
+
+def get_sensor_calibration_status() -> dict:
+    """Get sensor calibration status - convenience function"""
+    return get_hardware_comms().get_sensor_calibration_status()
 
 def cleanup_hardware():
     """Cleanup hardware resources - convenience function"""

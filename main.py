@@ -14,7 +14,7 @@ from datetime import datetime
 from hardware.rpi_pumps import EZOPumpController
 from hardware.rpi_relays import RelayController
 from hardware.rpi_flow import FlowMeterController, MockFlowMeterController
-from hardware.rpi_unoComm import ArduinoUnoController, find_arduino_uno_port
+from hardware.rpi_ezo_sensors import EZOSensorController  # Replaced Arduino Uno with direct I2C
 
 # Import configuration
 from config import (
@@ -99,23 +99,20 @@ class FeedControlSystem:
             self.flow_controller = None
         
         try:
-            # Initialize Arduino Uno controller
-            if MOCK_SETTINGS.get('arduino', False):
-                logger.info("Using mock Arduino controller")
-                self.uno_controller = None  # Would implement mock Arduino controller
+            # Initialize EZO EC/pH sensor controller (replaces Arduino Uno)
+            if MOCK_SETTINGS.get('ecph', False) or MOCK_SETTINGS.get('arduino', False):
+                logger.info("Using mock EC/pH sensors")
+                self.sensor_controller = None  # Would implement mock sensor controller
             else:
-                if uno_port is None:
-                    uno_port = find_arduino_uno_port()
-                
-                if uno_port:
-                    self.uno_controller = ArduinoUnoController(port=uno_port)
-                    logger.info(f"✓ Arduino Uno controller initialized on {uno_port}")
+                self.sensor_controller = EZOSensorController()
+                if self.sensor_controller.connect():
+                    logger.info(f"✓ EZO pH/EC sensors initialized via I2C")
                 else:
-                    logger.warning("✗ Arduino Uno port not found")
-                    self.uno_controller = None
+                    logger.warning("✗ EZO pH/EC sensors connection failed")
+                    self.sensor_controller = None
         except Exception as e:
-            logger.error(f"✗ Arduino Uno controller failed: {e}")
-            self.uno_controller = None
+            logger.error(f"✗ EZO pH/EC sensor controller failed: {e}")
+            self.sensor_controller = None
         
         # Timing for status updates
         self.last_status_update = 0
@@ -124,10 +121,6 @@ class FeedControlSystem:
     def set_message_callback(self, callback):
         """Set callback for system messages"""
         self.message_callback = callback
-        
-        # Set callback for Arduino Uno messages too
-        if self.uno_controller:
-            self.uno_controller.set_message_callback(callback)
     
     def send_message(self, message):
         """Send a message via callback"""
@@ -148,9 +141,8 @@ class FeedControlSystem:
         self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
         self.worker_thread.start()
         
-        # Start EC/pH monitoring if available
-        if self.uno_controller:
-            self.uno_controller.start_monitoring()
+        # EC/pH sensors are always available via I2C (no need to start monitoring explicitly)
+        # Sensors can be read on-demand when needed
         
         # Print system info
         self._print_system_info()
@@ -180,8 +172,8 @@ class FeedControlSystem:
             self.relay_controller.cleanup()
         if self.flow_controller:
             self.flow_controller.cleanup()
-        if self.uno_controller:
-            self.uno_controller.close()
+        if self.sensor_controller:
+            self.sensor_controller.close()
         
         logger.info("Feed control system stopped")
     
@@ -342,16 +334,18 @@ class FeedControlSystem:
     
     def _handle_ecph_command(self, parts):
         """Handle EC/pH commands: Start;EcPh;command;end"""
-        if len(parts) < 4 or not self.uno_controller:
+        if len(parts) < 4 or not self.sensor_controller:
             return
-        
+
         command = parts[2].upper()
-        
+
         if command == "ON":
-            self.uno_controller.start_monitoring()
+            self.sensor_controller.start_monitoring()
+            logger.info("EC/pH monitoring started")
         elif command == "OFF":
-            self.uno_controller.stop_monitoring()
-        
+            self.sensor_controller.stop_monitoring()
+            logger.info("EC/pH monitoring stopped")
+
         self.send_message(f"Start;Update;EcPhStatus;{command};end")
     
     def _update_devices(self):
@@ -497,8 +491,12 @@ class FeedControlSystem:
             status['flow_meters'] = self.flow_controller.get_all_flow_status()
         
         # Get EC/pH status
-        if self.uno_controller:
-            status['ec_ph'] = self.uno_controller.get_latest_readings()
+        if self.sensor_controller:
+            readings = self.sensor_controller.get_latest_readings()
+            status['ec_ph'] = readings
+            status['ec_ph_active'] = self.sensor_controller.monitoring_active
+            status['ec'] = readings.get('ec')
+            status['ph'] = readings.get('ph')
         
         return status
 

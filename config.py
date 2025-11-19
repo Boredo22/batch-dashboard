@@ -120,18 +120,12 @@ FLOW_METER_CALIBRATION = {
 FLOW_METER_INTERRUPT_EDGE = "FALLING"  # Interrupt on falling edge
 
 # =============================================================================
-# ARDUINO UNO CONFIGURATION (EC/pH Sensors)
+# EZO EC/pH SENSOR CONFIGURATION (Direct I2C on Raspberry Pi)
 # =============================================================================
 
-# Arduino Uno serial communication
-ARDUINO_UNO_PORTS = [
-    "/dev/ttyACM0",
-    "/dev/ttyACM1", 
-
-]
-
-ARDUINO_UNO_BAUDRATE = 115200
-ARDUINO_UNO_TIMEOUT = 1.0
+# EZO sensor I2C addresses
+EZO_PH_ADDRESS = 0x63  # 99 decimal - pH sensor
+EZO_EC_ADDRESS = 0x64  # 100 decimal - EC sensor
 
 # EC/pH sensor calibration points
 EC_CALIBRATION_SOLUTIONS = {
@@ -143,9 +137,23 @@ EC_CALIBRATION_SOLUTIONS = {
 
 PH_CALIBRATION_SOLUTIONS = {
     "low": 4.0,      # pH 4.0 buffer
-    "mid": 7.0,      # pH 7.0 buffer  
+    "mid": 7.0,      # pH 7.0 buffer
     "high": 10.0     # pH 10.0 buffer
 }
+
+# =============================================================================
+# LEGACY ARDUINO UNO CONFIGURATION (DEPRECATED - replaced by direct I2C)
+# =============================================================================
+
+# Arduino Uno serial communication (DEPRECATED - keeping for reference)
+ARDUINO_UNO_PORTS = [
+    "/dev/ttyACM0",
+    "/dev/ttyACM1",
+
+]
+
+ARDUINO_UNO_BAUDRATE = 115200
+ARDUINO_UNO_TIMEOUT = 1.0
 
 # =============================================================================
 # SYSTEM TIMING CONFIGURATION

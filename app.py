@@ -23,7 +23,8 @@ from hardware.hardware_comms import (
     all_relays_off, cleanup_hardware, start_ec_ph, stop_ec_ph,
     calibrate_pump, clear_pump_calibration, check_pump_calibration_status,
     pause_pump, get_pump_voltage, get_current_dispensed_volume,
-    get_pump_status, refresh_pump_calibrations
+    get_pump_status, refresh_pump_calibrations,
+    read_ec_ph_sensors, calibrate_ph, calibrate_ec, get_sensor_calibration_status
 )
 
 # Import configuration constants and all settings
@@ -914,13 +915,111 @@ def api_stop_ec_ph():
     """Stop EC/pH monitoring"""
     try:
         success = stop_ec_ph()
-        
+
         return jsonify({
             'success': success,
             'message': "EC/pH monitoring stopped" if success else "Failed to stop EC/pH monitoring"
         })
     except Exception as e:
         logger.error(f"Error stopping EC/pH monitoring: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/sensors/ecph/read', methods=['GET'])
+def api_read_ec_ph():
+    """Read current EC and pH values"""
+    try:
+        result = read_ec_ph_sensors()
+
+        if result.get('success'):
+            return jsonify({
+                'success': True,
+                'data': {
+                    'ph': result.get('ph'),
+                    'ec': result.get('ec'),
+                    'timestamp': result.get('timestamp')
+                }
+            })
+        else:
+            return jsonify(result), 500
+    except Exception as e:
+        logger.error(f"Error reading EC/pH sensors: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/sensors/ph/calibrate', methods=['POST'])
+def api_calibrate_ph():
+    """
+    Calibrate pH sensor
+    Body: {"point": "mid"|"low"|"high"|"clear", "value": 7.0 (optional)}
+    """
+    try:
+        data = request.get_json() or {}
+        point = data.get('point')
+        value = data.get('value')
+
+        if not point:
+            return jsonify({
+                'success': False,
+                'error': 'Calibration point required'
+            }), 400
+
+        success = calibrate_ph(point, value)
+
+        return jsonify({
+            'success': success,
+            'message': f"pH {point} calibration {'successful' if success else 'failed'}"
+        })
+    except Exception as e:
+        logger.error(f"Error calibrating pH: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/sensors/ec/calibrate', methods=['POST'])
+def api_calibrate_ec():
+    """
+    Calibrate EC sensor
+    Body: {"point": "dry"|"single"|"low"|"high"|"clear", "value": 1413 (optional)}
+    """
+    try:
+        data = request.get_json() or {}
+        point = data.get('point')
+        value = data.get('value')
+
+        if not point:
+            return jsonify({
+                'success': False,
+                'error': 'Calibration point required'
+            }), 400
+
+        success = calibrate_ec(point, value)
+
+        return jsonify({
+            'success': success,
+            'message': f"EC {point} calibration {'successful' if success else 'failed'}"
+        })
+    except Exception as e:
+        logger.error(f"Error calibrating EC: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/sensors/calibration/status', methods=['GET'])
+def api_get_calibration_status():
+    """Get calibration status for both sensors"""
+    try:
+        result = get_sensor_calibration_status()
+
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error getting calibration status: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
