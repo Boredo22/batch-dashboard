@@ -3,5 +3,6 @@ smbus2
 pyserial
 flask
 flask-cors
+python-dotenv
 svelte
 vite

@@ -10,15 +10,16 @@
   import { Alert, AlertDescription } from "$lib/components/ui/alert/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
-  import { 
-    User, 
-    Code, 
-    Plus, 
-    Trash2, 
+  import {
+    User,
+    Code,
+    Plus,
+    Trash2,
     Save,
     Settings as SettingsIcon,
-    AlertCircle 
+    AlertCircle
   } from "@lucide/svelte/icons";
+  import { API_BASE_URL } from './config.js';
 
   let userSettings = $state({
     tanks: {},
@@ -74,8 +75,8 @@
   async function loadSettings() {
     try {
       const [userResponse, devResponse] = await Promise.all([
-        fetch('/api/settings/user'),
-        fetch('/api/settings/developer')
+        fetch(`${API_BASE_URL}/api/settings/user`),
+        fetch(`${API_BASE_URL}/api/settings/developer`)
       ]);
       
       if (userResponse.ok) {
@@ -98,12 +99,12 @@
     saving = true;
     try {
       const [userResponse, devResponse] = await Promise.all([
-        fetch('/api/settings/user', {
+        fetch(`${API_BASE_URL}/api/settings/user`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(userSettings)
         }),
-        fetch('/api/settings/developer', {
+        fetch(`${API_BASE_URL}/api/settings/developer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(devSettings)

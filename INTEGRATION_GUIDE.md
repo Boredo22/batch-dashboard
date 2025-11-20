@@ -1,263 +1,230 @@
-# pH/EC Sensor Integration Guide
-## Adding EZO Sensors to Batch Dashboard
+# Frontend/Backend Deployment Flexibility Implementation
 
-### Installation
+## Overview
+Configure the batch dashboard project to allow running the frontend (Vite dev server) on either the Raspberry Pi or the desktop, while the Flask backend can run on either device as well. This provides maximum flexibility during development.
 
-1. **Install required package:**
-```bash
-pip3 install smbus2
+**Network Details:**
+- Raspberry Pi IP: `192.168.1.243`
+- Desktop IP: `192.168.1.209`
+
+## Tasks to Complete
+
+### 1. Update .gitignore
+Add the following to the root `.gitignore` file (or create it if it doesn't exist):
+
+```gitignore
+# Environment files - these contain machine-specific configuration
+.env
+.env.local
+.env.*.local
+**/.env.local
+**/.env.*.local
 ```
 
-2. **Copy the sensor script:**
-```bash
-cp ph_ec_simple.py /home/pi/batch-dashboard/hardware/
+### 2. Frontend Configuration
+
+#### Create `frontend/.env.example` (template file to commit):
+```env
+# API Base URL - update this to point to wherever Flask is running
+# Options:
+#   - http://localhost:5000 (if running Flask on same machine)
+#   - http://192.168.1.243:5000 (if Flask is on Pi)
+#   - http://192.168.1.209:5000 (if Flask is on Desktop)
+VITE_API_URL=http://localhost:5000
 ```
 
-3. **Enable I2C on your Pi (if not already enabled):**
-```bash
-sudo raspi-config
-# Navigate to: Interface Options > I2C > Enable
+#### Create `frontend/.env.development.local` (NOT committed - for current machine):
+```env
+# For Desktop - uncomment the line you need:
+# VITE_API_URL=http://localhost:5000
+VITE_API_URL=http://192.168.1.243:5000
+
+# For Pi - uncomment the line you need:
+# VITE_API_URL=http://localhost:5000
+# VITE_API_URL=http://192.168.1.209:5000
 ```
 
-### Quick Test
+#### Update frontend code to use environment variable
+Find where API calls are made and update to use the environment variable. Common locations:
+- `src/config.js` or similar config file
+- Directly in API service files
+- axios/fetch base URL configuration
 
-Test the sensors directly:
-```bash
-cd /home/pi/batch-dashboard/hardware
-python3 ph_ec_simple.py
-```
-
-### Flask API Integration
-
-Add these endpoints to your `app.py`:
-
-```python
-from hardware.ph_ec_simple import PHECSensor
-
-# Initialize in your app setup
-ph_ec_sensor = PHECSensor()
-
-# Add these routes:
-
-@app.route('/api/sensors/ph-ec/connect', methods=['POST'])
-def connect_ph_ec():
-    """Connect to pH/EC sensors"""
-    try:
-        if ph_ec_sensor.connect():
-            return jsonify({'success': True, 'message': 'Connected to sensors'})
-        else:
-            return jsonify({'success': False, 'message': 'Failed to connect'}), 500
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@app.route('/api/sensors/ph-ec/read', methods=['GET'])
-def read_ph_ec():
-    """Read current pH and EC values"""
-    try:
-        if not ph_ec_sensor.is_connected():
-            return jsonify({'success': False, 'message': 'Not connected'}), 400
-        
-        readings = ph_ec_sensor.read_sensors()
-        
-        return jsonify({
-            'success': True,
-            'data': {
-                'ph': readings['ph'],
-                'ec': readings['ec'],
-                'timestamp': readings['timestamp']
-            }
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@app.route('/api/sensors/ph-ec/status', methods=['GET'])
-def get_ph_ec_status():
-    """Get sensor info and calibration status"""
-    try:
-        if not ph_ec_sensor.is_connected():
-            return jsonify({'success': False, 'message': 'Not connected'}), 400
-        
-        info = ph_ec_sensor.get_sensor_info()
-        latest = ph_ec_sensor.get_latest_readings()
-        
-        return jsonify({
-            'success': True,
-            'connected': True,
-            'sensors': info,
-            'latest_readings': latest
-        })
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@app.route('/api/sensors/ph/calibrate', methods=['POST'])
-def calibrate_ph():
-    """
-    Calibrate pH sensor
-    Body: {"point": "mid"|"low"|"high"|"clear", "value": 7.0 (optional)}
-    """
-    try:
-        if not ph_ec_sensor.is_connected():
-            return jsonify({'success': False, 'message': 'Not connected'}), 400
-        
-        data = request.get_json()
-        point = data.get('point')
-        value = data.get('value')
-        
-        if point == 'mid':
-            result = ph_ec_sensor.calibrate_ph_mid(value)
-        elif point == 'low':
-            result = ph_ec_sensor.calibrate_ph_low(value)
-        elif point == 'high':
-            result = ph_ec_sensor.calibrate_ph_high(value)
-        elif point == 'clear':
-            result = ph_ec_sensor.clear_ph_calibration()
-        else:
-            return jsonify({'success': False, 'message': 'Invalid calibration point'}), 400
-        
-        if result:
-            return jsonify({'success': True, 'message': f'pH {point} calibration successful'})
-        else:
-            return jsonify({'success': False, 'message': 'Calibration failed'}), 500
-            
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@app.route('/api/sensors/ec/calibrate', methods=['POST'])
-def calibrate_ec():
-    """
-    Calibrate EC sensor
-    Body: {"point": "dry"|"single"|"low"|"high"|"clear", "value": 1413 (optional)}
-    """
-    try:
-        if not ph_ec_sensor.is_connected():
-            return jsonify({'success': False, 'message': 'Not connected'}), 400
-        
-        data = request.get_json()
-        point = data.get('point')
-        value = data.get('value')
-        
-        if point == 'dry':
-            result = ph_ec_sensor.calibrate_ec_dry()
-        elif point == 'single':
-            result = ph_ec_sensor.calibrate_ec_single(value)
-        elif point == 'low':
-            result = ph_ec_sensor.calibrate_ec_low(value)
-        elif point == 'high':
-            result = ph_ec_sensor.calibrate_ec_high(value)
-        elif point == 'clear':
-            result = ph_ec_sensor.clear_ec_calibration()
-        else:
-            return jsonify({'success': False, 'message': 'Invalid calibration point'}), 400
-        
-        if result:
-            return jsonify({'success': True, 'message': f'EC {point} calibration successful'})
-        else:
-            return jsonify({'success': False, 'message': 'Calibration failed'}), 500
-            
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-```
-
-### Frontend Integration (Svelte)
-
-Add these API calls to your Svelte components:
-
+**Example implementation:**
 ```javascript
-// Read sensors
-async function readSensors() {
-    const response = await fetch('/api/sensors/ph-ec/read');
-    const data = await response.json();
-    if (data.success) {
-        ph = data.data.ph;
-        ec = data.data.ec;
-    }
-}
+// src/config.js (or wherever API configuration lives)
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-// pH calibration
-async function calibratePH(point, value = null) {
-    const response = await fetch('/api/sensors/ph/calibrate', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ point, value })
-    });
-    const data = await response.json();
-    return data;
-}
-
-// EC calibration
-async function calibrateEC(point, value = null) {
-    const response = await fetch('/api/sensors/ec/calibrate', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ point, value })
-    });
-    const data = await response.json();
-    return data;
-}
+// Then use it in your API calls:
+// fetch(`${API_BASE_URL}/api/endpoint`)
 ```
 
-### Usage Example
+**OR if using axios:**
+```javascript
+// src/api/client.js
+import axios from 'axios';
 
-1. **Connect on startup** (add to your Flask app initialization):
+const apiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000',
+});
+
+export default apiClient;
+```
+
+#### Update `frontend/vite.config.js` (optional but recommended)
+Add this as a fallback proxy configuration:
+```javascript
+import { defineConfig } from 'vite'
+// ... other imports
+
+export default defineConfig({
+  // ... existing config
+  server: {
+    host: true, // Allow external connections
+    port: 5173,
+    // Optional: proxy as fallback if env var approach has issues
+    // proxy: {
+    //   '/api': {
+    //     target: 'http://192.168.1.243:5000',
+    //     changeOrigin: true,
+    //   }
+    // }
+  }
+})
+```
+
+### 3. Backend Configuration
+
+#### Create `backend/.env.example` (template file to commit):
+```env
+# Flask configuration
+FLASK_ENV=development
+FLASK_DEBUG=1
+
+# CORS - Allow both Pi and Desktop to access the API
+# Comma-separated list of allowed origins
+ALLOWED_ORIGINS=http://localhost:5173,http://192.168.1.243:5173,http://192.168.1.209:5173
+
+# Flask port (default 5000)
+FLASK_PORT=5000
+```
+
+#### Create `backend/.env` (NOT committed - for current machine):
+```env
+FLASK_ENV=development
+FLASK_DEBUG=1
+ALLOWED_ORIGINS=http://localhost:5173,http://192.168.1.243:5173,http://192.168.1.209:5173
+FLASK_PORT=5000
+```
+
+#### Update Flask app to use environment variables
+Locate your Flask app initialization (commonly `app.py`, `main.py`, or `__init__.py`) and update:
+
 ```python
+import os
+from flask import Flask
+from flask_cors import CORS
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+app = Flask(__name__)
+
+# Configure CORS with environment variable
+allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+CORS(app, 
+     origins=allowed_origins,
+     supports_credentials=True)
+
+# ... rest of your Flask app
+
 if __name__ == '__main__':
-    # Connect to pH/EC sensors
-    print("Connecting to pH/EC sensors...")
-    if ph_ec_sensor.connect():
-        print("✓ pH/EC sensors ready")
-    else:
-        print("⚠ pH/EC sensors not available")
-    
-    app.run(host='0.0.0.0', port=5000)
+    port = int(os.getenv('FLASK_PORT', 5000))
+    app.run(
+        host='0.0.0.0',  # Allow external connections
+        port=port,
+        debug=os.getenv('FLASK_DEBUG', '0') == '1'
+    )
 ```
 
-2. **Read in your mixing logic**:
-```python
-# During mixing, check pH/EC
-readings = ph_ec_sensor.read_sensors()
-current_ph = readings['ph']
-current_ec = readings['ec']
-
-if current_ph and current_ph < target_ph:
-    # Adjust pH
-    pass
+#### Ensure python-dotenv is installed
+Add to `backend/requirements.txt` if not already present:
+```
+python-dotenv
+flask-cors
 ```
 
-### Calibration Workflow
+### 4. Create Setup Documentation
 
-**pH Calibration (3-point recommended):**
-1. Clean probe with distilled water
-2. Place in pH 7.0 buffer → call `calibrate_ph_mid(7.0)`
-3. Rinse, place in pH 4.0 buffer → call `calibrate_ph_low(4.0)`
-4. Rinse, place in pH 10.0 buffer → call `calibrate_ph_high(10.0)`
+#### Create `DEVELOPMENT_SETUP.md` in the root:
+```markdown
+# Development Setup Guide
 
-**EC Calibration (2-point recommended):**
-1. Clean probe, dry completely
-2. In air → call `calibrate_ec_dry()`
-3. Place in 1413 μS/cm solution → call `calibrate_ec_high(1413)`
+## Quick Start
 
-**Single-point EC (faster but less accurate):**
-1. Clean probe, dry completely
-2. In air → call `calibrate_ec_dry()`
-3. Place in 1413 μS/cm solution → call `calibrate_ec_single(1413)`
+### Option 1: Run Everything on One Machine
+1. Clone the repo
+2. Copy environment templates:
+   ```bash
+   cp frontend/.env.example frontend/.env.development.local
+   cp backend/.env.example backend/.env
+   ```
+3. Both files will use `localhost` - no changes needed
+4. Start backend: `cd backend && python app.py`
+5. Start frontend: `cd frontend && npm run dev`
 
-### Troubleshooting
+### Option 2: Run Frontend on Desktop, Backend on Pi
+**On Pi (192.168.1.243):**
+```bash
+cd backend
+cp .env.example .env
+# No changes needed to .env
+python app.py
+```
 
-**"Failed to connect":**
-- Check I2C is enabled: `ls /dev/i2c-*`
-- Verify addresses: `i2cdetect -y 1`
-- Should see devices at 0x63 (pH) and 0x64 (EC)
+**On Desktop (192.168.1.209):**
+```bash
+cd frontend
+cp .env.example .env.development.local
+# Edit .env.development.local and set:
+# VITE_API_URL=http://192.168.1.243:5000
+npm run dev
+```
 
-**"Invalid reading":**
-- Check probe connections
-- Verify probes are in liquid (not air)
-- Check calibration status
+### Option 3: Run Backend on Desktop, Frontend on Pi
+Follow Option 2 but swap the machines.
 
-**"Calibration failed":**
-- Make sure probe is stable in calibration solution
-- Wait 30 seconds before calibrating
-- Verify solution values are correct
+## Network Configuration
+- Pi IP: 192.168.1.243
+- Desktop IP: 192.168.1.209
+- Frontend dev server port: 5173
+- Backend API port: 5000
+
+## Troubleshooting
+- Can't connect to API? Check firewall settings on the machine running Flask
+- CORS errors? Verify ALLOWED_ORIGINS in backend/.env includes your frontend's IP:port
+- Environment variables not loading? Make sure you're using `.env.development.local` for Vite (not just `.env`)
+```
+
+### 5. Update README.md
+Add a section pointing to the development setup:
+```markdown
+## Development Setup
+See [DEVELOPMENT_SETUP.md](DEVELOPMENT_SETUP.md) for detailed instructions on running the frontend and backend on different machines.
+```
+
+## Summary of Changes
+- ✅ Added `.env*` files to .gitignore
+- ✅ Created environment variable templates (.example files)
+- ✅ Created machine-specific .env files (not committed)
+- ✅ Updated frontend to use `VITE_API_URL` environment variable
+- ✅ Updated backend to use `ALLOWED_ORIGINS` environment variable
+- ✅ Configured Flask to accept external connections (host='0.0.0.0')
+- ✅ Created development setup documentation
+
+## Post-Implementation Testing
+1. Test on Pi: `cd backend && python app.py` and `cd frontend && npm run dev`
+2. Test split: Backend on Pi, frontend on Desktop
+3. Verify CORS works both ways
+4. Commit changes (excluding .env files)

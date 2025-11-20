@@ -2,7 +2,8 @@
   import PumpCalibration from './components/PumpCalibration.svelte';
   import Nutrients from './components/Nutrients.svelte';
   import NuteDispenseProgress from './components/NuteDispenseProgress.svelte';
-  
+  import { API_BASE_URL } from './config.js';
+
   // Pump configuration from config.py
   const pumpNames = {
     1: "Veg A", 2: "Veg B", 3: "Bloom A", 4: "Bloom B",
@@ -67,7 +68,7 @@
   // Status fetching
   async function fetchSystemStatus() {
     try {
-      const response = await fetch('/api/status');
+      const response = await fetch(`${API_BASE_URL}/api/status`);
       if (response.ok) {
         const data = await response.json();
         systemStatus = data;
@@ -99,7 +100,7 @@
   // Load nutrients configuration
   async function loadNutrientsConfig() {
     try {
-      const response = await fetch('/api/nutrients');
+      const response = await fetch(`${API_BASE_URL}/api/nutrients`);
       if (response.ok) {
         const data = await response.json();
         nutrientsConfig = data;
@@ -138,7 +139,7 @@
       if (amount > 0) {
         dispensingPumps.add(parseInt(pumpId));
         try {
-          const response = await fetch(`/api/pumps/${pumpId}/dispense`, {
+          const response = await fetch(`${API_BASE_URL}/api/pumps/${pumpId}/dispense`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ amount: amount })
@@ -159,7 +160,7 @@
   async function stopAllPumps() {
     for (const pumpId of dispensingPumps) {
       try {
-        await fetch(`/api/pumps/${pumpId}/stop`, { method: 'POST' });
+        await fetch(`${API_BASE_URL}/api/pumps/${pumpId}/stop`, { method: 'POST' });
       } catch (error) {
         console.error(`Error stopping pump ${pumpId}:`, error);
       }
@@ -170,7 +171,7 @@
   
   async function emergencyStop() {
     try {
-      await fetch('/api/emergency/stop', { method: 'POST' });
+      await fetch(`${API_BASE_URL}/api/emergency/stop`, { method: 'POST' });
       isDispensing = false;
       dispensingPumps.clear();
     } catch (error) {

@@ -5,3 +5,10 @@ __pycache__/
 *.pyc
 __pycache__/config.cpython-313.pyc
 __pycache__/main.cpython-313.pyc
+
+# Environment files - these contain machine-specific configuration
+.env
+.env.local
+.env.*.local
+**/.env.local
+**/.env.*.local

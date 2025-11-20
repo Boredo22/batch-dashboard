@@ -6,13 +6,14 @@
   import Settings from './Settings.svelte';
   import HeadGrower from './HeadGrower.svelte';
   import Nutrients from './Nutrients.svelte';
+  import { API_BASE_URL } from './config.js';
 
   let currentPage = $state('headgrower');
   let systemStatus = $state('disconnected');
 
   async function fetchSystemStatus() {
     try {
-      const response = await fetch('/api/system/status');
+      const response = await fetch(`${API_BASE_URL}/api/system/status`);
       if (response.ok) {
         const data = await response.json();
         systemStatus = data.status || 'connected';

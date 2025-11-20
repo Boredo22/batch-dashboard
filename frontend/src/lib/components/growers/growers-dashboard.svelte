@@ -6,6 +6,7 @@
   import { Progress } from '$lib/components/ui/progress';
   import { Alert, AlertDescription } from '$lib/components/ui/alert';
   import { Separator } from '$lib/components/ui/separator';
+  import { API_BASE_URL } from '../../../config.js';
 
   // State using Svelte 5 runes
   let relays = $state([
@@ -60,14 +61,14 @@
   async function fetchPumpConfig() {
     try {
       // Try to fetch pump config from dedicated endpoint
-      let response = await fetch('/api/config/pumps');
+      let response = await fetch(`${API_BASE_URL}/api/config/pumps`);
       let config = null;
       
       if (response.ok) {
         config = await response.json();
       } else {
         // Fallback: try to get pump info from hardware status
-        response = await fetch('/api/hardware/pumps');
+        response = await fetch(`${API_BASE_URL}/api/hardware/pumps`);
         if (response.ok) {
           const pumpsData = await response.json();
           config = { pump_names: {} };
@@ -122,7 +123,7 @@
   // API Functions
   async function fetchSystemStatus() {
     try {
-      const response = await fetch('/api/hardware/status');
+      const response = await fetch(`${API_BASE_URL}/api/hardware/status`);
       if (response.ok) {
         const data = await response.json();
         
@@ -173,7 +174,7 @@
       await controlRelay(config.fillRelay, 'on');
       
       // Start flow meter for 25 gallons (default)
-      const response = await fetch(`/api/flow/${flowMeters[0].id}/start`, {
+      const response = await fetch(`${API_BASE_URL}/api/flow/${flowMeters[0].id}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gallons: 25 })
@@ -253,7 +254,7 @@
   // Relay Control
   async function controlRelay(relayId, action) {
     try {
-      const response = await fetch(`/api/relay/${relayId}/${action}`, {
+      const response = await fetch(`${API_BASE_URL}/api/relay/${relayId}/${action}`, {
         method: 'POST'
       });
       
@@ -288,7 +289,7 @@
     }
 
     try {
-      const response = await fetch(`/api/pump/${pumpId}/dispense`, {
+      const response = await fetch(`${API_BASE_URL}/api/pump/${pumpId}/dispense`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: amount })
@@ -315,7 +316,7 @@
 
   async function stopPump(pumpId) {
     try {
-      const response = await fetch(`/api/pump/${pumpId}/stop`, {
+      const response = await fetch(`${API_BASE_URL}/api/pump/${pumpId}/stop`, {
         method: 'POST'
       });
       
@@ -335,7 +336,7 @@
   // Emergency Stop
   async function emergencyStop() {
     try {
-      const response = await fetch('/api/relay/all/off', {
+      const response = await fetch(`${API_BASE_URL}/api/relay/all/off`, {
         method: 'POST'
       });
       

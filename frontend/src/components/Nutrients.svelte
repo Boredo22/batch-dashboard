@@ -1,6 +1,8 @@
 <script>
+  import { API_BASE_URL } from '../config.js';
+
   let { nutrients = [] } = $props();
-  
+
   // Predefined nutrients that are already in the system with default dosages
   const defaultNutrients = [
     { name: "Veg A", defaultDosage: 4.0 },
@@ -73,7 +75,7 @@
   async function emitChange() {
     // Save to nutrients API
     try {
-      const response = await fetch('/api/nutrients');
+      const response = await fetch(`${API_BASE_URL}/api/nutrients`);
       if (response.ok) {
         const currentConfig = await response.json();
         
@@ -84,7 +86,7 @@
         };
         
         // Save the updated configuration
-        const saveResponse = await fetch('/api/nutrients', {
+        const saveResponse = await fetch(`${API_BASE_URL}/api/nutrients`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

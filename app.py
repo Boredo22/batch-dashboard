@@ -8,6 +8,11 @@ Uses hardware_comms.py for reliable hardware control like simple_gui.py
 # CRITICAL: Import hardware safety FIRST
 from hardware_safety import setup_hardware_safety
 import sys
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -69,7 +74,13 @@ logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)
+
+# Configure CORS with environment variable
+allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+CORS(app,
+     origins=allowed_origins,
+     supports_credentials=True)
+
 app.secret_key = 'nutrient_mixing_system_2024'
 
 # CRITICAL: Setup hardware safety FIRST
@@ -1453,13 +1464,18 @@ def initialize_app():
 
 if __name__ == '__main__':
     initialize_app()
-    
+
+    # Get port from environment variable
+    port = int(os.getenv('FLASK_PORT', 5000))
+    debug = os.getenv('FLASK_DEBUG', '0') == '1'
+
     # Run the Flask app with safe settings
     try:
-        print("Starting Flask application...")
+        print(f"Starting Flask application on port {port}...")
+        print(f"CORS enabled for: {', '.join(allowed_origins)}")
         app.run(
             host='0.0.0.0',     # Allow external connections
-            port=5000,          # Default Flask port
+            port=port,          # Port from environment variable
             debug=False,        # CRITICAL: Disable debug mode to stop auto-restart
             use_reloader=False, # CRITICAL: Disable auto-reload to prevent file watching
             threaded=True       # Handle multiple requests

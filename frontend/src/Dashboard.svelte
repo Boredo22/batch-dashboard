@@ -5,6 +5,7 @@
   import FlowMeterCard from '$lib/components/hardware/flow-meter-card.svelte';
   import ECPHMonitorCard from '$lib/components/hardware/ecph-monitor-card.svelte';
   import SystemLogCard from '$lib/components/hardware/system-log-card.svelte';
+  import { API_BASE_URL } from './config.js';
 
   // State variables using Svelte 5 runes
   let logs = $state([]);
@@ -59,7 +60,7 @@
   // API functions
   async function fetchHardwareData() {
     try {
-      const response = await fetch('/api/hardware/status');
+      const response = await fetch(`${API_BASE_URL}/api/hardware/status`);
       if (response.ok) {
         const data = await response.json();
         // Merge API data with defaults, keeping defaults if API doesn't provide
@@ -98,7 +99,7 @@
 
   async function fetchSystemStatus() {
     try {
-      const response = await fetch('/api/system/status');
+      const response = await fetch(`${API_BASE_URL}/api/system/status`);
       if (response.ok) {
         const data = await response.json();
         ecValue = data.ec_value || 0;
@@ -155,7 +156,7 @@
     }
 
     try {
-      const response = await fetch(`/api/relay/${relayId}/${action}`, {
+      const response = await fetch(`${API_BASE_URL}/api/relay/${relayId}/${action}`, {
         method: 'POST'
       });
 
@@ -184,7 +185,7 @@
 
   async function allRelaysOff() {
     try {
-      const response = await fetch('/api/relay/all/off', {
+      const response = await fetch(`${API_BASE_URL}/api/relay/all/off`, {
         method: 'POST'
       });
 
@@ -216,7 +217,7 @@
     }
 
     try {
-      const response = await fetch(`/api/pump/${pumpId}/dispense`, {
+      const response = await fetch(`${API_BASE_URL}/api/pump/${pumpId}/dispense`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: amount })
@@ -250,7 +251,7 @@
     }
 
     try {
-      const response = await fetch(`/api/pump/${pumpId}/stop`, {
+      const response = await fetch(`${API_BASE_URL}/api/pump/${pumpId}/stop`, {
         method: 'POST'
       });
 
@@ -279,7 +280,7 @@
     }
 
     try {
-      const response = await fetch(`/api/flow/${flowMeterId}/start`, {
+      const response = await fetch(`${API_BASE_URL}/api/flow/${flowMeterId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gallons: gallons })
@@ -310,7 +311,7 @@
     }
 
     try {
-      const response = await fetch(`/api/flow/${flowMeterId}/stop`, {
+      const response = await fetch(`${API_BASE_URL}/api/flow/${flowMeterId}/stop`, {
         method: 'POST'
       });
 
@@ -334,7 +335,7 @@
 
   async function startEcPhMonitoring() {
     try {
-      const response = await fetch('/api/ecph/start', { method: 'POST' });
+      const response = await fetch(`${API_BASE_URL}/api/ecph/start`, { method: 'POST' });
 
       if (response.ok) {
         const result = await response.json();
@@ -357,7 +358,7 @@
 
   async function stopEcPhMonitoring() {
     try {
-      const response = await fetch('/api/ecph/stop', { method: 'POST' });
+      const response = await fetch(`${API_BASE_URL}/api/ecph/stop`, { method: 'POST' });
 
       if (response.ok) {
         const result = await response.json();

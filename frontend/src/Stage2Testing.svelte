@@ -4,6 +4,7 @@
   import SendJobTesting from './components/SendJobTesting.svelte';
   import MixJobTesting from './components/MixJobTesting.svelte';
   import SystemLog from './components/SystemLog.svelte';
+  import { API_BASE_URL } from './config.js';
 
   // State variables using Svelte 5 runes
   let logs = $state([]);
@@ -20,7 +21,7 @@
   // API functions
   async function fetchSystemStatus() {
     try {
-      const response = await fetch('/api/system/status');
+      const response = await fetch(`${API_BASE_URL}/api/system/status`);
       if (response.ok) {
         const data = await response.json();
         systemStatus = 'Connected';
@@ -43,7 +44,7 @@
   // Job control functions
   async function startFillJob(tankId, gallons) {
     try {
-      const response = await fetch('/api/jobs/fill/start', {
+      const response = await fetch(`${API_BASE_URL}/api/jobs/fill/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tank_id: tankId, gallons: gallons })
@@ -67,7 +68,7 @@
 
   async function startSendJob(roomId, gallons) {
     try {
-      const response = await fetch('/api/jobs/send/start', {
+      const response = await fetch(`${API_BASE_URL}/api/jobs/send/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ room_id: roomId, gallons: gallons })
@@ -91,7 +92,7 @@
 
   async function startMixJob(tankId) {
     try {
-      const response = await fetch('/api/jobs/mix/start', {
+      const response = await fetch(`${API_BASE_URL}/api/jobs/mix/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tank_id: tankId })
@@ -115,7 +116,7 @@
 
   async function stopJob(jobType) {
     try {
-      const response = await fetch(`/api/jobs/${jobType}/stop`, {
+      const response = await fetch(`${API_BASE_URL}/api/jobs/${jobType}/stop`, {
         method: 'POST'
       });
       
