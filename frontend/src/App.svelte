@@ -34,9 +34,9 @@
     switch (currentPage) {
       case 'headgrower':
         return {
-          title: 'Head Grower Operations',
+          title: 'Grower Dashboard',
           subtitle: 'Complete growing operations and job management',
-          breadcrumbs: [{ title: 'Head Grower' }]
+          breadcrumbs: [{ title: 'Grower Dashboard' }]
         };
       case 'nutrients':
         return {

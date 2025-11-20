@@ -79,6 +79,9 @@ class EZOSensorController:
         """
         Send command to EZO circuit and read response
 
+        CRITICAL: EZO sensors use direct I2C communication without registers.
+        Unlike register-based sensors, we write bytes directly to the device.
+
         Args:
             address: I2C address
             command: Command string
@@ -92,25 +95,36 @@ class EZOSensorController:
             return None
 
         try:
-            # Send command
+            # Send command - DIRECT I2C WRITE (no register address)
+            # Convert command string to bytes
             command_bytes = [ord(c) for c in command]
-            self.bus.write_i2c_block_data(address, 0, command_bytes)
 
-            # Wait for processing
+            # EZO protocol: First byte goes to "register" position, rest as data
+            # This is how smbus2 handles direct I2C writes
+            if len(command_bytes) == 1:
+                self.bus.write_byte(address, command_bytes[0])
+            else:
+                self.bus.write_i2c_block_data(address, command_bytes[0], command_bytes[1:])
+
+            logger.debug(f"EZO 0x{address:02X} <- '{command}'")
+
+            # Wait for processing (EZO chips need time to process)
             time.sleep(response_time)
 
-            # Read response
-            response_data = self.bus.read_i2c_block_data(address, 0, 31)
+            # Read response - DIRECT I2C READ
+            # EZO returns up to 31 bytes: [response_code, data...]
+            response_data = self.bus.read_i2c_block_data(address, 0x00, 31)
             response_code = response_data[0]
 
             if response_code == 1:  # Success
+                # Convert bytes to string, stopping at null terminator
                 response_string = ''.join([chr(b) for b in response_data[1:] if b != 0])
-                logger.debug(f"EZO 0x{address:02X} <- '{command}' -> '{response_string.strip()}'")
+                logger.debug(f"EZO 0x{address:02X} -> '{response_string.strip()}'")
                 return response_string.strip()
             elif response_code == 2:
                 logger.error(f"EZO 0x{address:02X}: Syntax error for command '{command}'")
             elif response_code == 254:
-                logger.warning(f"EZO 0x{address:02X}: Still processing command '{command}'")
+                logger.warning(f"EZO 0x{address:02X}: Still processing (may need longer delay)")
             elif response_code == 255:
                 logger.warning(f"EZO 0x{address:02X}: No data available")
             else:
@@ -118,8 +132,11 @@ class EZOSensorController:
 
             return None
 
+        except OSError as e:
+            logger.error(f"I2C communication error at 0x{address:02X}: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Error communicating with EZO sensor at 0x{address:02X}: {e}")
+            logger.error(f"Unexpected error communicating with EZO sensor at 0x{address:02X}: {e}")
             return None
     
     def start_monitoring(self):

@@ -435,54 +435,77 @@
   });
 </script>
 
-<!-- System Status Header -->
+<!-- Compact System Status Bar -->
 <div class="scaled-dashboard">
-<div class="dashboard-header">
-  <div class="status-bar">
-    <div class="system-info">
-      <div class="dashboard-title">Growers Dashboard</div>
-      <div class="system-health">
-        <Badge class={systemStatus === 'Connected' ? 'status-connected' : 'status-error'}>
-          {systemStatus}
-        </Badge>
-        {#if anyRelayActive}
-          <Badge class="status-active">
-            ACTIVE OPERATIONS
-          </Badge>
-        {/if}
+<div class="compact-status-bar">
+  <div class="status-section status-relays">
+    <div class="status-label">RELAYS</div>
+    <div class="relay-indicators">
+      {#each relays as relay}
+        <div class="relay-indicator {relay.status === 'on' ? 'relay-on' : 'relay-off'}"
+             title="{relay.name}: {relay.status.toUpperCase()}">
+        </div>
+      {/each}
+    </div>
+  </div>
+
+  <div class="status-divider"></div>
+
+  <div class="status-section status-sensors">
+    <div class="status-label">SENSORS</div>
+    <div class="sensor-readings">
+      <div class="sensor-item" title="pH Level">
+        <span class="sensor-label">pH:</span>
+        <span class="sensor-value">--</span>
+      </div>
+      <div class="sensor-item" title="EC Level">
+        <span class="sensor-label">EC:</span>
+        <span class="sensor-value">--</span>
       </div>
     </div>
-    
-    <Button 
-      class="emergency-stop-btn"
-      onclick={emergencyStop}
-      size="lg"
-    >
-      <svg class="emergency-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="10" fill="currentColor"/>
-        <rect x="9" y="9" width="6" height="6" fill="white"/>
-      </svg>
-      EMERGENCY STOP
-    </Button>
   </div>
+
+  <div class="status-divider"></div>
+
+  <div class="status-section status-jobs">
+    <div class="status-label">ACTIVE JOBS</div>
+    <div class="job-indicators">
+      <div class="job-item">
+        <span class="job-label">Pumps:</span>
+        <span class="job-count">{activePumps.length}</span>
+      </div>
+      <div class="job-item">
+        <span class="job-label">Flow:</span>
+        <span class="job-count">{flowMeters.filter(m => m.status !== 'idle' && m.status !== 'development').length}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-spacer"></div>
+
+  <Button
+    class="emergency-stop-btn"
+    onclick={emergencyStop}
+    size="sm"
+  >
+    <svg class="emergency-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" fill="currentColor"/>
+      <rect x="9" y="9" width="6" height="6" fill="white"/>
+    </svg>
+    EMERGENCY STOP
+  </Button>
 </div>
 
 <!-- Main Dashboard Grid -->
 <div class="dashboard-grid">
-  
-  <!-- Tank Operations Panel -->
-  <div class="operations-panel">
-    
+
+  <!-- Top Row: Tank Status, Nute Pumps, Relay Controls -->
+  <div class="top-controls-row">
+
     <!-- Tank Status - Compact -->
-    <Card class="tank-status-card">
+    <Card class="tank-status-card compact-card">
       <CardHeader>
-        <CardTitle class="section-title">
-          <svg class="section-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="6" width="20" height="12" rx="2"/>
-            <path d="m2 12 20 0"/>
-          </svg>
-          Tank Status
-        </CardTitle>
+        <CardTitle class="section-title-compact">Tank Status</CardTitle>
       </CardHeader>
       <CardContent>
         <div class="tank-compact-grid">
@@ -536,20 +559,53 @@
       </CardContent>
     </Card>
 
-    <!-- Manual Relay Grid -->
-    <Card class="relay-control-card">
+    <!-- Nutrient Pumps - Compact -->
+    <Card class="nute-pumps-card compact-card">
       <CardHeader>
-        <CardTitle class="section-title">
-          <svg class="section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="9" cy="21" r="1"/>
-            <circle cx="20" cy="21" r="1"/>
-            <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
-          </svg>
-          Manual Relay Controls
-        </CardTitle>
+        <CardTitle class="section-title-compact">Nutrient Pumps</CardTitle>
       </CardHeader>
       <CardContent>
-        <div class="relay-tank-grid">
+        <div class="nute-pumps-compact-grid">
+          {#each pumps as pump}
+            <Button
+              class="pump-btn-compact {pump.status === 'dispensing' ? 'pump-active' : 'pump-idle'}"
+              onclick={() => dispensePump(pump.id, dosingAmount)}
+              disabled={pump.status === 'dispensing'}
+            >
+              <div class="pump-content-compact">
+                <div class="pump-id-compact">P{pump.id}</div>
+                <div class="pump-name-compact">{pump.name}</div>
+                {#if pump.status === 'dispensing'}
+                  <div class="pump-status-compact">{pump.progress}%</div>
+                {:else}
+                  <div class="pump-status-compact">{dosingAmount}ml</div>
+                {/if}
+              </div>
+            </Button>
+          {/each}
+        </div>
+        <div class="dosing-amount-selector">
+          <input
+            type="range"
+            class="dosing-slider-compact"
+            min="1"
+            max="2000"
+            value={dosingAmount}
+            step="1"
+            oninput={handleSliderInput}
+          />
+          <div class="dosing-value-compact">{dosingAmount}ml</div>
+        </div>
+      </CardContent>
+    </Card>
+
+    <!-- Manual Relay Controls - Compact -->
+    <Card class="relay-control-card compact-card">
+      <CardHeader>
+        <CardTitle class="section-title-compact">Relay Controls</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div class="relay-compact-grid">
           <!-- Tank 1 Relays -->
           <div class="relay-tank-section">
             <div class="tank-relay-header">Tank 1</div>
@@ -634,162 +690,6 @@
             </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
-  </div>
-
-  <!-- Nutrient Dosing Panel -->
-  <div class="dosing-panel">
-    <Card class="dosing-card">
-      <CardHeader>
-        <CardTitle class="section-title">
-          <svg class="section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 3v18h18"/>
-            <path d="m7 16 4-4 4 4 6-6"/>
-          </svg>
-          Nutrient Dosing Control
-        </CardTitle>
-      </CardHeader>
-      <CardContent class="dosing-content">
-        
-        <!-- Dosing Amount Control -->
-        <div class="dosing-controls">
-          <div class="amount-display">
-            <div class="amount-value">{dosingAmount}</div>
-            <div class="amount-unit">ml</div>
-          </div>
-          
-          <div class="slider-container">
-            <div class="slider-markers">
-              <div class="marker" style="left: 0%">
-                <div class="marker-label">1</div>
-                <div class="marker-line"></div>
-              </div>
-              <div class="marker" style="left: 25%">
-                <div class="marker-label">500</div>
-                <div class="marker-line"></div>
-              </div>
-              <div class="marker" style="left: 50%">
-                <div class="marker-label">1000</div>
-                <div class="marker-line"></div>
-              </div>
-              <div class="marker" style="left: 75%">
-                <div class="marker-label">1500</div>
-                <div class="marker-line"></div>
-              </div>
-              <div class="marker" style="left: 100%">
-                <div class="marker-label">2000</div>
-                <div class="marker-line"></div>
-              </div>
-            </div>
-            
-            <input 
-              type="range" 
-              class="dosing-slider"
-              min="1" 
-              max="2000" 
-              value={dosingAmount}
-              step="1"
-              oninput={handleSliderInput}
-            />
-          </div>
-
-          <div class="preset-controls">
-            <div class="preset-row">
-              {#each [10, 50, 100, 250] as preset}
-                <Button
-                  class="preset-btn"
-                  onclick={() => setDosingPreset(preset)}
-                  size="sm"
-                  variant="outline"
-                >
-                  {preset}ml
-                </Button>
-              {/each}
-            </div>
-            <div class="preset-row">
-              {#each [500, 1000, 1500, 2000] as preset}
-                <Button
-                  class="preset-btn"
-                  onclick={() => setDosingPreset(preset)}
-                  size="sm"
-                  variant="outline"
-                >
-                  {preset}ml
-                </Button>
-              {/each}
-            </div>
-          </div>
-        </div>
-
-        <Separator />
-
-        <!-- Pump Grid -->
-        <div class="pump-grid">
-          {#each pumps as pump}
-            <Button
-              class="pump-btn {pump.status === 'dispensing' ? 'pump-active' : 'pump-idle'} {getNutrientClass(pump.name)}"
-              onclick={() => dispensePump(pump.id, dosingAmount)}
-              disabled={pump.status === 'dispensing'}
-            >
-              <div class="pump-content">
-                <div class="pump-header">
-                  <div class="pump-id">P{pump.id}</div>
-                  {#if pump.status === 'dispensing'}
-                    <Button 
-                      class="stop-btn"
-                      onclick={() => stopPump(pump.id)}
-                      size="sm"
-                    >
-                      STOP
-                    </Button>
-                  {/if}
-                </div>
-                
-                <div class="pump-nutrient">{pump.name}</div>
-                
-                {#if pump.status === 'dispensing'}
-                  <div class="pump-progress">
-                    <Progress value={pump.progress} class="progress-bar" />
-                    <div class="progress-text">{pump.progress}% ({pump.target_volume}ml)</div>
-                  </div>
-                {:else}
-                  <div class="pump-amount">{dosingAmount}ml</div>
-                {/if}
-              </div>
-            </Button>
-          {/each}
-        </div>
-
-        <!-- Active Operations Alert -->
-        {#if activePumps.length > 0}
-          <Alert class="active-operations-alert">
-            <AlertDescription>
-              <div class="alert-content">
-                <div class="alert-title">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M12 1v6m0 6v6"/>
-                    <path d="m21 12-6 0m-6 0-6 0"/>
-                  </svg>
-                  Currently Dispensing
-                </div>
-                {#each activePumps as pump}
-                  <div class="alert-item">
-                    <span>{pump.name}: {pump.target_volume}ml</span>
-                    <Button 
-                      class="alert-stop-btn"
-                      onclick={() => stopPump(pump.id)}
-                      size="sm"
-                    >
-                      STOP
-                    </Button>
-                  </div>
-                {/each}
-              </div>
-            </AlertDescription>
-          </Alert>
-        {/if}
       </CardContent>
     </Card>
   </div>
@@ -982,37 +882,118 @@
   }
 
   /* Global Styles */
-  .dashboard-header {
-    background: var(--bg-primary);
+
+  /* Compact Status Bar */
+  .compact-status-bar {
+    background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-subtle);
-    padding: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
     margin-bottom: var(--space-md);
-  }
-
-  .status-bar {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    max-width: 100%;
+    gap: var(--space-md);
+    height: 48px;
   }
 
-  .system-info {
+  .status-section {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: var(--space-sm);
+  }
+
+  .status-label {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .relay-indicators {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .relay-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1px solid var(--border-subtle);
+    transition: all 0.2s ease;
+  }
+
+  .relay-on {
+    background: var(--text-primary);
+    border-color: var(--text-primary);
+    box-shadow: 0 0 8px rgba(241, 245, 249, 0.4);
+  }
+
+  .relay-off {
+    background: var(--bg-primary);
+    border-color: var(--border-subtle);
+  }
+
+  .sensor-readings {
+    display: flex;
+    gap: var(--space-md);
+  }
+
+  .sensor-item {
+    display: flex;
+    align-items: baseline;
     gap: var(--space-xs);
   }
 
-  .dashboard-title {
-    font-size: var(--text-lg);
-    font-weight: 600;
-    color: var(--text-primary);
-    letter-spacing: -0.025em;
+  .sensor-label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    font-weight: 500;
   }
 
-  .system-health {
+  .sensor-value {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .job-indicators {
     display: flex;
-    gap: var(--space-sm);
-    align-items: center;
+    gap: var(--space-md);
+  }
+
+  .job-item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-xs);
+  }
+
+  .job-label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .job-count {
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    font-weight: 600;
+    padding: 2px 6px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    min-width: 20px;
+    text-align: center;
+  }
+
+  .status-divider {
+    width: 1px;
+    height: 24px;
+    background: var(--border-subtle);
+  }
+
+  .status-spacer {
+    flex: 1;
   }
 
   .emergency-stop-btn {
@@ -1020,11 +1001,12 @@
     color: var(--text-button) !important;
     border: 1px solid rgba(220, 38, 38, 0.4) !important;
     font-weight: 600 !important;
-    font-size: var(--text-sm) !important;
-    padding: var(--space-sm) var(--space-md) !important;
+    font-size: var(--text-xs) !important;
+    padding: var(--space-xs) var(--space-sm) !important;
     border-radius: var(--radius-sm) !important;
     transition: all 0.2s ease !important;
     letter-spacing: 0.025em;
+    white-space: nowrap;
   }
 
   .emergency-stop-btn:active {
@@ -1038,14 +1020,14 @@
   }
 
   .emergency-icon {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
   }
 
   /* Main Dashboard Layout - Optimized for 10" Tablet */
   .dashboard-grid {
-    display: grid;
-    grid-template-columns: 1fr 300px 280px;
+    display: flex;
+    flex-direction: column;
     gap: var(--space-md);
     width: 100%;
     max-width: 100%;
@@ -1053,11 +1035,123 @@
     padding: 0 var(--space-md);
   }
 
-  /* Operations Panel */
-  .operations-panel {
+  /* Top Controls Row - Tank Status, Pumps, Relays */
+  .top-controls-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: var(--space-md);
+  }
+
+  .compact-card {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-subtle) !important;
+    height: 100%;
+  }
+
+  .section-title-compact {
+    font-size: var(--text-base) !important;
+    font-weight: 600 !important;
+    color: var(--text-primary) !important;
+  }
+
+  /* Nutrient Pumps - Compact Grid */
+  .nute-pumps-compact-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+  }
+
+  :global(.pump-btn-compact) {
+    padding: var(--space-xs) !important;
+    border-radius: var(--radius-sm) !important;
+    border: 1px solid var(--border-subtle) !important;
+    transition: all 0.2s ease !important;
+    min-height: 60px !important;
+    height: 60px !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  .pump-content-compact {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+  }
+
+  .pump-id-compact {
+    font-size: 0.625rem;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+
+  .pump-name-compact {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-primary);
+    text-align: center;
+  }
+
+  .pump-status-compact {
+    font-size: 0.625rem;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .dosing-amount-selector {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .dosing-slider-compact {
+    flex: 1;
+    height: 4px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    outline: none;
+    appearance: none;
+    cursor: pointer;
+  }
+
+  .dosing-slider-compact::-webkit-slider-thumb {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--accent-steel);
+    border: 2px solid var(--border-emphasis);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  .dosing-slider-compact::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--accent-steel);
+    border: 2px solid var(--border-emphasis);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  .dosing-value-compact {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 60px;
+    text-align: right;
+  }
+
+  /* Relay Compact Grid */
+  .relay-compact-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-sm);
   }
 
   .tank-status-card {
