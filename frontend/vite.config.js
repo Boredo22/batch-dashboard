@@ -27,7 +27,11 @@ export default defineConfig({
     host: '0.0.0.0', // Listen on all network interfaces
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:5000'
+      '/api': {
+        target: 'http://192.168.1.243:5000',
+        changeOrigin: true,
+        secure: false
+      }
     }
   }
 });
