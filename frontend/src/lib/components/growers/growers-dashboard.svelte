@@ -43,6 +43,15 @@
   let systemStatus = $state('Connected');
   let isProcessing = $state(false);
 
+  // Collapsible section states using $state
+  let expandedSections = $state({
+    tanks: true,
+    relays: true,
+    pumps: true,
+    monitoring: false,
+    logs: false
+  });
+
   let statusInterval;
 
   // Tank configuration
@@ -52,9 +61,13 @@
     3: { fillRelay: 3, mixRelays: [6, 9], sendRelay: 12, pumps: [7, 8], color: 'yellow' }
   };
 
-  // Derived values
+  // Derived values using $derived
   let activePumps = $derived(pumps.filter(pump => pump.status === 'dispensing'));
   let anyRelayActive = $derived(relays.some(relay => relay.status === 'on'));
+  let activeTankCount = $derived(
+    Object.values(tankStatus).filter(t => t.status !== 'idle').length
+  );
+  let activeRelayCount = $derived(relays.filter(r => r.status === 'on').length);
 
   // Fetch pump configuration from backend
   async function fetchPumpConfig() {
@@ -367,6 +380,10 @@
     dosingAmount = amount;
   }
 
+  function toggleSection(section) {
+    expandedSections[section] = !expandedSections[section];
+  }
+
   function handleSliderInput(event) {
     let value = parseInt(event.target.value);
     
@@ -422,18 +439,48 @@
     </svg>`;
   }
 
-  // Lifecycle
+  // Lifecycle with $effect for status updates
   onMount(async () => {
     addLog('Growers dashboard started');
     await fetchPumpConfig();
     await fetchSystemStatus();
-    statusInterval = setInterval(fetchSystemStatus, 2000);
+  });
+
+  $effect(() => {
+    const interval = setInterval(fetchSystemStatus, 2000);
+    return () => clearInterval(interval);
   });
 
   onDestroy(() => {
     if (statusInterval) clearInterval(statusInterval);
   });
 </script>
+
+{#snippet sectionHeader(title, sectionKey, count = null)}
+  <div class="section-header-collapsible">
+    <button
+      class="section-toggle-btn"
+      onclick={() => toggleSection(sectionKey)}
+      aria-expanded={expandedSections[sectionKey]}
+    >
+      <svg
+        class="chevron-icon {expandedSections[sectionKey] ? 'chevron-expanded' : ''}"
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+      <span class="section-title-text">{title}</span>
+      {#if count !== null}
+        <Badge class="section-count-badge">{count}</Badge>
+      {/if}
+    </button>
+  </div>
+{/snippet}
 
 <!-- Compact System Status Bar -->
 <div class="scaled-dashboard">
@@ -502,11 +549,12 @@
   <!-- Top Row: Tank Status, Nute Pumps, Relay Controls -->
   <div class="top-controls-row">
 
-    <!-- Tank Status - Compact -->
+    <!-- Tank Status - Collapsible -->
     <Card class="tank-status-card compact-card">
       <CardHeader>
-        <CardTitle class="section-title-compact">Tank Status</CardTitle>
+        {@render sectionHeader('Tanks', 'tanks', activeTankCount)}
       </CardHeader>
+      {#if expandedSections.tanks}
       <CardContent>
         <div class="tank-compact-grid">
           {#each [1, 2, 3] as tankId}
@@ -557,13 +605,15 @@
           {/each}
         </div>
       </CardContent>
+      {/if}
     </Card>
 
-    <!-- Nutrient Pumps - Compact -->
+    <!-- Nutrient Pumps - Collapsible with Preset Buttons -->
     <Card class="nute-pumps-card compact-card">
       <CardHeader>
-        <CardTitle class="section-title-compact">Nutrient Pumps</CardTitle>
+        {@render sectionHeader('Pumps', 'pumps', activePumps.length)}
       </CardHeader>
+      {#if expandedSections.pumps}
       <CardContent>
         <div class="nute-pumps-compact-grid">
           {#each pumps as pump}
@@ -584,10 +634,20 @@
             </Button>
           {/each}
         </div>
+
+        <!-- Preset Dosing Buttons -->
+        <div class="preset-dosing-chips">
+          <button class="preset-chip" onclick={() => setDosingPreset(25)}>25ml</button>
+          <button class="preset-chip" onclick={() => setDosingPreset(50)}>50ml</button>
+          <button class="preset-chip" onclick={() => setDosingPreset(100)}>100ml</button>
+          <button class="preset-chip" onclick={() => setDosingPreset(250)}>250ml</button>
+          <button class="preset-chip" onclick={() => setDosingPreset(500)}>500ml</button>
+        </div>
+
         <div class="dosing-amount-selector">
           <input
             type="range"
-            class="dosing-slider-compact"
+            class="dosing-slider-tablet"
             min="1"
             max="2000"
             value={dosingAmount}
@@ -597,13 +657,15 @@
           <div class="dosing-value-compact">{dosingAmount}ml</div>
         </div>
       </CardContent>
+      {/if}
     </Card>
 
-    <!-- Manual Relay Controls - Compact -->
+    <!-- Manual Relay Controls - Collapsible -->
     <Card class="relay-control-card compact-card">
       <CardHeader>
-        <CardTitle class="section-title-compact">Relay Controls</CardTitle>
+        {@render sectionHeader('Relays', 'relays', activeRelayCount)}
       </CardHeader>
+      {#if expandedSections.relays}
       <CardContent>
         <div class="relay-compact-grid">
           <!-- Tank 1 Relays -->
@@ -691,23 +753,19 @@
           </div>
         </div>
       </CardContent>
+      {/if}
     </Card>
   </div>
 
-  <!-- Monitoring Panel -->
+  <!-- Monitoring Panel - Collapsible -->
   <div class="monitoring-panel">
-    
-    <!-- Flow Monitoring -->
+
+    <!-- Combined Flow & Sensor Monitoring -->
     <Card class="monitoring-card">
       <CardHeader>
-        <CardTitle class="section-title">
-          <svg class="section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 9V5a3 3 0 0 0-6 0v4"/>
-            <rect x="2" y="9" width="20" height="12" rx="2"/>
-          </svg>
-          Flow Monitoring
-        </CardTitle>
+        {@render sectionHeader('Monitoring', 'monitoring', null)}
       </CardHeader>
+      {#if expandedSections.monitoring}
       <CardContent>
         <div class="flow-monitors">
           {#each flowMeters as meter}
@@ -735,22 +793,11 @@
             </div>
           {/each}
         </div>
-      </CardContent>
-    </Card>
 
-    <!-- System Sensors -->
-    <Card class="monitoring-card">
-      <CardHeader>
-        <CardTitle class="section-title">
-          <svg class="section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4z"/>
-            <path d="M12 12c2-2.67 4-4 6-4a4 4 0 1 1 0 8c-2 0-4-1.33-6-4z"/>
-          </svg>
-          pH/EC Monitoring
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div class="sensor-grid">
+        <Separator class="my-4" />
+
+        <!-- pH/EC Sensors integrated in same card -->
+        <div class="sensor-grid-horizontal">
           <div class="sensor-card sensor-development">
             <div class="sensor-header">
               <div class="sensor-name">pH Level</div>
@@ -778,22 +825,14 @@
           </div>
         </div>
       </CardContent>
+      {/if}
     </Card>
 
-    <!-- Activity Log -->
+    <!-- Activity Log - Collapsible -->
     <Card class="log-card">
       <CardHeader class="log-header">
-        <CardTitle class="section-title">
-          <svg class="section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14,2 14,8 20,8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-            <polyline points="10,9 9,9 8,9"/>
-          </svg>
-          System Activity
-        </CardTitle>
-        <Button 
+        {@render sectionHeader('Activity Log', 'logs', logs.length)}
+        <Button
           class="clear-logs-btn"
           onclick={clearLogs}
           size="sm"
@@ -802,9 +841,10 @@
           Clear
         </Button>
       </CardHeader>
+      {#if expandedSections.logs}
       <CardContent>
         <div class="log-container">
-          {#each logs.slice(0, 15) as log}
+          {#each logs.slice(0, 5) as log}
             <div class="log-entry">
               <div class="log-time">{log.time}</div>
               <div class="log-message">{log.message}</div>
@@ -816,6 +856,7 @@
           {/if}
         </div>
       </CardContent>
+      {/if}
     </Card>
   </div>
 </div>
@@ -853,22 +894,28 @@
     --border-subtle: #334155;
     --border-emphasis: #475569;
 
-    /* Spacing Scale */
+    /* Tablet-Optimized Spacing */
+    --space-card: 0.75rem;
+    --space-section: 1rem;
     --space-xs: 0.25rem;
     --space-sm: 0.5rem;
-    --space-md: 1rem;
-    --space-lg: 1.5rem;
-    --space-xl: 2rem;
-    --space-2xl: 3rem;
+    --space-md: 0.75rem;
+    --space-lg: 1rem;
+    --space-xl: 1.5rem;
+    --space-2xl: 2rem;
 
-    /* Typography Scale */
+    /* Touch Target Sizes */
+    --touch-target: 48px;
+    --touch-target-sm: 44px;
+
+    /* Typography Scale - Optimized for Tablet Readability */
     --text-3xl: 1.875rem;
     --text-2xl: 1.5rem;
     --text-xl: 1.25rem;
     --text-lg: 1.125rem;
-    --text-base: 1rem;
-    --text-sm: 0.875rem;
-    --text-xs: 0.75rem;
+    --text-base: 0.9375rem;  /* 15px - increased for readability */
+    --text-sm: 0.875rem;     /* 14px */
+    --text-xs: 0.75rem;      /* 12px */
 
     /* Shadows - Subtle */
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -882,6 +929,92 @@
   }
 
   /* Global Styles */
+
+  /* Collapsible Section Header */
+  .section-header-collapsible {
+    width: 100%;
+  }
+
+  .section-toggle-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: color 0.2s ease;
+    min-height: var(--touch-target-sm);
+  }
+
+  .section-toggle-btn:hover {
+    color: var(--accent-steel);
+  }
+
+  .chevron-icon {
+    transition: transform 0.3s ease;
+    flex-shrink: 0;
+    color: var(--text-muted);
+  }
+
+  .chevron-expanded {
+    transform: rotate(180deg);
+  }
+
+  .section-title-text {
+    font-size: var(--text-base);
+    font-weight: 600;
+    flex: 1;
+    text-align: left;
+  }
+
+  .section-count-badge {
+    font-size: var(--text-xs) !important;
+    padding: 2px 8px !important;
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary) !important;
+    font-weight: 600 !important;
+  }
+
+  /* Preset Dosing Chips */
+  .preset-dosing-chips {
+    display: flex;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+    padding: var(--space-md) 0;
+    border-top: 1px solid var(--border-subtle);
+    margin-top: var(--space-sm);
+  }
+
+  .preset-chip {
+    flex: 1;
+    min-width: 64px;
+    min-height: var(--touch-target);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    touch-action: manipulation;
+  }
+
+  .preset-chip:hover {
+    background: var(--accent-steel);
+    border-color: var(--border-emphasis);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .preset-chip:active {
+    transform: translateY(0);
+    opacity: 0.85;
+  }
 
   /* Compact Status Bar */
   .compact-status-bar {
@@ -1024,11 +1157,11 @@
     height: 14px;
   }
 
-  /* Main Dashboard Layout - Optimized for 10" Tablet */
+  /* Main Dashboard Layout - Optimized for 10" Tablet (1280x800px) */
   .dashboard-grid {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--space-card);
     width: 100%;
     max-width: 100%;
     margin: 0 auto;
@@ -1038,14 +1171,23 @@
   /* Top Controls Row - Tank Status, Pumps, Relays */
   .top-controls-row {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: var(--space-md);
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-card);
   }
 
   .compact-card {
     background: var(--bg-card) !important;
     border: 1px solid var(--border-subtle) !important;
     height: 100%;
+  }
+
+  /* Reduce card padding for compact layout */
+  :global(.compact-card .card-header) {
+    padding: var(--space-md) !important;
+  }
+
+  :global(.compact-card .card-content) {
+    padding: var(--space-md) !important;
   }
 
   .section-title-compact {
@@ -1063,16 +1205,17 @@
   }
 
   :global(.pump-btn-compact) {
-    padding: var(--space-xs) !important;
-    border-radius: var(--radius-sm) !important;
+    padding: var(--space-sm) !important;
+    border-radius: var(--radius-md) !important;
     border: 1px solid var(--border-subtle) !important;
     transition: all 0.2s ease !important;
-    min-height: 60px !important;
-    height: 60px !important;
+    min-height: var(--touch-target) !important;
+    height: auto !important;
     width: 100% !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
+    touch-action: manipulation !important;
   }
 
   .pump-content-compact {
@@ -1084,20 +1227,21 @@
   }
 
   .pump-id-compact {
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     color: var(--text-muted);
   }
 
   .pump-name-compact {
-    font-size: var(--text-xs);
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--text-primary);
     text-align: center;
+    line-height: 1.3;
   }
 
   .pump-status-compact {
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     color: var(--text-muted);
     font-weight: 500;
   }
@@ -1110,6 +1254,60 @@
     border-top: 1px solid var(--border-subtle);
   }
 
+  /* Tablet-Optimized Slider - Larger touch targets */
+  .dosing-slider-tablet {
+    flex: 1;
+    height: 12px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    outline: none;
+    appearance: none;
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  .dosing-slider-tablet::-webkit-slider-thumb {
+    appearance: none;
+    width: 32px;
+    height: 32px;
+    background: var(--accent-steel);
+    border: 3px solid var(--border-emphasis);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+    transition: all 0.2s ease;
+  }
+
+  .dosing-slider-tablet::-webkit-slider-thumb:hover {
+    background: var(--accent-blue-muted);
+    transform: scale(1.1);
+  }
+
+  .dosing-slider-tablet::-webkit-slider-thumb:active {
+    transform: scale(0.95);
+  }
+
+  .dosing-slider-tablet::-moz-range-thumb {
+    width: 32px;
+    height: 32px;
+    background: var(--accent-steel);
+    border: 3px solid var(--border-emphasis);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+    transition: all 0.2s ease;
+  }
+
+  .dosing-slider-tablet::-moz-range-thumb:hover {
+    background: var(--accent-blue-muted);
+    transform: scale(1.1);
+  }
+
+  .dosing-slider-tablet::-moz-range-thumb:active {
+    transform: scale(0.95);
+  }
+
+  /* Legacy compact slider (keep for backwards compatibility) */
   .dosing-slider-compact {
     flex: 1;
     height: 4px;
@@ -1230,14 +1428,16 @@
 
   :global(.tank-compact-btn) {
     flex: 1;
-    font-size: var(--text-xs) !important;
-    padding: var(--space-sm) !important;
-    border-radius: var(--radius-sm) !important;
-    font-weight: 500 !important;
+    font-size: var(--text-sm) !important;
+    padding: var(--space-sm) var(--space-md) !important;
+    border-radius: var(--radius-md) !important;
+    font-weight: 600 !important;
     transition: all 0.2s ease !important;
     background: var(--bg-tertiary) !important;
     color: var(--text-primary) !important;
     border: 1px solid var(--border-subtle) !important;
+    min-height: var(--touch-target-sm) !important;
+    touch-action: manipulation !important;
   }
 
   :global(.tank-compact-btn:hover) {
@@ -1287,17 +1487,18 @@
 
   :global(.relay-btn) {
     padding: var(--space-sm) !important;
-    border-radius: var(--radius-sm) !important;
+    border-radius: var(--radius-md) !important;
     border: 1px solid var(--border-subtle) !important;
     transition: all 0.2s ease !important;
-    min-height: 56px !important;
-    height: 56px !important;
+    min-height: var(--touch-target) !important;
+    height: auto !important;
     width: 100% !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     background: var(--bg-secondary) !important;
     color: var(--text-muted) !important;
+    touch-action: manipulation !important;
   }
 
   :global(.relay-btn:active) {
@@ -1335,23 +1536,23 @@
 
   .relay-id {
     font-weight: 500;
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     margin-bottom: 2px;
-    opacity: 0.7;
+    opacity: 0.8;
   }
 
   .relay-name {
-    font-size: var(--text-xs);
-    line-height: 1.2;
+    font-size: var(--text-sm);
+    line-height: 1.3;
     font-weight: 600;
     margin-bottom: 2px;
     color: inherit;
   }
 
   .relay-status {
-    font-size: 0.625rem;
-    font-weight: 500;
-    padding: 1px 6px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    padding: 2px 8px;
     border-radius: var(--radius-sm);
     background: rgba(0, 0, 0, 0.2);
     color: inherit;
@@ -1659,16 +1860,24 @@
     opacity: 0.85;
   }
 
-  /* Monitoring Panel */
+  /* Monitoring Panel - Reduced spacing for tablet */
   .monitoring-panel {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: var(--space-card);
   }
 
   .monitoring-card {
     background: var(--bg-card) !important;
     border: 1px solid var(--border-subtle) !important;
+  }
+
+  :global(.monitoring-card .card-header) {
+    padding: var(--space-md) !important;
+  }
+
+  :global(.monitoring-card .card-content) {
+    padding: var(--space-md) !important;
   }
 
   .flow-monitors {
@@ -1737,7 +1946,13 @@
     color: var(--text-muted);
   }
 
-  /* Sensor Grid */
+  /* Sensor Grid - Horizontal layout for tablets */
+  .sensor-grid-horizontal {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-md);
+  }
+
   .sensor-grid {
     display: flex;
     flex-direction: column;
@@ -1783,17 +1998,28 @@
     border: 1px solid var(--border-subtle) !important;
   }
 
+  :global(.log-card .card-header) {
+    padding: var(--space-md) !important;
+  }
+
+  :global(.log-card .card-content) {
+    padding: var(--space-md) !important;
+  }
+
   .log-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    width: 100%;
   }
 
   .clear-logs-btn {
     background: var(--bg-secondary) !important;
     border: 1px solid var(--border-subtle) !important;
     color: var(--text-muted) !important;
-    font-size: var(--text-xs) !important;
+    font-size: var(--text-sm) !important;
+    min-height: var(--touch-target-sm) !important;
+    touch-action: manipulation !important;
   }
 
   .clear-logs-btn:hover {
@@ -1802,7 +2028,7 @@
   }
 
   .log-container {
-    max-height: 300px;
+    max-height: 220px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
