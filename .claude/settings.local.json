@@ -30,7 +30,8 @@
       "Bash(cat:*)",
       "Bash(i2cdetect:*)",
       "Bash(i2cget:*)",
-      "Bash(/home/pi/batch-dashboard/.venv/bin/python:*)"
+      "Bash(/home/pi/batch-dashboard/.venv/bin/python:*)",
+      "Bash(chmod:*)"
     ],
     "deny": [],
     "ask": []

@@ -11,6 +11,7 @@ Follows patterns from rpi_p1umps.py and rpi_relays.py
 import time
 import logging
 import sys
+import threading
 from pathlib import Path
 from smbus2 import SMBus
 
@@ -41,6 +42,8 @@ class EZOSensorController:
         self.bus = None
         self.connected = False
         self.monitoring_active = False
+        self.monitoring_thread = None
+        self.monitoring_interval = 5.0  # Read sensors every 5 seconds
 
         self.latest_readings = {
             'ph': None,
@@ -69,7 +72,12 @@ class EZOSensorController:
             return False
     
     def close(self):
-        """Close I2C connection"""
+        """Close I2C connection and stop monitoring"""
+        # Stop monitoring thread first
+        if self.monitoring_active:
+            self.stop_monitoring()
+
+        # Close I2C bus
         if self.bus:
             self.bus.close()
             self.bus = None
@@ -139,15 +147,55 @@ class EZOSensorController:
             logger.error(f"Unexpected error communicating with EZO sensor at 0x{address:02X}: {e}")
             return None
     
+    def _monitoring_loop(self):
+        """Background thread that continuously reads sensors when monitoring is active"""
+        logger.info("Sensor monitoring loop started")
+
+        while self.monitoring_active:
+            try:
+                # Read both sensors
+                readings = self.read_sensors()
+                if readings['ph'] is not None or readings['ec'] is not None:
+                    logger.debug(f"Sensor readings - pH: {readings['ph']}, EC: {readings['ec']}")
+            except Exception as e:
+                logger.error(f"Error in monitoring loop: {e}")
+
+            # Sleep for the monitoring interval
+            time.sleep(self.monitoring_interval)
+
+        logger.info("Sensor monitoring loop stopped")
+
     def start_monitoring(self):
-        """Start EC/pH monitoring (for compatibility with Arduino pattern)"""
+        """Start EC/pH monitoring with background polling"""
+        if self.monitoring_active:
+            logger.warning("Monitoring already active")
+            return True
+
         self.monitoring_active = True
-        logger.info("EZO pH/EC monitoring started")
+
+        # Start background monitoring thread
+        self.monitoring_thread = threading.Thread(
+            target=self._monitoring_loop,
+            daemon=True,
+            name="EZO-Monitoring"
+        )
+        self.monitoring_thread.start()
+
+        logger.info(f"EZO pH/EC monitoring started (polling every {self.monitoring_interval}s)")
         return True
 
     def stop_monitoring(self):
-        """Stop EC/pH monitoring (for compatibility with Arduino pattern)"""
+        """Stop EC/pH monitoring and background polling"""
+        if not self.monitoring_active:
+            logger.warning("Monitoring already stopped")
+            return True
+
         self.monitoring_active = False
+
+        # Wait for monitoring thread to finish
+        if self.monitoring_thread and self.monitoring_thread.is_alive():
+            self.monitoring_thread.join(timeout=2.0)
+
         logger.info("EZO pH/EC monitoring stopped")
         return True
 
