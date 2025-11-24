@@ -562,13 +562,42 @@ def api_all_relays_off():
     """Turn all relays off"""
     try:
         success = all_relays_off()
-        
+
         return jsonify({
             'success': success,
             'message': "All relays turned off" if success else "Failed to turn off relays"
         })
     except Exception as e:
         logger.error(f"Error turning off all relays: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/relay/states', methods=['GET'])
+def api_get_relay_states():
+    """Get current state of all relays"""
+    try:
+        status = get_system_status()
+        relay_states = status.get('relays', {})
+        hardware = get_available_hardware()
+
+        # Format relay states with names
+        relays = []
+        for relay_id in hardware['relays']['ids']:
+            relays.append({
+                'id': relay_id,
+                'name': hardware['relays']['names'].get(relay_id, f'Relay {relay_id}'),
+                'state': relay_states.get(str(relay_id), False)
+            })
+
+        return jsonify({
+            'success': True,
+            'relays': relays,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        })
+    except Exception as e:
+        logger.error(f"Error getting relay states: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

@@ -60,25 +60,48 @@ class RelayController:
         return self.setup_gpio()
     
     def setup_gpio(self):
-        """Setup GPIO pins for relays with ULN2803A"""
+        """Setup GPIO pins for relays with ULN2803A
+
+        IMPORTANT: This method reads the current GPIO pin state before claiming
+        as output, allowing the system to preserve relay states across restarts.
+        This is essential for maintaining system operations during development
+        and redeployments without disrupting active processes.
+        """
         self._initialization_attempts += 1
-        
+
         try:
             # Create an lgpio handle
             self.h = lgpio.gpiochip_open(0)
-            
-            # Setup each relay pin
+
+            # Setup each relay pin and read current state
             for relay_id, pin in self.relay_pins.items():
+                # First, claim the pin as input to read current state
+                lgpio.gpio_claim_input(self.h, pin)
+
+                # Read the current GPIO pin state
+                current_gpio_state = lgpio.gpio_read(self.h, pin)
+
+                # Convert GPIO state to relay state based on active high/low
+                if RELAY_ACTIVE_HIGH:
+                    current_relay_state = (current_gpio_state == 1)  # HIGH = ON
+                else:
+                    current_relay_state = (current_gpio_state == 0)  # LOW = ON
+
+                # Free the pin and reclaim as output
+                lgpio.gpio_free(self.h, pin)
                 lgpio.gpio_claim_output(self.h, pin)
-                
-                # Start with all relays OFF
-                initial_state = 0 if not RELAY_ACTIVE_HIGH else 0  # Always start OFF
-                lgpio.gpio_write(self.h, pin, initial_state)
-                self.relay_states[relay_id] = False
-                
-                logger.debug(f"Relay {relay_id} setup on GPIO {pin} ({get_relay_name(relay_id)})")
-                
-            logger.info(f"Initialized {len(self.relay_pins)} relay pins with ULN2803A")
+
+                # Set the pin back to its current state (preserve existing state)
+                lgpio.gpio_write(self.h, pin, current_gpio_state)
+
+                # Track the relay state
+                self.relay_states[relay_id] = current_relay_state
+
+                state_str = "ON" if current_relay_state else "OFF"
+                relay_name = get_relay_name(relay_id)
+                logger.info(f"Relay {relay_id} ({relay_name}) initialized to {state_str} (GPIO {pin} = {current_gpio_state})")
+
+            logger.info(f"Initialized {len(self.relay_pins)} relay pins with ULN2803A - preserved existing states")
             self._gpio_initialized = True
             return True
             
