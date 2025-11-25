@@ -77,15 +77,18 @@
 
   <Sidebar.Content>
     <Sidebar.Group>
-      <Sidebar.GroupLabel>Navigation</Sidebar.GroupLabel>
+      <Sidebar.GroupLabel>Tabs</Sidebar.GroupLabel>
       <Sidebar.GroupContent>
         <Sidebar.Menu>
           {#each menuItems as item}
             <Sidebar.MenuItem>
-              <Sidebar.MenuButton onclick={() => handleNavigation(item.page)}>
+              <Sidebar.MenuButton
+                onclick={() => handleNavigation(item.page)}
+                tooltip={item.title}
+              >
                 {@const Icon = item.icon}
-                <Icon class="size-4" />
-                <span>{item.title}</span>
+                <Icon class="size-4 sidebar-menu-icon" />
+                <span class="sidebar-menu-text">{item.title}</span>
               </Sidebar.MenuButton>
             </Sidebar.MenuItem>
           {/each}

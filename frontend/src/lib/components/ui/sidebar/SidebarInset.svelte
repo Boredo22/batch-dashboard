@@ -8,6 +8,17 @@
   } = $props();
 
   const sidebar = getContext('sidebar');
+
+  // Auto-collapse sidebar 3 seconds after page load
+  $effect(() => {
+    const timer = setTimeout(() => {
+      if (sidebar?.isOpen && !sidebar?.isMobile) {
+        sidebar.closeSidebar();
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  });
 </script>
 
 <main
@@ -182,9 +193,7 @@
   }
 
   /* Accessibility improvements */
-  .sidebar-inset[data-sidebar-state="collapsed"] {
-    /* Announce state change for screen readers */
-  }
+  /* State changes announced for screen readers via aria attributes */
 
   /* Animation for smooth transitions */
 

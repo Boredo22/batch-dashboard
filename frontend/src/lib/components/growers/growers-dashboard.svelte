@@ -173,95 +173,6 @@
     }
   }
 
-  // Tank Operations
-  async function fillTank(tankId) {
-    if (isProcessing) return;
-    isProcessing = true;
-
-    try {
-      const config = TANK_CONFIG[tankId];
-      addLog(`Starting fill for Tank ${tankId}`);
-      
-      // Activate fill relay
-      await controlRelay(config.fillRelay, 'on');
-      
-      // Start flow meter for 25 gallons (default)
-      const response = await fetch(`/api/flow/${flowMeters[0].id}/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gallons: 25 })
-      });
-
-      if (response.ok) {
-        tankStatus[tankId] = { ...tankStatus[tankId], status: 'filling' };
-        addLog(`Tank ${tankId} filling started - 25 gallons`);
-      }
-    } catch (error) {
-      addLog(`Error filling Tank ${tankId}: ${error.message}`);
-    } finally {
-      isProcessing = false;
-    }
-  }
-
-  async function mixTank(tankId) {
-    if (isProcessing) return;
-    
-    const config = TANK_CONFIG[tankId];
-    if (tankStatus[tankId].volume < 20) {
-      addLog(`Tank ${tankId} needs at least 20 gallons before mixing`);
-      return;
-    }
-
-    isProcessing = true;
-
-    try {
-      addLog(`Starting mix for Tank ${tankId}`);
-      
-      // Activate mix relays
-      for (const relayId of config.mixRelays) {
-        await controlRelay(relayId, 'on');
-      }
-
-      tankStatus[tankId] = { ...tankStatus[tankId], status: 'mixing' };
-      addLog(`Tank ${tankId} mixing started - relays ${config.mixRelays.join(', ')} activated`);
-      
-      // Auto-stop mixing after 5 minutes
-      setTimeout(async () => {
-        for (const relayId of config.mixRelays) {
-          await controlRelay(relayId, 'off');
-        }
-        tankStatus[tankId] = { ...tankStatus[tankId], status: 'ready' };
-        addLog(`Tank ${tankId} mixing completed`);
-      }, 300000); // 5 minutes
-
-    } catch (error) {
-      addLog(`Error mixing Tank ${tankId}: ${error.message}`);
-    } finally {
-      isProcessing = false;
-    }
-  }
-
-  async function sendTank(tankId) {
-    if (isProcessing) return;
-    isProcessing = true;
-
-    try {
-      const config = TANK_CONFIG[tankId];
-      addLog(`Starting send from Tank ${tankId} to Room`);
-      
-      // Activate tank relay and room relay
-      await controlRelay(config.fillRelay, 'on'); // Tank valve
-      await controlRelay(config.sendRelay, 'on'); // Room valve
-
-      tankStatus[tankId] = { ...tankStatus[tankId], status: 'sending' };
-      addLog(`Tank ${tankId} sending to room - monitor manually`);
-      
-    } catch (error) {
-      addLog(`Error sending Tank ${tankId}: ${error.message}`);
-    } finally {
-      isProcessing = false;
-    }
-  }
 
   // Relay Control
   async function controlRelay(relayId, action) {
@@ -269,13 +180,13 @@
       const response = await fetch(`/api/relay/${relayId}/${action}`, {
         method: 'POST'
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         addLog(`Relay ${relayId} ${action.toUpperCase()}: ${result.message || 'Success'}`);
-        
+
         // Update local state
-        relays = relays.map(relay => 
+        relays = relays.map(relay =>
           relay.id === relayId ? { ...relay, status: action } : relay
         );
       } else {
@@ -291,6 +202,56 @@
     const relay = relays.find(r => r.id === relayId);
     const newAction = relay.status === 'on' ? 'off' : 'on';
     await controlRelay(relayId, newAction);
+  }
+
+  // Relay Set Control - for tank operations
+  async function controlRelaySet(relayIds, action, operationName) {
+    if (isProcessing) return;
+    isProcessing = true;
+
+    try {
+      addLog(`${operationName} - activating relays ${relayIds.join(', ')}`);
+
+      for (const relayId of relayIds) {
+        await controlRelay(relayId, action);
+      }
+
+      addLog(`${operationName} - relays ${relayIds.join(', ')} are now ${action.toUpperCase()}`);
+    } catch (error) {
+      addLog(`${operationName} error: ${error.message}`);
+    } finally {
+      isProcessing = false;
+    }
+  }
+
+  // Tank operation helpers
+  async function toggleTankFill(tankId) {
+    const config = TANK_CONFIG[tankId];
+    const fillRelay = relays.find(r => r.id === config.fillRelay);
+    const newAction = fillRelay.status === 'on' ? 'off' : 'on';
+    await controlRelaySet([config.fillRelay], newAction, `Tank ${tankId} Fill`);
+  }
+
+  async function toggleTankMix(tankId) {
+    const config = TANK_CONFIG[tankId];
+    const firstMixRelay = relays.find(r => r.id === config.mixRelays[0]);
+    const newAction = firstMixRelay.status === 'on' ? 'off' : 'on';
+    await controlRelaySet(config.mixRelays, newAction, `Tank ${tankId} Mix`);
+  }
+
+  async function toggleTankSend(tankId) {
+    const config = TANK_CONFIG[tankId];
+    const sendRelay = relays.find(r => r.id === config.sendRelay);
+    const newAction = sendRelay.status === 'on' ? 'off' : 'on';
+    await controlRelaySet([config.sendRelay], newAction, `Tank ${tankId} Send`);
+  }
+
+  // Check if relay set is active
+  function areRelaysActive(relayIds) {
+    return relayIds.every(id => {
+      const relay = relays.find(r => r.id === id);
+      return relay && relay.status === 'on';
+    });
   }
 
   // Pump Control
@@ -549,56 +510,66 @@
   <!-- Top Row: Tank Status, Nute Pumps, Relay Controls -->
   <div class="top-controls-row">
 
-    <!-- Tank Status - Collapsible -->
+    <!-- Tank Status & Operations - Collapsible -->
     <Card class="tank-status-card compact-card">
       <CardHeader>
         {@render sectionHeader('Tanks', 'tanks', activeTankCount)}
       </CardHeader>
       {#if expandedSections.tanks}
       <CardContent>
-        <div class="tank-compact-grid">
+        <div class="tank-operations-layout">
           {#each [1, 2, 3] as tankId}
             {@const config = TANK_CONFIG[tankId]}
             {@const status = tankStatus[tankId]}
             {@const statusBadge = getTankStatusBadge(status.status)}
+            {@const fillActive = areRelaysActive([config.fillRelay])}
+            {@const mixActive = areRelaysActive(config.mixRelays)}
+            {@const sendActive = areRelaysActive([config.sendRelay])}
 
-            <div class="tank-compact-card">
-              <div class="tank-compact-header">
-                <div class="tank-compact-info">
-                  <span class="tank-compact-label">Tank {tankId}</span>
-                  <Badge class={statusBadge.class}>{statusBadge.text}</Badge>
-                </div>
-                <div class="tank-compact-volume">{status.volume} gal</div>
+            <div class="tank-operation-card">
+              <div class="tank-operation-header">
+                <span class="tank-operation-label">Tank {tankId}</span>
+                <Badge class={statusBadge.class}>{statusBadge.text}</Badge>
               </div>
 
-              <Progress value={status.volume} max={100} class="tank-progress" />
-
-              <div class="tank-compact-controls">
+              <div class="tank-operation-buttons">
                 <Button
-                  class="tank-compact-btn"
-                  onclick={() => fillTank(tankId)}
+                  class="relay-operation-btn {fillActive ? 'relay-active' : 'relay-inactive'}"
+                  onclick={() => toggleTankFill(tankId)}
                   disabled={isProcessing}
-                  size="sm"
+                  variant="ghost"
                 >
-                  Fill
+                  <div class="relay-operation-content">
+                    <div class="operation-name">Fill</div>
+                    <div class="operation-relays">Relay {config.fillRelay}</div>
+                    <div class="operation-status">{fillActive ? 'ON' : 'OFF'}</div>
+                  </div>
                 </Button>
 
                 <Button
-                  class="tank-compact-btn"
-                  onclick={() => mixTank(tankId)}
+                  class="relay-operation-btn {mixActive ? 'relay-active' : 'relay-inactive'}"
+                  onclick={() => toggleTankMix(tankId)}
                   disabled={isProcessing}
-                  size="sm"
+                  variant="ghost"
                 >
-                  Mix
+                  <div class="relay-operation-content">
+                    <div class="operation-name">Mix</div>
+                    <div class="operation-relays">Relays {config.mixRelays.join(', ')}</div>
+                    <div class="operation-status">{mixActive ? 'ON' : 'OFF'}</div>
+                  </div>
                 </Button>
 
                 <Button
-                  class="tank-compact-btn"
-                  onclick={() => sendTank(tankId)}
+                  class="relay-operation-btn {sendActive ? 'relay-active' : 'relay-inactive'}"
+                  onclick={() => toggleTankSend(tankId)}
                   disabled={isProcessing}
-                  size="sm"
+                  variant="ghost"
                 >
-                  Send
+                  <div class="relay-operation-content">
+                    <div class="operation-name">Send</div>
+                    <div class="operation-relays">Relay {config.sendRelay}</div>
+                    <div class="operation-status">{sendActive ? 'ON' : 'OFF'}</div>
+                  </div>
                 </Button>
               </div>
             </div>
@@ -660,97 +631,30 @@
       {/if}
     </Card>
 
-    <!-- Manual Relay Controls - Collapsible -->
+    <!-- Other Relays - Collapsible -->
     <Card class="relay-control-card compact-card">
       <CardHeader>
-        {@render sectionHeader('Relays', 'relays', activeRelayCount)}
+        {@render sectionHeader('Other Relays', 'relays', activeRelayCount)}
       </CardHeader>
       {#if expandedSections.relays}
       <CardContent>
-        <div class="relay-compact-grid">
-          <!-- Tank 1 Relays -->
-          <div class="relay-tank-section">
-            <div class="tank-relay-header">Tank 1</div>
-            <div class="tank-relays">
-              {#each [1, 4, 7] as relayId}
-                {@const relay = relays.find(r => r.id === relayId)}
-                <Button
-                  class="relay-btn tank1-relay {relay.status === 'on' ? 'relay-active' : 'relay-inactive'}"
-                  onclick={() => toggleRelay(relay.id)}
-                  variant="ghost"
-                >
-                  <div class="relay-content">
-                    <div class="relay-id">{relay.id}</div>
-                    <div class="relay-name">{relay.name}</div>
-                    <div class="relay-status">{relay.status.toUpperCase()}</div>
-                  </div>
-                </Button>
-              {/each}
-            </div>
-          </div>
-
-          <!-- Tank 2 Relays -->
-          <div class="relay-tank-section">
-            <div class="tank-relay-header">Tank 2</div>
-            <div class="tank-relays">
-              {#each [2, 5, 8] as relayId}
-                {@const relay = relays.find(r => r.id === relayId)}
-                <Button
-                  class="relay-btn tank2-relay {relay.status === 'on' ? 'relay-active' : 'relay-inactive'}"
-                  onclick={() => toggleRelay(relay.id)}
-                  variant="ghost"
-                >
-                  <div class="relay-content">
-                    <div class="relay-id">{relay.id}</div>
-                    <div class="relay-name">{relay.name}</div>
-                    <div class="relay-status">{relay.status.toUpperCase()}</div>
-                  </div>
-                </Button>
-              {/each}
-            </div>
-          </div>
-
-          <!-- Tank 3 Relays -->
-          <div class="relay-tank-section">
-            <div class="tank-relay-header">Tank 3</div>
-            <div class="tank-relays">
-              {#each [3, 6, 9] as relayId}
-                {@const relay = relays.find(r => r.id === relayId)}
-                <Button
-                  class="relay-btn tank3-relay {relay.status === 'on' ? 'relay-active' : 'relay-inactive'}"
-                  onclick={() => toggleRelay(relay.id)}
-                  variant="ghost"
-                >
-                  <div class="relay-content">
-                    <div class="relay-id">{relay.id}</div>
-                    <div class="relay-name">{relay.name}</div>
-                    <div class="relay-status">{relay.status.toUpperCase()}</div>
-                  </div>
-                </Button>
-              {/each}
-            </div>
-          </div>
-
-          <!-- Room & Drain Relays -->
-          <div class="relay-tank-section">
-            <div class="tank-relay-header">Rooms & Drain</div>
-            <div class="tank-relays">
-              {#each [10, 11, 12, 13] as relayId}
-                {@const relay = relays.find(r => r.id === relayId)}
-                <Button
-                  class="relay-btn rooms-relay {relay.status === 'on' ? 'relay-active' : 'relay-inactive'}"
-                  onclick={() => toggleRelay(relay.id)}
-                  variant="ghost"
-                >
-                  <div class="relay-content">
-                    <div class="relay-id">{relay.id}</div>
-                    <div class="relay-name">{relay.name}</div>
-                    <div class="relay-status">{relay.status.toUpperCase()}</div>
-                  </div>
-                </Button>
-              {/each}
-            </div>
-          </div>
+        <div class="other-relays-grid">
+          {#each [10, 11, 12, 13] as relayId}
+            {@const relay = relays.find(r => r.id === relayId)}
+            {#if relay}
+              <Button
+                class="relay-operation-btn {relay.status === 'on' ? 'relay-active' : 'relay-inactive'}"
+                onclick={() => toggleRelay(relay.id)}
+                variant="ghost"
+              >
+                <div class="relay-operation-content">
+                  <div class="operation-name">{relay.name}</div>
+                  <div class="operation-relays">Relay {relay.id}</div>
+                  <div class="operation-status">{relay.status.toUpperCase()}</div>
+                </div>
+              </Button>
+            {/if}
+          {/each}
         </div>
       </CardContent>
       {/if}
@@ -1345,7 +1249,136 @@
     text-align: right;
   }
 
-  /* Relay Compact Grid */
+  /* Tank Operations Layout */
+  .tank-operations-layout {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+  }
+
+  .tank-operation-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    transition: all 0.2s ease;
+  }
+
+  .tank-operation-card:hover {
+    border-color: var(--border-emphasis);
+  }
+
+  .tank-operation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-md);
+  }
+
+  .tank-operation-label {
+    font-weight: 600;
+    font-size: var(--text-base);
+    color: var(--text-primary);
+  }
+
+  .tank-operation-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-sm);
+  }
+
+  /* Other Relays Grid */
+  .other-relays-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-sm);
+  }
+
+  /* Relay Operations Grid - Legacy */
+  .relay-operations-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-md);
+  }
+
+  .tank-operations {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+
+  :global(.relay-operation-btn) {
+    padding: var(--space-sm) !important;
+    border-radius: var(--radius-md) !important;
+    border: 1px solid var(--border-subtle) !important;
+    transition: all 0.2s ease !important;
+    min-height: var(--touch-target) !important;
+    height: auto !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: var(--bg-secondary) !important;
+    color: var(--text-muted) !important;
+    touch-action: manipulation !important;
+  }
+
+  :global(.relay-operation-btn:active) {
+    opacity: 0.85;
+  }
+
+  :global(.relay-operation-btn.relay-active) {
+    background: var(--accent-steel) !important;
+    border-color: var(--border-emphasis) !important;
+    color: var(--text-primary) !important;
+  }
+
+  :global(.relay-operation-btn.relay-inactive) {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border-subtle) !important;
+    color: var(--text-muted) !important;
+  }
+
+  :global(.relay-operation-btn.relay-inactive:hover) {
+    background: var(--bg-tertiary) !important;
+    border-color: var(--border-emphasis) !important;
+  }
+
+  .relay-operation-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    text-align: center;
+    width: 100%;
+  }
+
+  .operation-name {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: inherit;
+  }
+
+  .operation-relays {
+    font-size: var(--text-xs);
+    font-weight: 500;
+    opacity: 0.8;
+    color: inherit;
+  }
+
+  .operation-status {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    background: rgba(0, 0, 0, 0.2);
+    color: inherit;
+    letter-spacing: 0.05em;
+    margin-top: 2px;
+  }
+
+  /* Relay Compact Grid - Legacy */
   .relay-compact-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
