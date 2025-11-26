@@ -392,6 +392,14 @@
     await fetchHardwareData();
     await fetchSystemStatus();
 
+    // Auto-start EC/pH monitoring if not already running
+    if (!ecPhMonitoring) {
+      addLog('Auto-starting EC/pH monitoring...');
+      await startEcPhMonitoring();
+    } else {
+      addLog('EC/pH monitoring already running');
+    }
+
     // Set up polling for system status
     statusInterval = setInterval(async () => {
       await fetchSystemStatus();
