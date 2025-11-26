@@ -43,6 +43,10 @@
   let systemStatus = $state('Connected');
   let isProcessing = $state(false);
 
+  // EC/pH monitoring state
+  let ecPhMonitoring = $state(false);
+  let ecPhData = $state({ ph: null, ec: null, timestamp: null });
+
   // Collapsible section states using $state
   let expandedSections = $state({
     tanks: true,
@@ -138,7 +142,7 @@
       const response = await fetch('/api/hardware/status');
       if (response.ok) {
         const data = await response.json();
-        
+
         if (data.relays) {
           relays = relays.map(relay => {
             const apiRelay = data.relays.find(r => r.id === relay.id);
@@ -153,8 +157,8 @@
               return {
                 ...pump,
                 status: apiPump.is_dispensing ? 'dispensing' : 'idle',
-                progress: apiPump.current_volume && apiPump.target_volume 
-                  ? Math.round((apiPump.current_volume / apiPump.target_volume) * 100) 
+                progress: apiPump.current_volume && apiPump.target_volume
+                  ? Math.round((apiPump.current_volume / apiPump.target_volume) * 100)
                   : 0,
                 target_volume: apiPump.target_volume || 0
               };
@@ -170,6 +174,63 @@
     } catch (error) {
       console.error('Error fetching system status:', error);
       systemStatus = 'Disconnected';
+    }
+  }
+
+  // EC/pH Monitoring Functions
+  async function startEcPhMonitoring() {
+    try {
+      const response = await fetch('/api/ecph/start', {
+        method: 'POST'
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        ecPhMonitoring = true;
+        addLog('EC/pH monitoring started');
+      } else {
+        const error = await response.json();
+        addLog(`EC/pH monitoring error: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Error starting EC/pH monitoring:', error);
+      addLog(`EC/pH monitoring error: ${error.message}`);
+    }
+  }
+
+  async function stopEcPhMonitoring() {
+    try {
+      const response = await fetch('/api/ecph/stop', {
+        method: 'POST'
+      });
+
+      if (response.ok) {
+        ecPhMonitoring = false;
+        addLog('EC/pH monitoring stopped');
+      }
+    } catch (error) {
+      console.error('Error stopping EC/pH monitoring:', error);
+    }
+  }
+
+  async function fetchEcPhReadings() {
+    if (!ecPhMonitoring) return;
+
+    try {
+      const response = await fetch('/api/sensors/ecph/read');
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data) {
+          ecPhData = {
+            ph: result.data.ph,
+            ec: result.data.ec,
+            timestamp: result.data.timestamp
+          };
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching EC/pH readings:', error);
     }
   }
 
@@ -377,6 +438,9 @@
     addLog('Growers dashboard started');
     await fetchPumpConfig();
     await fetchSystemStatus();
+
+    // Start EC/pH monitoring automatically
+    await startEcPhMonitoring();
   });
 
   $effect(() => {
@@ -384,8 +448,16 @@
     return () => clearInterval(interval);
   });
 
+  // Separate effect for EC/pH readings polling
+  $effect(() => {
+    const interval = setInterval(fetchEcPhReadings, 3000);
+    return () => clearInterval(interval);
+  });
+
   onDestroy(() => {
     if (statusInterval) clearInterval(statusInterval);
+    // Stop monitoring when component is destroyed
+    stopEcPhMonitoring();
   });
 </script>
 
@@ -674,20 +746,32 @@
             {/each}
             
             <!-- Sensors -->
-            <div class="monitor-item opacity-60">
+            <div class="monitor-item">
               <div class="flex justify-between items-start mb-1">
                 <span class="text-xs font-medium text-slate-400 uppercase">pH Level</span>
-                <Badge variant="outline" class="text-[10px] h-4 px-1">DEV</Badge>
+                {#if ecPhMonitoring}
+                  <Badge variant="outline" class="text-[10px] h-4 px-1 bg-green-500/10 text-green-400 border-green-500/30">LIVE</Badge>
+                {:else}
+                  <Badge variant="outline" class="text-[10px] h-4 px-1">OFF</Badge>
+                {/if}
               </div>
-              <div class="text-xl font-mono font-semibold text-slate-200">--</div>
+              <div class="text-xl font-mono font-semibold text-slate-200">
+                {ecPhData.ph !== null ? ecPhData.ph.toFixed(2) : '--'}
+              </div>
             </div>
-            
-            <div class="monitor-item opacity-60">
+
+            <div class="monitor-item">
               <div class="flex justify-between items-start mb-1">
                 <span class="text-xs font-medium text-slate-400 uppercase">EC Level</span>
-                <Badge variant="outline" class="text-[10px] h-4 px-1">DEV</Badge>
+                {#if ecPhMonitoring}
+                  <Badge variant="outline" class="text-[10px] h-4 px-1 bg-green-500/10 text-green-400 border-green-500/30">LIVE</Badge>
+                {:else}
+                  <Badge variant="outline" class="text-[10px] h-4 px-1">OFF</Badge>
+                {/if}
               </div>
-              <div class="text-xl font-mono font-semibold text-slate-200">--</div>
+              <div class="text-xl font-mono font-semibold text-slate-200">
+                {ecPhData.ec !== null ? ecPhData.ec.toFixed(2) : '--'} <span class="text-xs text-slate-500 font-sans">mS/cm</span>
+              </div>
             </div>
           </div>
         </CardContent>

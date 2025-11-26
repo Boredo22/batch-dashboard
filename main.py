@@ -497,8 +497,15 @@ class FeedControlSystem:
             status['ec_ph_active'] = self.sensor_controller.monitoring_active
             status['ec'] = readings.get('ec')
             status['ph'] = readings.get('ph')
-        
+
         return status
+
+    def get_flow_status(self, flow_id):
+        """Get detailed status for a specific flow meter"""
+        if not self.flow_controller:
+            return None
+
+        return self.flow_controller.get_flow_status(flow_id)
 
 
 # Simple command-line interface

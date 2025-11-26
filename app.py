@@ -903,7 +903,7 @@ def api_stop_flow(flow_id):
     """Stop flow monitoring"""
     try:
         success = stop_flow(flow_id)
-        
+
         return jsonify({
             'success': success,
             'flow_id': flow_id,
@@ -911,6 +911,36 @@ def api_stop_flow(flow_id):
         })
     except Exception as e:
         logger.error(f"Error stopping flow {flow_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/flow/<int:flow_id>/status', methods=['GET'])
+def api_get_flow_status(flow_id):
+    """Get detailed flow meter status including pulse count"""
+    try:
+        if feed_system is None:
+            return jsonify({
+                'success': False,
+                'error': 'Feed control system not initialized'
+            }), 500
+
+        status = feed_system.get_flow_status(flow_id)
+
+        if status is None:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid flow meter ID: {flow_id}'
+            }), 400
+
+        return jsonify({
+            'success': True,
+            'flow_id': flow_id,
+            'status': status
+        })
+    except Exception as e:
+        logger.error(f"Error getting flow status {flow_id}: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

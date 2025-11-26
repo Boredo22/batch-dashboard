@@ -1,5 +1,6 @@
 <script>
-  import { Activity, Play, Square } from "@lucide/svelte/icons";
+  import { onMount, onDestroy } from 'svelte';
+  import { Activity, Play, Square, Droplets, Zap } from "@lucide/svelte/icons";
 
   let {
     flowMeters = [],
@@ -18,8 +19,107 @@
     return (selectedFlowMeterData.current_gallons / selectedFlowMeterData.target_gallons) * 100;
   });
 
+  // Detailed flow status with pulse data
+  let detailedStatus = $state(null);
+  let flowRate = $state(0); // Gallons per minute
+  let statusUpdateInterval = null;
+  let lastPulseCount = $state(0);
+  let lastUpdateTime = $state(Date.now());
+
+  // Calculate flow rate based on pulse changes
+  function calculateFlowRate(currentPulses, previousPulses, timeDeltaSeconds, pulsesPerGallon) {
+    if (timeDeltaSeconds <= 0 || !pulsesPerGallon) return 0;
+    const pulseDiff = currentPulses - previousPulses;
+    const gallons = pulseDiff / pulsesPerGallon;
+    const gallonsPerMinute = (gallons / timeDeltaSeconds) * 60;
+    return gallonsPerMinute;
+  }
+
+  // Fetch detailed status for selected flow meter
+  async function fetchDetailedStatus() {
+    if (!selectedFlowMeter) return;
+
+    try {
+      const response = await fetch(`/api/flow/${selectedFlowMeter}/status`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.status) {
+          const now = Date.now();
+          const timeDelta = (now - lastUpdateTime) / 1000; // seconds
+
+          // Calculate flow rate if meter is active
+          if (data.status.status === 1 && timeDelta > 0) {
+            const rate = calculateFlowRate(
+              data.status.pulse_count,
+              lastPulseCount,
+              timeDelta,
+              data.status.pulses_per_gallon
+            );
+            flowRate = rate;
+            lastPulseCount = data.status.pulse_count;
+            lastUpdateTime = now;
+          } else if (data.status.status === 0) {
+            // Reset when inactive
+            flowRate = 0;
+            lastPulseCount = data.status.pulse_count;
+            lastUpdateTime = now;
+          }
+
+          detailedStatus = data.status;
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching detailed flow status:', error);
+    }
+  }
+
+  // Start polling when component mounts
+  onMount(() => {
+    if (selectedFlowMeter) {
+      fetchDetailedStatus();
+      statusUpdateInterval = setInterval(fetchDetailedStatus, 1000); // Update every second
+    }
+  });
+
+  // Update polling when selected meter changes
+  $effect(() => {
+    if (selectedFlowMeter) {
+      // Reset tracking variables
+      lastPulseCount = 0;
+      lastUpdateTime = Date.now();
+      flowRate = 0;
+      detailedStatus = null;
+
+      // Clear existing interval
+      if (statusUpdateInterval) {
+        clearInterval(statusUpdateInterval);
+      }
+
+      // Start new polling
+      fetchDetailedStatus();
+      statusUpdateInterval = setInterval(fetchDetailedStatus, 1000);
+    } else {
+      // Clear interval when no meter selected
+      if (statusUpdateInterval) {
+        clearInterval(statusUpdateInterval);
+        statusUpdateInterval = null;
+      }
+    }
+  });
+
+  // Cleanup on destroy
+  onDestroy(() => {
+    if (statusUpdateInterval) {
+      clearInterval(statusUpdateInterval);
+    }
+  });
+
   function handleStartFlow() {
     if (selectedFlowMeter && flowGallons > 0) {
+      // Reset tracking variables
+      lastPulseCount = 0;
+      lastUpdateTime = Date.now();
+      flowRate = 0;
       onStartFlow?.(selectedFlowMeter, flowGallons);
     }
   }
@@ -66,6 +166,38 @@
             {selectedFlowMeterData.status.toUpperCase()}
           </span>
         </div>
+
+        <!-- Pulse Counter Display -->
+        {#if detailedStatus}
+          <div class="pulse-data-grid">
+            <div class="metric-card">
+              <div class="metric-header">
+                <Zap class="metric-icon" />
+                <span class="metric-label">Pulse Count</span>
+              </div>
+              <div class="metric-value">{detailedStatus.pulse_count || 0}</div>
+              <div class="metric-sublabel">{detailedStatus.pulses_per_gallon || 220} pulses/gal</div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-header">
+                <Droplets class="metric-icon" />
+                <span class="metric-label">Flow Rate</span>
+              </div>
+              <div class="metric-value">{flowRate.toFixed(2)}</div>
+              <div class="metric-sublabel">gal/min</div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-header">
+                <Activity class="metric-icon" />
+                <span class="metric-label">Total Volume</span>
+              </div>
+              <div class="metric-value">{(detailedStatus.pulse_count / (detailedStatus.pulses_per_gallon || 220)).toFixed(3)}</div>
+              <div class="metric-sublabel">gallons</div>
+            </div>
+          </div>
+        {/if}
 
         {#if isFlowing}
           <div class="progress-container">
@@ -377,5 +509,60 @@
 
   .gap-2 {
     gap: 0.5rem;
+  }
+
+  /* Pulse Data Metrics */
+  .pulse-data-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-sm);
+  }
+
+  .metric-card {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 0.25rem;
+    padding: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .metric-header {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .metric-icon {
+    width: 0.875rem;
+    height: 0.875rem;
+    color: var(--accent-steel);
+  }
+
+  .metric-label {
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .metric-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    font-family: ui-monospace, monospace;
+    color: var(--text-primary);
+    line-height: 1;
+  }
+
+  .metric-sublabel {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  /* Responsive grid for smaller screens */
+  @media (max-width: 768px) {
+    .pulse-data-grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
