@@ -667,6 +667,31 @@ class HardwareComms:
         except Exception as e:
             logger.error(f"Exception stopping flow meter {flow_id}: {e}")
             return False
+
+    def get_flow_status(self, flow_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get detailed status for a specific flow meter
+
+        Args:
+            flow_id: Flow meter ID
+
+        Returns:
+            dict: Flow meter status or None if not available
+        """
+        sys = self.get_system()
+        if not sys:
+            logger.error("System not available for flow status")
+            return None
+
+        if flow_id not in get_available_flow_meters():
+            logger.error(f"Invalid flow meter ID: {flow_id}")
+            return None
+
+        try:
+            return sys.get_flow_status(flow_id)
+        except Exception as e:
+            logger.error(f"Exception getting flow status {flow_id}: {e}")
+            return None
     
     # =========================================================================
     # EC/pH SENSOR CONTROL - Same patterns as simple_gui.py
@@ -1007,8 +1032,12 @@ def start_flow(flow_id: int, gallons: Union[int, float]) -> bool:
     return get_hardware_comms().start_flow(flow_id, gallons)
 
 def stop_flow(flow_id: int) -> bool:
-    """Stop flow - convenience function"""  
+    """Stop flow - convenience function"""
     return get_hardware_comms().stop_flow(flow_id)
+
+def get_flow_status(flow_id: int) -> Optional[Dict[str, Any]]:
+    """Get flow status - convenience function"""
+    return get_hardware_comms().get_flow_status(flow_id)
 
 def emergency_stop() -> bool:
     """Emergency stop - convenience function"""

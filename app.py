@@ -18,7 +18,7 @@ from typing import Dict, Any
 
 # Import our reliable hardware communications module
 from hardware.hardware_comms import (
-    control_relay, dispense_pump, stop_pump, start_flow, stop_flow,
+    control_relay, dispense_pump, stop_pump, start_flow, stop_flow, get_flow_status,
     emergency_stop, get_system_status, get_available_hardware,
     all_relays_off, cleanup_hardware, start_ec_ph, stop_ec_ph,
     calibrate_pump, clear_pump_calibration, check_pump_calibration_status,
@@ -920,13 +920,7 @@ def api_stop_flow(flow_id):
 def api_get_flow_status(flow_id):
     """Get detailed flow meter status including pulse count"""
     try:
-        if feed_system is None:
-            return jsonify({
-                'success': False,
-                'error': 'Feed control system not initialized'
-            }), 500
-
-        status = feed_system.get_flow_status(flow_id)
+        status = get_flow_status(flow_id)
 
         if status is None:
             return jsonify({
