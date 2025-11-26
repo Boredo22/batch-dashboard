@@ -48,17 +48,17 @@
     tanks: true,
     relays: true,
     pumps: true,
-    monitoring: false,
-    logs: false
+    monitoring: true,
+    logs: true
   });
 
   let statusInterval;
 
   // Tank configuration
   const TANK_CONFIG = {
-    1: { fillRelay: 1, mixRelays: [4, 7], sendRelay: 10, pumps: [1, 2, 3], color: 'blue' },
-    2: { fillRelay: 2, mixRelays: [5, 8], sendRelay: 11, pumps: [4, 5, 6], color: 'green' },
-    3: { fillRelay: 3, mixRelays: [6, 9], sendRelay: 12, pumps: [7, 8], color: 'yellow' }
+    1: { fillRelay: 1, mixRelays: [4, 7], sendRelay: 10, pumps: [1, 2, 3], color: 'blue', label: 'Veg' },
+    2: { fillRelay: 2, mixRelays: [5, 8], sendRelay: 11, pumps: [4, 5, 6], color: 'green', label: 'Bloom' },
+    3: { fillRelay: 3, mixRelays: [6, 9], sendRelay: 12, pumps: [7, 8], color: 'yellow', label: 'Flush' }
   };
 
   // Derived values using $derived
@@ -361,26 +361,6 @@
     }
   }
 
-  function getNutrientClass(name) {
-    const lowerName = name.toLowerCase();
-    if (lowerName.includes('veg')) return 'nutrient-veg';
-    if (lowerName.includes('bloom')) return 'nutrient-bloom';
-    if (lowerName.includes('pk synergy')) return 'nutrient-pk';
-    if (lowerName.includes('runclean')) return 'nutrient-runclean';
-    if (lowerName.includes('ph down')) return 'nutrient-ph';
-    if (lowerName.includes('cake')) return 'nutrient-cake';
-    return '';
-  }
-
-  function getTankIcon(tankId) {
-    const icons = { 
-      1: { icon: '🟦', color: 'var(--accent-blue)' }, 
-      2: { icon: '🟩', color: 'var(--accent-green)' }, 
-      3: { icon: '🟨', color: 'var(--accent-yellow)' } 
-    };
-    return icons[tankId] || { icon: '⚪', color: 'var(--text-muted)' };
-  }
-
   function getTankStatusBadge(status) {
     const badges = {
       idle: { class: 'status-idle', text: 'Idle' },
@@ -390,14 +370,6 @@
       ready: { class: 'status-ready', text: 'Ready' }
     };
     return badges[status] || badges.idle;
-  }
-
-  // Icons as SVG components
-  function WaterDropIcon(props = {}) {
-    return `<svg class="${props.class || ''}" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M7 16.5V19a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3v-2.5"/>
-      <path d="M8 8s0-2 2.5-4.5S15 1 15 1s3 2 3 7c0 1.657-.895 3-2 3s-2-1.343-2-3c0-2.5-1.5-4-2-4s-2 1.5-2 4"/>
-    </svg>`;
   }
 
   // Lifecycle with $effect for status updates
@@ -417,1868 +389,700 @@
   });
 </script>
 
-{#snippet sectionHeader(title, sectionKey, count = null)}
-  <div class="section-header-collapsible">
-    <button
-      class="section-toggle-btn"
-      onclick={() => toggleSection(sectionKey)}
-      aria-expanded={expandedSections[sectionKey]}
+<div class="dashboard-container">
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <div class="status-group">
+      <div class="status-label">SYSTEM</div>
+      <div class="flex items-center gap-2">
+        <div class="status-dot {systemStatus === 'Connected' ? 'bg-green-500' : 'bg-red-500'}"></div>
+        <span class="text-sm font-medium text-slate-200">{systemStatus}</span>
+      </div>
+    </div>
+
+    <div class="status-divider"></div>
+
+    <div class="status-group">
+      <div class="status-label">RELAYS</div>
+      <div class="relay-dots">
+        {#each relays as relay}
+          <div class="relay-dot {relay.status === 'on' ? 'bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.6)]' : 'bg-slate-700'}"
+               title="{relay.name}: {relay.status.toUpperCase()}">
+          </div>
+        {/each}
+      </div>
+    </div>
+
+    <div class="status-divider"></div>
+
+    <div class="status-group flex-1">
+      <div class="status-label">ACTIVE</div>
+      <div class="flex gap-4">
+        <div class="flex items-baseline gap-1">
+          <span class="text-xs text-slate-400">Pumps:</span>
+          <span class="text-sm font-bold text-slate-200">{activePumps.length}</span>
+        </div>
+        <div class="flex items-baseline gap-1">
+          <span class="text-xs text-slate-400">Flow:</span>
+          <span class="text-sm font-bold text-slate-200">{flowMeters.filter(m => m.status !== 'idle' && m.status !== 'development').length}</span>
+        </div>
+      </div>
+    </div>
+
+    <Button
+      variant="destructive"
+      class="emergency-btn"
+      onclick={emergencyStop}
     >
-      <svg
-        class="chevron-icon {expandedSections[sectionKey] ? 'chevron-expanded' : ''}"
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <polyline points="6 9 12 15 18 9"></polyline>
+      <svg class="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <rect x="9" y="9" width="6" height="6" fill="currentColor" stroke="none"/>
       </svg>
-      <span class="section-title-text">{title}</span>
-      {#if count !== null}
-        <Badge class="section-count-badge">{count}</Badge>
-      {/if}
-    </button>
-  </div>
-{/snippet}
-
-<!-- Compact System Status Bar -->
-<div class="scaled-dashboard">
-<div class="compact-status-bar">
-  <div class="status-section status-relays">
-    <div class="status-label">RELAYS</div>
-    <div class="relay-indicators">
-      {#each relays as relay}
-        <div class="relay-indicator {relay.status === 'on' ? 'relay-on' : 'relay-off'}"
-             title="{relay.name}: {relay.status.toUpperCase()}">
-        </div>
-      {/each}
-    </div>
+      STOP ALL
+    </Button>
   </div>
 
-  <div class="status-divider"></div>
-
-  <div class="status-section status-sensors">
-    <div class="status-label">SENSORS</div>
-    <div class="sensor-readings">
-      <div class="sensor-item" title="pH Level">
-        <span class="sensor-label">pH:</span>
-        <span class="sensor-value">--</span>
-      </div>
-      <div class="sensor-item" title="EC Level">
-        <span class="sensor-label">EC:</span>
-        <span class="sensor-value">--</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="status-divider"></div>
-
-  <div class="status-section status-jobs">
-    <div class="status-label">ACTIVE JOBS</div>
-    <div class="job-indicators">
-      <div class="job-item">
-        <span class="job-label">Pumps:</span>
-        <span class="job-count">{activePumps.length}</span>
-      </div>
-      <div class="job-item">
-        <span class="job-label">Flow:</span>
-        <span class="job-count">{flowMeters.filter(m => m.status !== 'idle' && m.status !== 'development').length}</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="status-spacer"></div>
-
-  <Button
-    class="emergency-stop-btn"
-    onclick={emergencyStop}
-    size="sm"
-  >
-    <svg class="emergency-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" fill="currentColor"/>
-      <rect x="9" y="9" width="6" height="6" fill="white"/>
-    </svg>
-    EMERGENCY STOP
-  </Button>
-</div>
-
-<!-- Main Dashboard Grid -->
-<div class="dashboard-grid">
-
-  <!-- Top Row: Tank Status, Nute Pumps, Relay Controls -->
-  <div class="top-controls-row">
-
-    <!-- Tank Status & Operations - Collapsible -->
-    <Card class="tank-status-card compact-card">
-      <CardHeader>
-        {@render sectionHeader('Tanks', 'tanks', activeTankCount)}
-      </CardHeader>
-      {#if expandedSections.tanks}
-      <CardContent>
-        <div class="tank-operations-layout">
-          {#each [1, 2, 3] as tankId}
-            {@const config = TANK_CONFIG[tankId]}
-            {@const status = tankStatus[tankId]}
-            {@const statusBadge = getTankStatusBadge(status.status)}
-            {@const fillActive = areRelaysActive([config.fillRelay])}
-            {@const mixActive = areRelaysActive(config.mixRelays)}
-            {@const sendActive = areRelaysActive([config.sendRelay])}
-
-            <div class="tank-operation-card">
-              <div class="tank-operation-header">
-                <span class="tank-operation-label">Tank {tankId}</span>
-                <Badge class={statusBadge.class}>{statusBadge.text}</Badge>
-              </div>
-
-              <div class="tank-operation-buttons">
-                <Button
-                  class="relay-operation-btn {fillActive ? 'relay-active' : 'relay-inactive'}"
-                  onclick={() => toggleTankFill(tankId)}
-                  disabled={isProcessing}
-                  variant="ghost"
-                >
-                  <div class="relay-operation-content">
-                    <div class="operation-name">Fill</div>
-                    <div class="operation-relays">Relay {config.fillRelay}</div>
-                    <div class="operation-status">{fillActive ? 'ON' : 'OFF'}</div>
-                  </div>
-                </Button>
-
-                <Button
-                  class="relay-operation-btn {mixActive ? 'relay-active' : 'relay-inactive'}"
-                  onclick={() => toggleTankMix(tankId)}
-                  disabled={isProcessing}
-                  variant="ghost"
-                >
-                  <div class="relay-operation-content">
-                    <div class="operation-name">Mix</div>
-                    <div class="operation-relays">Relays {config.mixRelays.join(', ')}</div>
-                    <div class="operation-status">{mixActive ? 'ON' : 'OFF'}</div>
-                  </div>
-                </Button>
-
-                <Button
-                  class="relay-operation-btn {sendActive ? 'relay-active' : 'relay-inactive'}"
-                  onclick={() => toggleTankSend(tankId)}
-                  disabled={isProcessing}
-                  variant="ghost"
-                >
-                  <div class="relay-operation-content">
-                    <div class="operation-name">Send</div>
-                    <div class="operation-relays">Relay {config.sendRelay}</div>
-                    <div class="operation-status">{sendActive ? 'ON' : 'OFF'}</div>
-                  </div>
-                </Button>
-              </div>
-            </div>
-          {/each}
-        </div>
-      </CardContent>
-      {/if}
-    </Card>
-
-    <!-- Nutrient Pumps - Collapsible with Preset Buttons -->
-    <Card class="nute-pumps-card compact-card">
-      <CardHeader>
-        {@render sectionHeader('Pumps', 'pumps', activePumps.length)}
-      </CardHeader>
-      {#if expandedSections.pumps}
-      <CardContent>
-        <div class="nute-pumps-compact-grid">
-          {#each pumps as pump}
-            <Button
-              class="pump-btn-compact {pump.status === 'dispensing' ? 'pump-active' : 'pump-idle'}"
-              onclick={() => dispensePump(pump.id, dosingAmount)}
-              disabled={pump.status === 'dispensing'}
+  <!-- Main Grid Layout -->
+  <div class="main-grid">
+    
+    <!-- Left Column: Tanks & Pumps (Controls) -->
+    <div class="grid-column">
+      <!-- Tanks Card -->
+      <Card class="dashboard-card">
+        <CardHeader class="pb-3">
+          <div class="section-header-collapsible">
+            <button
+              class="section-toggle-btn"
+              onclick={() => toggleSection('tanks')}
+              aria-expanded={expandedSections.tanks}
             >
-              <div class="pump-content-compact">
-                <div class="pump-id-compact">P{pump.id}</div>
-                <div class="pump-name-compact">{pump.name}</div>
-                {#if pump.status === 'dispensing'}
-                  <div class="pump-status-compact">{pump.progress}%</div>
-                {:else}
-                  <div class="pump-status-compact">{dosingAmount}ml</div>
-                {/if}
+              <div class="flex items-center gap-2">
+                <span class="section-title-text">Tank Operations</span>
+                <Badge variant="secondary" class="section-count-badge">{activeTankCount}</Badge>
               </div>
-            </Button>
-          {/each}
-        </div>
-
-        <!-- Preset Dosing Buttons -->
-        <div class="preset-dosing-chips">
-          <button class="preset-chip" onclick={() => setDosingPreset(25)}>25ml</button>
-          <button class="preset-chip" onclick={() => setDosingPreset(50)}>50ml</button>
-          <button class="preset-chip" onclick={() => setDosingPreset(100)}>100ml</button>
-          <button class="preset-chip" onclick={() => setDosingPreset(250)}>250ml</button>
-          <button class="preset-chip" onclick={() => setDosingPreset(500)}>500ml</button>
-        </div>
-
-        <div class="dosing-amount-selector">
-          <input
-            type="range"
-            class="dosing-slider-tablet"
-            min="1"
-            max="2000"
-            value={dosingAmount}
-            step="1"
-            oninput={handleSliderInput}
-          />
-          <div class="dosing-value-compact">{dosingAmount}ml</div>
-        </div>
-      </CardContent>
-      {/if}
-    </Card>
-
-    <!-- Other Relays - Collapsible -->
-    <Card class="relay-control-card compact-card">
-      <CardHeader>
-        {@render sectionHeader('Other Relays', 'relays', activeRelayCount)}
-      </CardHeader>
-      {#if expandedSections.relays}
-      <CardContent>
-        <div class="other-relays-grid">
-          {#each [10, 11, 12, 13] as relayId}
-            {@const relay = relays.find(r => r.id === relayId)}
-            {#if relay}
-              <Button
-                class="relay-operation-btn {relay.status === 'on' ? 'relay-active' : 'relay-inactive'}"
-                onclick={() => toggleRelay(relay.id)}
-                variant="ghost"
+              <svg
+                class="chevron-icon {expandedSections.tanks ? 'chevron-expanded' : ''}"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
               >
-                <div class="relay-operation-content">
-                  <div class="operation-name">{relay.name}</div>
-                  <div class="operation-relays">Relay {relay.id}</div>
-                  <div class="operation-status">{relay.status.toUpperCase()}</div>
-                </div>
-              </Button>
-            {/if}
-          {/each}
-        </div>
-      </CardContent>
-      {/if}
-    </Card>
-  </div>
-
-  <!-- Monitoring Panel - Collapsible -->
-  <div class="monitoring-panel">
-
-    <!-- Combined Flow & Sensor Monitoring -->
-    <Card class="monitoring-card">
-      <CardHeader>
-        {@render sectionHeader('Monitoring', 'monitoring', null)}
-      </CardHeader>
-      {#if expandedSections.monitoring}
-      <CardContent>
-        <div class="flow-monitors">
-          {#each flowMeters as meter}
-            <div class="flow-meter {meter.status === 'development' ? 'flow-development' : 'flow-active'}">
-              <div class="meter-header">
-                <div class="meter-name">{meter.name}</div>
-                <Badge class={meter.status === 'development' ? 'status-development' : 'status-operational'}>
-                  {meter.status === 'development' ? 'DEV' : 'ACTIVE'}
-                </Badge>
-              </div>
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+        </CardHeader>
+        {#if expandedSections.tanks}
+        <CardContent>
+          <div class="flex flex-col gap-4">
+            {#each [1, 2, 3] as tankId}
+              {@const config = TANK_CONFIG[tankId]}
+              {@const status = tankStatus[tankId]}
+              {@const fillActive = areRelaysActive([config.fillRelay])}
+              {@const mixActive = areRelaysActive(config.mixRelays)}
+              {@const sendActive = areRelaysActive([config.sendRelay])}
               
-              {#if meter.status === 'development'}
-                <div class="meter-status">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M7 2h10l5 10-5 10H7l-5-10z"/>
-                  </svg>
-                  Under Development
+              <div class="tank-row tank-theme-{config.color}">
+                <div class="tank-info">
+                  <div class="tank-icon">
+                    <span class="text-lg font-bold">{tankId}</span>
+                  </div>
+                  <div class="flex flex-col">
+                    <span class="tank-label">{config.label}</span>
+                    <span class="tank-status-text">
+                      {#if fillActive}Filling
+                      {:else if mixActive}Mixing
+                      {:else if sendActive}Sending
+                      {:else}Idle{/if}
+                    </span>
+                  </div>
                 </div>
-              {:else}
-                <div class="meter-readings">
-                  <div class="flow-rate">{meter.flow_rate} <span class="unit">gal/min</span></div>
-                  <div class="total-flow">Total: {meter.total_gallons} gal</div>
+
+                <div class="tank-controls">
+                  <button 
+                    class="control-btn {fillActive ? 'active' : ''}" 
+                    onclick={() => toggleTankFill(tankId)}
+                    disabled={isProcessing}
+                  >
+                    <span class="btn-label">Fill</span>
+                    <div class="btn-indicator"></div>
+                  </button>
+                  
+                  <button 
+                    class="control-btn {mixActive ? 'active' : ''}" 
+                    onclick={() => toggleTankMix(tankId)}
+                    disabled={isProcessing}
+                  >
+                    <span class="btn-label">Mix</span>
+                    <div class="btn-indicator"></div>
+                  </button>
+                  
+                  <button 
+                    class="control-btn {sendActive ? 'active' : ''}" 
+                    onclick={() => toggleTankSend(tankId)}
+                    disabled={isProcessing}
+                  >
+                    <span class="btn-label">Send</span>
+                    <div class="btn-indicator"></div>
+                  </button>
                 </div>
+              </div>
+            {/each}
+          </div>
+        </CardContent>
+        {/if}
+      </Card>
+
+      <!-- Pumps Card (Moved to Left) -->
+      <Card class="dashboard-card">
+        <CardHeader class="pb-3">
+          <div class="section-header-collapsible">
+            <button
+              class="section-toggle-btn"
+              onclick={() => toggleSection('pumps')}
+              aria-expanded={expandedSections.pumps}
+            >
+              <div class="flex items-center gap-2">
+                <span class="section-title-text">Nutrient Pumps</span>
+                <Badge variant="secondary" class="section-count-badge">{activePumps.length}</Badge>
+              </div>
+              <svg
+                class="chevron-icon {expandedSections.pumps ? 'chevron-expanded' : ''}"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+        </CardHeader>
+        {#if expandedSections.pumps}
+        <CardContent>
+          <!-- Dosing Control -->
+          <div class="mb-6 p-4 bg-slate-900/50 rounded-lg border border-slate-800">
+            <div class="flex justify-between items-end mb-4">
+              <span class="text-sm font-medium text-slate-400">Dosing Amount</span>
+              <div class="text-2xl font-bold text-blue-400">{dosingAmount}<span class="text-sm text-slate-500 ml-1">ml</span></div>
+            </div>
+            
+            <input
+              type="range"
+              class="w-full h-3 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 mb-4"
+              min="1"
+              max="2000"
+              value={dosingAmount}
+              step="1"
+              oninput={handleSliderInput}
+            />
+            
+            <div class="flex gap-2 justify-between">
+              {#each [25, 50, 100, 250, 500] as amount}
+                <button 
+                  class="px-2 py-1 text-xs font-medium rounded bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-colors"
+                  onclick={() => setDosingPreset(amount)}
+                >
+                  {amount}ml
+                </button>
+              {/each}
+            </div>
+          </div>
+
+          <!-- Pump Grid -->
+          <div class="grid grid-cols-2 gap-3">
+            {#each pumps as pump}
+              <button
+                class="pump-card {pump.status === 'dispensing' ? 'active' : ''}"
+                onclick={() => dispensePump(pump.id, dosingAmount)}
+                disabled={pump.status === 'dispensing'}
+              >
+                <div class="flex justify-between items-start w-full mb-1">
+                  <span class="text-xs font-mono text-slate-500">P{pump.id}</span>
+                  {#if pump.status === 'dispensing'}
+                    <span class="text-xs font-bold text-amber-400 animate-pulse">RUNNING</span>
+                  {/if}
+                </div>
+                <div class="text-sm font-semibold text-slate-200 text-center leading-tight mb-2">
+                  {pump.name}
+                </div>
+                {#if pump.status === 'dispensing'}
+                  <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-amber-500 h-full transition-all duration-500" style="width: {pump.progress}%"></div>
+                  </div>
+                {:else}
+                  <div class="text-xs text-slate-500 text-center">Tap to dose</div>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        </CardContent>
+        {/if}
+      </Card>
+    </div>
+
+    <!-- Right Column: Monitoring & Relays & Logs -->
+    <div class="grid-column">
+      <!-- Monitoring Card -->
+      <Card class="dashboard-card">
+        <CardHeader class="pb-3">
+          <div class="section-header-collapsible">
+            <button
+              class="section-toggle-btn"
+              onclick={() => toggleSection('monitoring')}
+              aria-expanded={expandedSections.monitoring}
+            >
+              <div class="flex items-center gap-2">
+                <span class="section-title-text">System Monitoring</span>
+              </div>
+              <svg
+                class="chevron-icon {expandedSections.monitoring ? 'chevron-expanded' : ''}"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+        </CardHeader>
+        {#if expandedSections.monitoring}
+        <CardContent>
+          <div class="grid grid-cols-2 gap-3">
+            {#each flowMeters as meter}
+              <div class="monitor-item {meter.status === 'development' ? 'opacity-60' : ''}">
+                <div class="flex justify-between items-start mb-1">
+                  <span class="text-xs font-medium text-slate-400 uppercase">{meter.name}</span>
+                  {#if meter.status === 'development'}
+                    <Badge variant="outline" class="text-[10px] h-4 px-1">DEV</Badge>
+                  {/if}
+                </div>
+                <div class="text-xl font-mono font-semibold text-slate-200">
+                  {meter.flow_rate} <span class="text-xs text-slate-500 font-sans">GPM</span>
+                </div>
+                <div class="text-xs text-slate-500 mt-1">
+                  Total: {meter.total_gallons} gal
+                </div>
+              </div>
+            {/each}
+            
+            <!-- Sensors -->
+            <div class="monitor-item opacity-60">
+              <div class="flex justify-between items-start mb-1">
+                <span class="text-xs font-medium text-slate-400 uppercase">pH Level</span>
+                <Badge variant="outline" class="text-[10px] h-4 px-1">DEV</Badge>
+              </div>
+              <div class="text-xl font-mono font-semibold text-slate-200">--</div>
+            </div>
+            
+            <div class="monitor-item opacity-60">
+              <div class="flex justify-between items-start mb-1">
+                <span class="text-xs font-medium text-slate-400 uppercase">EC Level</span>
+                <Badge variant="outline" class="text-[10px] h-4 px-1">DEV</Badge>
+              </div>
+              <div class="text-xl font-mono font-semibold text-slate-200">--</div>
+            </div>
+          </div>
+        </CardContent>
+        {/if}
+      </Card>
+
+      <!-- Other Relays (Moved to Right) -->
+      <Card class="dashboard-card">
+        <CardHeader class="pb-3">
+          <div class="section-header-collapsible">
+            <button
+              class="section-toggle-btn"
+              onclick={() => toggleSection('relays')}
+              aria-expanded={expandedSections.relays}
+            >
+              <div class="flex items-center gap-2">
+                <span class="section-title-text">Auxiliary Controls</span>
+                <Badge variant="secondary" class="section-count-badge">{activeRelayCount}</Badge>
+              </div>
+              <svg
+                class="chevron-icon {expandedSections.relays ? 'chevron-expanded' : ''}"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+        </CardHeader>
+        {#if expandedSections.relays}
+        <CardContent>
+          <div class="grid grid-cols-2 gap-3">
+            {#each [10, 11, 12, 13] as relayId}
+              {@const relay = relays.find(r => r.id === relayId)}
+              {#if relay}
+                <button
+                  class="aux-relay-btn {relay.status === 'on' ? 'active' : ''}"
+                  onclick={() => toggleRelay(relay.id)}
+                >
+                  <div class="flex flex-col items-center gap-1">
+                    <span class="text-sm font-medium">{relay.name}</span>
+                    <span class="text-[10px] uppercase tracking-wider {relay.status === 'on' ? 'text-blue-200' : 'text-slate-500'}">
+                      {relay.status === 'on' ? 'ACTIVE' : 'OFF'}
+                    </span>
+                  </div>
+                </button>
               {/if}
-            </div>
-          {/each}
-        </div>
-
-        <Separator class="my-4" />
-
-        <!-- pH/EC Sensors integrated in same card -->
-        <div class="sensor-grid-horizontal">
-          <div class="sensor-card sensor-development">
-            <div class="sensor-header">
-              <div class="sensor-name">pH Level</div>
-              <Badge class="status-development">DEV</Badge>
-            </div>
-            <div class="sensor-status">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M7 2h10l5 10-5 10H7l-5-10z"/>
-              </svg>
-              Under Development
-            </div>
+            {/each}
           </div>
-          
-          <div class="sensor-card sensor-development">
-            <div class="sensor-header">
-              <div class="sensor-name">EC Level</div>
-              <Badge class="status-development">DEV</Badge>
-            </div>
-            <div class="sensor-status">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M7 2h10l5 10-5 10H7l-5-10z"/>
-              </svg>
-              Under Development
-            </div>
-          </div>
-        </div>
-      </CardContent>
-      {/if}
-    </Card>
+        </CardContent>
+        {/if}
+      </Card>
 
-    <!-- Activity Log - Collapsible -->
-    <Card class="log-card">
-      <CardHeader class="log-header">
-        {@render sectionHeader('Activity Log', 'logs', logs.length)}
-        <Button
-          class="clear-logs-btn"
-          onclick={clearLogs}
-          size="sm"
-          variant="outline"
-        >
-          Clear
-        </Button>
-      </CardHeader>
-      {#if expandedSections.logs}
-      <CardContent>
-        <div class="log-container">
-          {#each logs.slice(0, 5) as log}
-            <div class="log-entry">
-              <div class="log-time">{log.time}</div>
-              <div class="log-message">{log.message}</div>
+      <!-- Logs (Moved to Right) -->
+      <Card class="dashboard-card">
+        <CardHeader class="pb-3">
+          <div class="flex justify-between items-center w-full">
+            <div class="section-header-collapsible">
+              <button
+                class="section-toggle-btn"
+                onclick={() => toggleSection('logs')}
+                aria-expanded={expandedSections.logs}
+              >
+                <div class="flex items-center gap-2">
+                  <span class="section-title-text">Activity Log</span>
+                </div>
+                <svg
+                  class="chevron-icon {expandedSections.logs ? 'chevron-expanded' : ''}"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
             </div>
-          {/each}
-          
-          {#if logs.length === 0}
-            <div class="log-empty">No recent activity</div>
-          {/if}
-        </div>
-      </CardContent>
-      {/if}
-    </Card>
+            <Button variant="ghost" size="sm" class="h-6 text-xs text-slate-500" onclick={clearLogs}>Clear</Button>
+          </div>
+        </CardHeader>
+        {#if expandedSections.logs}
+        <CardContent>
+          <div class="h-32 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
+            {#each logs as log}
+              <div class="text-xs p-2 rounded bg-slate-900/50 border-l-2 border-slate-600">
+                <span class="text-slate-500 mr-2 font-mono">{log.time}</span>
+                <span class="text-slate-300">{log.message}</span>
+              </div>
+            {/each}
+            {#if logs.length === 0}
+              <div class="text-center text-xs text-slate-600 py-4 italic">No recent activity</div>
+            {/if}
+          </div>
+        </CardContent>
+        {/if}
+      </Card>
+    </div>
   </div>
-</div>
 </div>
 
 <style>
-  :root {
-    /* Professional Industrial Color Palette */
-    --bg-primary: #0f172a;
-    --bg-secondary: #1e293b;
-    --bg-tertiary: #334155;
-    --bg-card: #1e293b;
-    --bg-card-hover: #334155;
-
-    /* Muted Accent Colors */
-    --accent-steel: #64748b;
-    --accent-slate: #475569;
-    --accent-blue-muted: #3b82f6;
-
-    /* Professional Status Colors (Muted) */
-    --status-success: #059669;
-    --status-warning: #d97706;
-    --status-error: #dc2626;
-    --status-info: #0284c7;
-    --status-development: #ca8a04;
-
-    /* Text Colors */
-    --text-primary: #f1f5f9;
-    --text-secondary: #e2e8f0;
-    --text-muted: #94a3b8;
-    --text-disabled: #64748b;
-    --text-button: #f8fafc;
-
-    /* Borders */
-    --border-subtle: #334155;
-    --border-emphasis: #475569;
-
-    /* Tablet-Optimized Spacing */
-    --space-card: 0.75rem;
-    --space-section: 1rem;
-    --space-xs: 0.25rem;
-    --space-sm: 0.5rem;
-    --space-md: 0.75rem;
-    --space-lg: 1rem;
-    --space-xl: 1.5rem;
-    --space-2xl: 2rem;
-
-    /* Touch Target Sizes */
-    --touch-target: 48px;
-    --touch-target-sm: 44px;
-
-    /* Typography Scale - Optimized for Tablet Readability */
-    --text-3xl: 1.875rem;
-    --text-2xl: 1.5rem;
-    --text-xl: 1.25rem;
-    --text-lg: 1.125rem;
-    --text-base: 0.9375rem;  /* 15px - increased for readability */
-    --text-sm: 0.875rem;     /* 14px */
-    --text-xs: 0.75rem;      /* 12px */
-
-    /* Shadows - Subtle */
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.5);
-
-    /* Border Radius - Professional */
-    --radius-sm: 0.25rem;
-    --radius-md: 0.375rem;
-    --radius-lg: 0.5rem;
+  :global(body) {
+    background-color: #0f172a;
+    color: #e2e8f0;
   }
 
-  /* Global Styles */
-
-  /* Collapsible Section Header */
-  .section-header-collapsible {
+  .dashboard-container {
     width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    box-sizing: border-box;
+  }
+
+  /* Status Bar */
+  .status-bar {
+    width: 100%;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-sizing: border-box;
+  }
+
+  .status-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .status-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #64748b;
+    letter-spacing: 0.05em;
+  }
+
+  .status-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+  }
+
+  .status-divider {
+    width: 1px;
+    height: 2rem;
+    background: #334155;
+  }
+
+  .relay-dots {
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+    max-width: 120px;
+  }
+
+  .relay-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 0.125rem;
+    transition: all 0.2s;
+  }
+
+  /* Main Grid */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    width: 100%;
+  }
+
+  @media (min-width: 768px) {
+    .main-grid {
+      grid-template-columns: 1.2fr 1fr;
+    }
+  }
+
+  .grid-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  /* Cards */
+  :global(.dashboard-card) {
+    background: #1e293b !important;
+    border: 1px solid #334155 !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
   }
 
   .section-toggle-btn {
     width: 100%;
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: var(--space-sm);
-    background: transparent;
+    background: none;
     border: none;
-    padding: 0;
+    color: #f1f5f9;
     cursor: pointer;
-    color: var(--text-primary);
-    transition: color 0.2s ease;
-    min-height: var(--touch-target-sm);
+    padding: 0;
   }
 
-  .section-toggle-btn:hover {
-    color: var(--accent-steel);
+  .section-title-text {
+    font-size: 1rem;
+    font-weight: 600;
   }
 
   .chevron-icon {
-    transition: transform 0.3s ease;
-    flex-shrink: 0;
-    color: var(--text-muted);
+    color: #64748b;
+    transition: transform 0.2s;
   }
 
   .chevron-expanded {
     transform: rotate(180deg);
   }
 
-  .section-title-text {
-    font-size: var(--text-base);
-    font-weight: 600;
-    flex: 1;
-    text-align: left;
-  }
-
-  .section-count-badge {
-    font-size: var(--text-xs) !important;
-    padding: 2px 8px !important;
-    background: var(--bg-tertiary) !important;
-    color: var(--text-primary) !important;
-    font-weight: 600 !important;
-  }
-
-  /* Preset Dosing Chips */
-  .preset-dosing-chips {
+  /* Tank Rows */
+  .tank-row {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
     display: flex;
-    gap: var(--space-sm);
-    flex-wrap: wrap;
-    padding: var(--space-md) 0;
-    border-top: 1px solid var(--border-subtle);
-    margin-top: var(--space-sm);
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
   }
 
-  .preset-chip {
-    flex: 1;
-    min-width: 64px;
-    min-height: var(--touch-target);
-    padding: var(--space-sm) var(--space-md);
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    touch-action: manipulation;
-  }
-
-  .preset-chip:hover {
-    background: var(--accent-steel);
-    border-color: var(--border-emphasis);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-md);
-  }
-
-  .preset-chip:active {
-    transform: translateY(0);
-    opacity: 0.85;
-  }
-
-  /* Compact Status Bar */
-  .compact-status-bar {
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
-    padding: var(--space-sm) var(--space-md);
-    margin-bottom: var(--space-md);
+  .tank-info {
     display: flex;
     align-items: center;
-    gap: var(--space-md);
-    height: 48px;
+    gap: 0.75rem;
   }
 
-  .status-section {
+  .tank-icon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.5rem;
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    justify-content: center;
+    background: #1e293b;
+    color: #94a3b8;
   }
 
-  .status-label {
-    font-size: var(--text-xs);
+  .tank-theme-blue .tank-icon { background: rgba(59, 130, 246, 0.1); color: #60a5fa; }
+  .tank-theme-green .tank-icon { background: rgba(34, 197, 94, 0.1); color: #4ade80; }
+  .tank-theme-yellow .tank-icon { background: rgba(234, 179, 8, 0.1); color: #facc15; }
+
+  .tank-label {
     font-weight: 600;
-    color: var(--text-muted);
+    font-size: 0.875rem;
+    color: #f1f5f9;
+  }
+
+  .tank-status-text {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
   }
 
-  .relay-indicators {
+  .tank-controls {
     display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
-  .relay-indicator {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    border: 1px solid var(--border-subtle);
-    transition: all 0.2s ease;
-  }
-
-  .relay-on {
-    background: var(--text-primary);
-    border-color: var(--text-primary);
-    box-shadow: 0 0 8px rgba(241, 245, 249, 0.4);
-  }
-
-  .relay-off {
-    background: var(--bg-primary);
-    border-color: var(--border-subtle);
-  }
-
-  .sensor-readings {
-    display: flex;
-    gap: var(--space-md);
-  }
-
-  .sensor-item {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-xs);
-  }
-
-  .sensor-label {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-
-  .sensor-value {
-    font-size: var(--text-sm);
-    color: var(--text-primary);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .job-indicators {
-    display: flex;
-    gap: var(--space-md);
-  }
-
-  .job-item {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-xs);
-  }
-
-  .job-label {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-
-  .job-count {
-    font-size: var(--text-sm);
-    color: var(--text-primary);
-    font-weight: 600;
-    padding: 2px 6px;
-    background: var(--bg-tertiary);
-    border-radius: var(--radius-sm);
-    min-width: 20px;
-    text-align: center;
-  }
-
-  .status-divider {
-    width: 1px;
-    height: 24px;
-    background: var(--border-subtle);
-  }
-
-  .status-spacer {
-    flex: 1;
-  }
-
-  .emergency-stop-btn {
-    background: var(--status-error) !important;
-    color: var(--text-button) !important;
-    border: 1px solid rgba(220, 38, 38, 0.4) !important;
-    font-weight: 600 !important;
-    font-size: var(--text-xs) !important;
-    padding: var(--space-xs) var(--space-sm) !important;
-    border-radius: var(--radius-sm) !important;
-    transition: all 0.2s ease !important;
-    letter-spacing: 0.025em;
-    white-space: nowrap;
-  }
-
-  .emergency-stop-btn:active {
-    background: #b91c1c !important;
-    opacity: 0.9;
-  }
-
-  .emergency-stop-btn:hover {
-    background: #b91c1c !important;
-    border-color: rgba(220, 38, 38, 0.6) !important;
-  }
-
-  .emergency-icon {
-    width: 14px;
-    height: 14px;
-  }
-
-  /* Main Dashboard Layout - Optimized for 10" Tablet (1280x800px) */
-  .dashboard-grid {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-card);
-    width: 100%;
-    max-width: 100%;
-    margin: 0 auto;
-    padding: 0 var(--space-md);
-  }
-
-  /* Top Controls Row - Tank Status, Pumps, Relays */
-  .top-controls-row {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-card);
-  }
-
-  .compact-card {
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border-subtle) !important;
-    height: 100%;
-  }
-
-  /* Reduce card padding for compact layout */
-  :global(.compact-card .card-header) {
-    padding: var(--space-md) !important;
-  }
-
-  :global(.compact-card .card-content) {
-    padding: var(--space-md) !important;
-  }
-
-  .section-title-compact {
-    font-size: var(--text-base) !important;
-    font-weight: 600 !important;
-    color: var(--text-primary) !important;
-  }
-
-  /* Nutrient Pumps - Compact Grid */
-  .nute-pumps-compact-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-sm);
-    margin-bottom: var(--space-md);
-  }
-
-  :global(.pump-btn-compact) {
-    padding: var(--space-sm) !important;
-    border-radius: var(--radius-md) !important;
-    border: 1px solid var(--border-subtle) !important;
-    transition: all 0.2s ease !important;
-    min-height: var(--touch-target) !important;
-    height: auto !important;
-    width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    touch-action: manipulation !important;
-  }
-
-  .pump-content-compact {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    width: 100%;
-  }
-
-  .pump-id-compact {
-    font-size: var(--text-xs);
-    font-weight: 500;
-    color: var(--text-muted);
-  }
-
-  .pump-name-compact {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--text-primary);
-    text-align: center;
-    line-height: 1.3;
-  }
-
-  .pump-status-compact {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-
-  .dosing-amount-selector {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    padding-top: var(--space-sm);
-    border-top: 1px solid var(--border-subtle);
-  }
-
-  /* Tablet-Optimized Slider - Larger touch targets */
-  .dosing-slider-tablet {
-    flex: 1;
-    height: 12px;
-    background: var(--bg-tertiary);
-    border-radius: var(--radius-md);
-    outline: none;
-    appearance: none;
-    cursor: pointer;
-    touch-action: none;
-  }
-
-  .dosing-slider-tablet::-webkit-slider-thumb {
-    appearance: none;
-    width: 32px;
-    height: 32px;
-    background: var(--accent-steel);
-    border: 3px solid var(--border-emphasis);
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: var(--shadow-md);
-    transition: all 0.2s ease;
-  }
-
-  .dosing-slider-tablet::-webkit-slider-thumb:hover {
-    background: var(--accent-blue-muted);
-    transform: scale(1.1);
-  }
-
-  .dosing-slider-tablet::-webkit-slider-thumb:active {
-    transform: scale(0.95);
-  }
-
-  .dosing-slider-tablet::-moz-range-thumb {
-    width: 32px;
-    height: 32px;
-    background: var(--accent-steel);
-    border: 3px solid var(--border-emphasis);
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: var(--shadow-md);
-    transition: all 0.2s ease;
-  }
-
-  .dosing-slider-tablet::-moz-range-thumb:hover {
-    background: var(--accent-blue-muted);
-    transform: scale(1.1);
-  }
-
-  .dosing-slider-tablet::-moz-range-thumb:active {
-    transform: scale(0.95);
-  }
-
-  /* Legacy compact slider (keep for backwards compatibility) */
-  .dosing-slider-compact {
-    flex: 1;
-    height: 4px;
-    background: var(--bg-tertiary);
-    border-radius: var(--radius-sm);
-    outline: none;
-    appearance: none;
-    cursor: pointer;
-  }
-
-  .dosing-slider-compact::-webkit-slider-thumb {
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    background: var(--accent-steel);
-    border: 2px solid var(--border-emphasis);
-    border-radius: 50%;
-    cursor: pointer;
-  }
-
-  .dosing-slider-compact::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    background: var(--accent-steel);
-    border: 2px solid var(--border-emphasis);
-    border-radius: 50%;
-    cursor: pointer;
-  }
-
-  .dosing-value-compact {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--text-primary);
-    min-width: 60px;
-    text-align: right;
-  }
-
-  /* Tank Operations Layout */
-  .tank-operations-layout {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-  }
-
-  .tank-operation-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
-    padding: var(--space-md);
-    transition: all 0.2s ease;
-  }
-
-  .tank-operation-card:hover {
-    border-color: var(--border-emphasis);
-  }
-
-  .tank-operation-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-md);
-  }
-
-  .tank-operation-label {
-    font-weight: 600;
-    font-size: var(--text-base);
-    color: var(--text-primary);
-  }
-
-  .tank-operation-buttons {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--space-sm);
-  }
-
-  /* Other Relays Grid */
-  .other-relays-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-sm);
-  }
-
-  /* Relay Operations Grid - Legacy */
-  .relay-operations-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-md);
-  }
-
-  .tank-operations {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-  }
-
-  :global(.relay-operation-btn) {
-    padding: var(--space-sm) !important;
-    border-radius: var(--radius-md) !important;
-    border: 1px solid var(--border-subtle) !important;
-    transition: all 0.2s ease !important;
-    min-height: var(--touch-target) !important;
-    height: auto !important;
-    width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    background: var(--bg-secondary) !important;
-    color: var(--text-muted) !important;
-    touch-action: manipulation !important;
-  }
-
-  :global(.relay-operation-btn:active) {
-    opacity: 0.85;
-  }
-
-  :global(.relay-operation-btn.relay-active) {
-    background: var(--accent-steel) !important;
-    border-color: var(--border-emphasis) !important;
-    color: var(--text-primary) !important;
-  }
-
-  :global(.relay-operation-btn.relay-inactive) {
-    background: var(--bg-secondary) !important;
-    border-color: var(--border-subtle) !important;
-    color: var(--text-muted) !important;
-  }
-
-  :global(.relay-operation-btn.relay-inactive:hover) {
-    background: var(--bg-tertiary) !important;
-    border-color: var(--border-emphasis) !important;
-  }
-
-  .relay-operation-content {
+  .control-btn {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
-    text-align: center;
-    width: 100%;
-  }
-
-  .operation-name {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: inherit;
-  }
-
-  .operation-relays {
-    font-size: var(--text-xs);
-    font-weight: 500;
-    opacity: 0.8;
-    color: inherit;
-  }
-
-  .operation-status {
-    font-size: var(--text-xs);
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    background: rgba(0, 0, 0, 0.2);
-    color: inherit;
-    letter-spacing: 0.05em;
-    margin-top: 2px;
-  }
-
-  /* Relay Compact Grid - Legacy */
-  .relay-compact-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-sm);
-  }
-
-  .tank-status-card {
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border-subtle) !important;
-  }
-
-  .section-title {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    color: var(--text-primary) !important;
-    font-size: var(--text-lg) !important;
-    font-weight: 600 !important;
-  }
-
-  .section-icon {
-    color: var(--accent-steel);
-  }
-
-  /* Compact Tank Grid */
-  .tank-compact-grid {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-  }
-
-  .tank-compact-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    padding: var(--space-md);
-    transition: all 0.2s ease;
-  }
-
-  .tank-compact-card:hover {
-    border-color: var(--border-emphasis);
-    background: var(--bg-card-hover);
-  }
-
-  .tank-compact-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-sm);
-  }
-
-  .tank-compact-info {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-  }
-
-  .tank-compact-label {
-    font-weight: 600;
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-  }
-
-  .tank-compact-volume {
-    font-weight: 600;
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-  }
-
-  :global(.tank-progress) {
-    margin-bottom: var(--space-md);
-    height: 6px !important;
-    background: var(--bg-tertiary) !important;
-  }
-
-  .tank-compact-controls {
-    display: flex;
-    gap: var(--space-sm);
-  }
-
-  :global(.tank-compact-btn) {
-    flex: 1;
-    font-size: var(--text-sm) !important;
-    padding: var(--space-sm) var(--space-md) !important;
-    border-radius: var(--radius-md) !important;
-    font-weight: 600 !important;
-    transition: all 0.2s ease !important;
-    background: var(--bg-tertiary) !important;
-    color: var(--text-primary) !important;
-    border: 1px solid var(--border-subtle) !important;
-    min-height: var(--touch-target-sm) !important;
-    touch-action: manipulation !important;
-  }
-
-  :global(.tank-compact-btn:hover) {
-    background: var(--accent-steel) !important;
-    border-color: var(--border-emphasis) !important;
-  }
-
-  :global(.tank-compact-btn:active) {
-    opacity: 0.85;
-  }
-
-  /* Relay Control */
-  .relay-control-card {
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border-subtle) !important;
-  }
-
-  .relay-tank-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: var(--space-md);
-  }
-
-  .relay-tank-section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-  }
-
-  .tank-relay-header {
-    font-weight: 600;
-    color: var(--text-secondary);
-    text-align: center;
-    font-size: var(--text-xs);
-    padding: var(--space-xs) var(--space-sm);
-    border-radius: var(--radius-sm);
-    margin-bottom: var(--space-xs);
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-subtle);
-  }
-
-  .tank-relays {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-  }
-
-  :global(.relay-btn) {
-    padding: var(--space-sm) !important;
-    border-radius: var(--radius-md) !important;
-    border: 1px solid var(--border-subtle) !important;
-    transition: all 0.2s ease !important;
-    min-height: var(--touch-target) !important;
-    height: auto !important;
-    width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    background: var(--bg-secondary) !important;
-    color: var(--text-muted) !important;
-    touch-action: manipulation !important;
-  }
-
-  :global(.relay-btn:active) {
-    opacity: 0.85;
-  }
-
-  /* Unified Relay Styling - No Color Coding */
-  :global(.relay-btn.relay-active) {
-    background: var(--accent-steel) !important;
-    border-color: var(--border-emphasis) !important;
-    color: var(--text-primary) !important;
-  }
-
-  :global(.relay-btn.relay-inactive) {
-    background: var(--bg-secondary) !important;
-    border-color: var(--border-subtle) !important;
-    color: var(--text-muted) !important;
-  }
-
-  :global(.relay-btn.relay-inactive:hover) {
-    background: var(--bg-tertiary) !important;
-    border-color: var(--border-emphasis) !important;
-  }
-
-  .relay-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-xs);
-    text-align: center;
-    width: 100%;
-    height: 100%;
-  }
-
-  .relay-id {
-    font-weight: 500;
-    font-size: var(--text-xs);
-    margin-bottom: 2px;
-    opacity: 0.8;
-  }
-
-  .relay-name {
-    font-size: var(--text-sm);
-    line-height: 1.3;
-    font-weight: 600;
-    margin-bottom: 2px;
-    color: inherit;
-  }
-
-  .relay-status {
-    font-size: var(--text-xs);
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: var(--radius-sm);
-    background: rgba(0, 0, 0, 0.2);
-    color: inherit;
-    letter-spacing: 0.05em;
-  }
-
-  /* Dosing Panel */
-  .dosing-panel {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .dosing-card {
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border-subtle) !important;
-    height: fit-content;
-  }
-
-  :global(.dosing-content) {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: var(--space-lg) !important;
-    min-height: 320px !important;
-    justify-content: space-between !important;
-    padding: var(--space-lg) !important;
-  }
-
-  .dosing-controls {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-lg);
-    align-items: center;
-    flex: 1;
-    justify-content: space-evenly;
-    height: 100%;
-  }
-
-  .amount-display {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-xs);
-  }
-
-  .amount-value {
-    font-size: 2rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .amount-unit {
-    font-size: 1rem;
-    font-weight: 500;
-    color: var(--text-muted);
-  }
-
-  .slider-container {
-    position: relative;
-    width: 100%;
-    margin: 0 0 var(--space-xl) 0;
-  }
-
-  .slider-markers {
-    position: absolute;
-    top: 10px;
-    left: 0;
-    right: 0;
-    height: 8px;
-    pointer-events: none;
-  }
-
-  .marker {
-    position: absolute;
-    transform: translateX(-50%);
-    height: 100%;
-  }
-
-  .marker-line {
-    width: 1px;
-    height: 6px;
-    background: var(--border-emphasis);
-    border-radius: 1px;
-  }
-
-  .marker-label {
-    position: absolute;
-    top: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    text-align: center;
-    white-space: nowrap;
-    font-weight: 500;
-  }
-
-  .dosing-slider {
-    width: calc(100% + 20px);
-    margin-left: -10px;
-    height: 6px;
-    background: var(--bg-tertiary);
-    border-radius: var(--radius-sm);
-    outline: none;
-    appearance: none;
+    gap: 0.25rem;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    min-width: 4rem;
     cursor: pointer;
+    transition: all 0.2s;
   }
 
-  .dosing-slider::-webkit-slider-thumb {
-    appearance: none;
-    width: 20px;
-    height: 20px;
-    background: var(--accent-steel);
-    border: 2px solid var(--border-emphasis);
-    border-radius: 50%;
+  .control-btn:hover {
+    background: #334155;
+  }
+
+  .control-btn.active {
+    background: #3b82f6;
+    border-color: #2563eb;
+    color: white;
+  }
+
+  .tank-theme-green .control-btn.active { background: #22c55e; border-color: #16a34a; }
+  .tank-theme-yellow .control-btn.active { background: #eab308; border-color: #ca8a04; color: #0f172a; }
+
+  .btn-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .btn-indicator {
+    width: 1.5rem;
+    height: 0.25rem;
+    border-radius: 9999px;
+    background: #334155;
+  }
+
+  .control-btn.active .btn-indicator {
+    background: rgba(255, 255, 255, 0.5);
+  }
+  
+  .tank-theme-yellow .control-btn.active .btn-indicator {
+    background: rgba(0, 0, 0, 0.3);
+  }
+
+  /* Monitor Items */
+  .monitor-item {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+  }
+
+  /* Pump Cards */
+  .pump-card {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     cursor: pointer;
+    transition: all 0.2s;
+    min-height: 5rem;
   }
 
-  .dosing-slider::-moz-range-thumb {
-    width: 20px;
-    height: 20px;
-    background: var(--accent-steel);
-    border: 2px solid var(--border-emphasis);
-    border-radius: 50%;
+  .pump-card:hover {
+    border-color: #475569;
+    background: #1e293b;
+  }
+
+  .pump-card.active {
+    border-color: #d97706;
+    background: rgba(217, 119, 6, 0.1);
+  }
+
+  /* Aux Relay Buttons */
+  .aux-relay-btn {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
     cursor: pointer;
+    transition: all 0.2s;
   }
 
-  .preset-controls {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
+  .aux-relay-btn:hover {
+    background: #1e293b;
   }
 
-  .preset-row {
-    display: flex;
-    gap: var(--space-sm);
-    justify-content: center;
+  .aux-relay-btn.active {
+    background: #1e3a8a;
+    border-color: #3b82f6;
+    color: #bfdbfe;
   }
 
-  .preset-btn {
-    background: var(--bg-tertiary) !important;
-    border: 1px solid var(--border-subtle) !important;
-    color: var(--text-secondary) !important;
-    font-size: var(--text-xs) !important;
-    font-weight: 500 !important;
-    padding: var(--space-sm) var(--space-md) !important;
-    transition: all 0.2s ease !important;
+  /* Custom Scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
   }
-
-  .preset-btn:active {
-    opacity: 0.85;
-  }
-
-  .preset-btn:hover {
-    background: var(--accent-steel) !important;
-    border-color: var(--border-emphasis) !important;
-    color: var(--text-primary) !important;
-  }
-
-  /* Pump Grid */
-  .pump-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-md);
-  }
-
-  :global(.pump-btn) {
-    padding: var(--space-sm) !important;
-    border-radius: var(--radius-sm) !important;
-    border: 1px solid var(--border-subtle) !important;
-    transition: all 0.2s ease !important;
-    min-height: 80px !important;
-    height: auto !important;
-  }
-
-  :global(.pump-btn:active) {
-    opacity: 0.85;
-  }
-
-  /* Unified Pump Styling - No Nutrient Color Coding */
-  :global(.pump-idle) {
-    background: var(--bg-secondary) !important;
-    border-color: var(--border-subtle) !important;
-    color: var(--text-primary) !important;
-  }
-
-  :global(.pump-idle:hover) {
-    background: var(--bg-tertiary) !important;
-    border-color: var(--border-emphasis) !important;
-  }
-
-  :global(.pump-active) {
-    background: var(--status-warning) !important;
-    border-color: var(--status-warning) !important;
-    color: var(--bg-primary) !important;
-  }
-
-  .pump-content {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-    width: 100%;
-    height: 100%;
-  }
-
-  .pump-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .pump-id {
-    font-weight: 500;
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-  }
-
-  .stop-btn {
-    background: var(--status-error) !important;
-    color: var(--text-button) !important;
-    border: none !important;
-    font-weight: 500 !important;
-    font-size: var(--text-xs) !important;
-    padding: var(--space-xs) var(--space-sm) !important;
-    transition: all 0.2s ease !important;
-  }
-
-  .stop-btn:active {
-    opacity: 0.85;
-  }
-
-  .pump-nutrient {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    text-align: center;
-    line-height: 1.2;
-    flex: 1;
-    color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .pump-progress {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-  }
-
-  .progress-bar {
-    height: 4px !important;
-    background: rgba(0, 0, 0, 0.3) !important;
-  }
-
-  .progress-text {
-    font-size: var(--text-xs);
-    text-align: center;
-    font-weight: 500;
-  }
-
-  .pump-amount {
-    font-size: var(--text-sm);
-    font-weight: 500;
-    color: var(--text-muted);
-    text-align: center;
-  }
-
-  /* Active Operations Alert */
-  .active-operations-alert {
-    background: rgba(217, 119, 6, 0.1) !important;
-    border: 1px solid var(--status-warning) !important;
-    border-radius: var(--radius-md) !important;
-  }
-
-  .alert-content {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-  }
-
-  .alert-title {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    font-weight: 600;
-    color: var(--status-warning);
-  }
-
-  .alert-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--space-sm);
-    background: var(--bg-secondary);
-    border-radius: var(--radius-sm);
-  }
-
-  .alert-stop-btn {
-    background: var(--status-error) !important;
-    color: var(--text-button) !important;
-    border: none !important;
-    font-weight: 500 !important;
-    transition: all 0.2s ease !important;
-  }
-
-  .alert-stop-btn:active {
-    opacity: 0.85;
-  }
-
-  /* Monitoring Panel - Reduced spacing for tablet */
-  .monitoring-panel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-card);
-  }
-
-  .monitoring-card {
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border-subtle) !important;
-  }
-
-  :global(.monitoring-card .card-header) {
-    padding: var(--space-md) !important;
-  }
-
-  :global(.monitoring-card .card-content) {
-    padding: var(--space-md) !important;
-  }
-
-  .flow-monitors {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-  }
-
-  .flow-meter {
-    padding: var(--space-md);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-subtle);
-    background: var(--bg-secondary);
-  }
-
-  .flow-active {
-    border-color: var(--accent-steel);
-  }
-
-  .flow-development {
-    border-color: var(--status-development);
-    opacity: 0.7;
-  }
-
-  .meter-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-sm);
-  }
-
-  .meter-name {
-    font-weight: 600;
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-  }
-
-  .meter-status {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    color: var(--status-development);
-    font-size: var(--text-xs);
-  }
-
-  .meter-readings {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-xs);
-  }
-
-  .flow-rate {
-    font-size: var(--text-lg);
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-
-  .total-flow {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-  }
-
-  .unit {
-    font-size: var(--text-sm);
-    font-weight: 400;
-    color: var(--text-muted);
+  
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #0f172a; 
   }
-
-  /* Sensor Grid - Horizontal layout for tablets */
-  .sensor-grid-horizontal {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-md);
-  }
-
-  .sensor-grid {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
-  }
-
-  .sensor-card {
-    padding: var(--space-md);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-subtle);
-    background: var(--bg-secondary);
-  }
-
-  .sensor-development {
-    border-color: var(--status-development);
-    opacity: 0.7;
-  }
-
-  .sensor-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--space-sm);
-  }
-
-  .sensor-name {
-    font-weight: 600;
-    color: var(--text-primary);
-    font-size: var(--text-sm);
-  }
-
-  .sensor-status {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    color: var(--status-development);
-    font-size: var(--text-xs);
-  }
-
-  /* Activity Log */
-  .log-card {
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border-subtle) !important;
-  }
-
-  :global(.log-card .card-header) {
-    padding: var(--space-md) !important;
-  }
-
-  :global(.log-card .card-content) {
-    padding: var(--space-md) !important;
-  }
-
-  .log-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 100%;
-  }
-
-  .clear-logs-btn {
-    background: var(--bg-secondary) !important;
-    border: 1px solid var(--border-subtle) !important;
-    color: var(--text-muted) !important;
-    font-size: var(--text-sm) !important;
-    min-height: var(--touch-target-sm) !important;
-    touch-action: manipulation !important;
-  }
-
-  .clear-logs-btn:hover {
-    background: var(--bg-tertiary) !important;
-    border-color: var(--border-emphasis) !important;
-  }
-
-  .log-container {
-    max-height: 220px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-  }
-
-  .log-entry {
-    padding: var(--space-sm) var(--space-md);
-    background: var(--bg-secondary);
-    border-radius: var(--radius-sm);
-    border-left: 2px solid var(--accent-steel);
-  }
-
-  .log-time {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    margin-bottom: var(--space-xs);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .log-message {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    line-height: 1.4;
-  }
-
-  .log-empty {
-    text-align: center;
-    color: var(--text-muted);
-    font-style: italic;
-    padding: var(--space-xl);
-  }
-
-  /* Status Badge Classes */
-  .status-connected {
-    background: var(--status-success) !important;
-    color: var(--text-button) !important;
-    font-size: var(--text-xs) !important;
-    font-weight: 500 !important;
-  }
-
-  .status-error {
-    background: var(--status-error) !important;
-    color: var(--text-button) !important;
-    font-size: var(--text-xs) !important;
-    font-weight: 500 !important;
-  }
-
-  .status-active {
-    background: var(--status-warning) !important;
-    color: var(--bg-primary) !important;
-    font-size: var(--text-xs) !important;
-    font-weight: 500 !important;
-  }
-
-  .status-idle {
-    background: var(--bg-tertiary) !important;
-    color: var(--text-muted) !important;
-    font-size: var(--text-xs) !important;
-    font-weight: 500 !important;
-  }
-
-  .status-filling {
-    background: var(--status-info) !important;
-    color: var(--text-button) !important;
-    font-size: var(--text-xs) !important;
-    font-weight: 500 !important;
-  }
-
-  .status-mixing {
-    background: var(--status-warning) !important;
-    color: var(--bg-primary) !important;
-    font-size: var(--text-xs) !important;
-    font-weight: 500 !important;
-  }
-
-  .status-sending {
-    background: var(--status-success) !important;
-    color: var(--text-button) !important;
-    font-size: var(--text-xs) !important;
-    font-weight: 500 !important;
-  }
-
-  .status-ready {
-    background: var(--accent-steel) !important;
-    color: var(--text-button) !important;
-    font-size: var(--text-xs) !important;
-    font-weight: 500 !important;
-  }
-
-  .status-development {
-    background: var(--status-development) !important;
-    color: var(--bg-primary) !important;
-    font-size: var(--text-xs) !important;
-    font-weight: 500 !important;
-  }
-
-  .status-operational {
-    background: var(--status-success) !important;
-    color: var(--text-button) !important;
-    font-size: var(--text-xs) !important;
-    font-weight: 500 !important;
-  }
-
-  /* Responsive Design */
-  @media (max-width: 1400px) {
-    .dashboard-grid {
-      grid-template-columns: 1fr 340px 280px;
-    }
-  }
-
-  @media (max-width: 1200px) {
-    .dashboard-grid {
-      grid-template-columns: 1fr 320px;
-      gap: var(--space-lg);
-    }
-
-    .monitoring-panel {
-      grid-column: 1 / -1;
-      grid-row: 3;
-    }
-
-    .relay-tank-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-  }
-
-  @media (max-width: 768px) {
-    .dashboard-grid {
-      grid-template-columns: 1fr;
-      gap: var(--space-lg);
-      padding: 0 var(--space-md);
-    }
-
-    .dashboard-header {
-      padding: var(--space-md);
-    }
-
-    .status-bar {
-      flex-direction: column;
-      gap: var(--space-md);
-      text-align: center;
-    }
-
-    .tank-overview {
-      grid-template-columns: 1fr;
-      gap: var(--space-md);
-    }
-
-    .relay-tank-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .pump-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .tank-controls {
-      flex-direction: column;
-      gap: var(--space-sm);
-    }
-
-    .preset-controls {
-      flex-direction: column;
-      width: 100%;
-    }
-
-    .emergency-stop-btn {
-      width: 100% !important;
-      justify-content: center !important;
-    }
-  }
-
-  /* Touch Optimizations */
-  @media (pointer: coarse) {
-    .tank-action-btn,
-    .relay-btn,
-    .pump-btn,
-    .preset-btn {
-      min-height: 44px !important;
-      touch-action: manipulation !important;
-    }
-
-    .dosing-slider {
-      height: 10px !important;
-    }
-
-    .dosing-slider::-webkit-slider-thumb {
-      width: 28px !important;
-      height: 28px !important;
-    }
-
-    .dosing-slider::-moz-range-thumb {
-      width: 28px !important;
-      height: 28px !important;
-    }
-  }
-
-  /* Accessibility - High Contrast Mode */
-  @media (prefers-contrast: high) {
-    :root {
-      --bg-primary: #000000;
-      --bg-secondary: #1a1a1a;
-      --bg-tertiary: #2d2d2d;
-      --border-subtle: #4a5568;
-      --border-emphasis: #64748b;
-      --text-primary: #ffffff;
-      --text-secondary: #f8fafc;
-      --text-muted: #d1d5db;
-    }
+  
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #334155; 
+    border-radius: 2px;
   }
 
-  /* Accessibility - Reduced Motion */
-  @media (prefers-reduced-motion: reduce) {
-    * {
-      animation: none !important;
-      transition-duration: 0.01ms !important;
-    }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #475569; 
   }
 </style>
