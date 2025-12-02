@@ -31,7 +31,9 @@
       "Bash(i2cdetect:*)",
       "Bash(i2cget:*)",
       "Bash(/home/pi/batch-dashboard/.venv/bin/python:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

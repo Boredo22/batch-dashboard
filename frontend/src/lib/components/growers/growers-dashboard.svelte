@@ -478,7 +478,7 @@
       <div class="status-label">RELAYS</div>
       <div class="relay-dots">
         {#each relays as relay}
-          <div class="relay-dot {relay.status === 'on' ? 'bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.6)]' : 'bg-slate-700'}"
+          <div class="relay-dot {relay.status === 'on' ? 'bg-purple-500 shadow-[0_0_12px_rgba(139,92,246,0.7)]' : 'bg-slate-800'}"
                title="{relay.name}: {relay.status.toUpperCase()}">
           </div>
         {/each}
@@ -637,26 +637,29 @@
         {#if expandedSections.pumps}
         <CardContent>
           <!-- Dosing Control -->
-          <div class="mb-6 p-4 bg-slate-900/50 rounded-lg border border-slate-800">
+          <div class="mb-6 p-5 bg-gradient-to-br from-slate-900/60 to-slate-900/40 rounded-xl border border-purple-500/20 shadow-lg">
             <div class="flex justify-between items-end mb-4">
-              <span class="text-sm font-medium text-slate-400">Dosing Amount</span>
-              <div class="text-2xl font-bold text-blue-400">{dosingAmount}<span class="text-sm text-slate-500 ml-1">ml</span></div>
+              <span class="text-xs font-bold text-purple-400 uppercase tracking-wider">Dosing Amount</span>
+              <div class="text-3xl font-bold text-purple-400 font-mono tracking-tight">
+                {dosingAmount}<span class="text-sm text-slate-500 ml-1 font-sans">ml</span>
+              </div>
             </div>
-            
+
             <input
               type="range"
-              class="w-full h-3 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 mb-4"
+              class="dosing-slider w-full h-2 mb-5"
               min="1"
               max="2000"
               value={dosingAmount}
               step="1"
               oninput={handleSliderInput}
             />
-            
+
             <div class="flex gap-2 justify-between">
               {#each [25, 50, 100, 250, 500] as amount}
-                <button 
-                  class="px-2 py-1 text-xs font-medium rounded bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-colors"
+                <button
+                  class="preset-btn px-3 py-2 text-xs font-bold rounded-lg transition-all"
+                  class:active={dosingAmount === amount}
                   onclick={() => setDosingPreset(amount)}
                 >
                   {amount}ml
@@ -673,21 +676,21 @@
                 onclick={() => dispensePump(pump.id, dosingAmount)}
                 disabled={pump.status === 'dispensing'}
               >
-                <div class="flex justify-between items-start w-full mb-1">
-                  <span class="text-xs font-mono text-slate-500">P{pump.id}</span>
+                <div class="flex justify-between items-start w-full mb-2">
+                  <span class="text-xs font-mono font-bold text-purple-400/60">P{pump.id}</span>
                   {#if pump.status === 'dispensing'}
-                    <span class="text-xs font-bold text-amber-400 animate-pulse">RUNNING</span>
+                    <span class="pump-status-badge">ACTIVE</span>
                   {/if}
                 </div>
-                <div class="text-sm font-semibold text-slate-200 text-center leading-tight mb-2">
+                <div class="text-base font-bold text-slate-100 text-center leading-snug mb-2">
                   {pump.name}
                 </div>
                 {#if pump.status === 'dispensing'}
-                  <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div class="bg-amber-500 h-full transition-all duration-500" style="width: {pump.progress}%"></div>
+                  <div class="w-full bg-slate-900/80 h-2 rounded-full overflow-hidden border border-green-500/30">
+                    <div class="pump-progress-bar h-full transition-all duration-500" style="width: {pump.progress}%"></div>
                   </div>
                 {:else}
-                  <div class="text-xs text-slate-500 text-center">Tap to dose</div>
+                  <div class="text-xs text-slate-500 text-center font-medium">Tap to dispense</div>
                 {/if}
               </button>
             {/each}
@@ -815,11 +818,13 @@
                   class="aux-relay-btn {relay.status === 'on' ? 'active' : ''}"
                   onclick={() => toggleRelay(relay.id)}
                 >
-                  <div class="flex flex-col items-center gap-1">
-                    <span class="text-sm font-medium">{relay.name}</span>
-                    <span class="text-[10px] uppercase tracking-wider {relay.status === 'on' ? 'text-blue-200' : 'text-slate-500'}">
-                      {relay.status === 'on' ? 'ACTIVE' : 'OFF'}
-                    </span>
+                  <div class="flex flex-col items-center gap-2 relative z-10">
+                    <span class="text-sm font-bold">{relay.name}</span>
+                    <div class="relay-status-indicator {relay.status === 'on' ? 'active' : ''}">
+                      <span class="text-[10px] uppercase tracking-wider font-extrabold">
+                        {relay.status === 'on' ? 'ACTIVE' : 'STANDBY'}
+                      </span>
+                    </div>
                   </div>
                 </button>
               {/if}
@@ -862,13 +867,13 @@
         <CardContent>
           <div class="h-32 overflow-y-auto pr-2 space-y-2 custom-scrollbar">
             {#each logs as log}
-              <div class="text-xs p-2 rounded bg-slate-900/50 border-l-2 border-slate-600">
-                <span class="text-slate-500 mr-2 font-mono">{log.time}</span>
-                <span class="text-slate-300">{log.message}</span>
+              <div class="log-entry">
+                <span class="log-timestamp">{log.time}</span>
+                <span class="log-message">{log.message}</span>
               </div>
             {/each}
             {#if logs.length === 0}
-              <div class="text-center text-xs text-slate-600 py-4 italic">No recent activity</div>
+              <div class="text-center text-xs text-slate-600 py-8 italic">No recent activity</div>
             {/if}
           </div>
         </CardContent>
@@ -880,7 +885,7 @@
 
 <style>
   :global(body) {
-    background-color: #0f172a;
+    background-color: #0a0f1e;
     color: #e2e8f0;
   }
 
@@ -888,91 +893,103 @@
     width: 100%;
     max-width: 100%;
     margin: 0 auto;
-    padding: 0.5rem;
+    padding: 1rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.25rem;
     box-sizing: border-box;
+    min-height: 100vh;
   }
 
-  /* Status Bar */
+  /* Status Bar - Enhanced with gradient and better spacing */
   .status-bar {
     width: 100%;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 0.5rem;
-    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, #1a1f35 0%, #151929 100%);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 0.75rem;
+    padding: 1rem 1.5rem;
     display: flex;
     align-items: center;
-    gap: 1rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    gap: 1.5rem;
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(139, 92, 246, 0.1) inset;
     box-sizing: border-box;
+    backdrop-filter: blur(10px);
   }
 
   .status-group {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.375rem;
   }
 
   .status-label {
-    font-size: 0.65rem;
-    font-weight: 700;
-    color: #64748b;
-    letter-spacing: 0.05em;
+    font-size: 0.625rem;
+    font-weight: 800;
+    color: #8b5cf6;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 
   .status-dot {
-    width: 0.5rem;
-    height: 0.5rem;
+    width: 0.625rem;
+    height: 0.625rem;
     border-radius: 9999px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .status-divider {
     width: 1px;
-    height: 2rem;
-    background: #334155;
+    height: 2.5rem;
+    background: linear-gradient(to bottom, transparent, rgba(139, 92, 246, 0.3), transparent);
   }
 
   .relay-dots {
     display: flex;
-    gap: 0.25rem;
+    gap: 0.375rem;
     flex-wrap: wrap;
-    max-width: 120px;
+    max-width: 140px;
   }
 
   .relay-dot {
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 0.125rem;
-    transition: all 0.2s;
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 0.25rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid transparent;
   }
 
   /* Main Grid */
   .main-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 1rem;
+    gap: 1.25rem;
     width: 100%;
   }
 
   @media (min-width: 768px) {
     .main-grid {
-      grid-template-columns: 1.2fr 1fr;
+      grid-template-columns: 1.3fr 1fr;
     }
   }
 
   .grid-column {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 1.25rem;
   }
 
-  /* Cards */
+  /* Cards - Enhanced with better shadows and borders */
   :global(.dashboard-card) {
-    background: #1e293b !important;
-    border: 1px solid #334155 !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+    background: linear-gradient(135deg, #1a1f35 0%, #151929 100%) !important;
+    border: 1px solid rgba(139, 92, 246, 0.15) !important;
+    box-shadow:
+      0 8px 24px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(139, 92, 246, 0.08) inset !important;
+    border-radius: 0.75rem !important;
+    backdrop-filter: blur(10px) !important;
   }
 
   .section-toggle-btn {
@@ -985,188 +1002,593 @@
     color: #f1f5f9;
     cursor: pointer;
     padding: 0;
+    transition: all 0.2s;
+  }
+
+  .section-toggle-btn:hover .section-title-text {
+    color: #a78bfa;
   }
 
   .section-title-text {
-    font-size: 1rem;
-    font-weight: 600;
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    transition: color 0.2s;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 
   .chevron-icon {
-    color: #64748b;
-    transition: transform 0.2s;
+    color: #6b7280;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .chevron-expanded {
     transform: rotate(180deg);
+    color: #8b5cf6;
   }
 
-  /* Tank Rows */
+  /* Tank Rows - More prominent with better visual hierarchy */
   .tank-row {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 0.5rem;
-    padding: 0.75rem;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(10, 15, 30, 0.9) 100%);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 0.75rem;
+    padding: 1.25rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 1rem;
+    gap: 1.25rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .tank-row:hover {
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    transform: translateY(-2px);
   }
 
   .tank-info {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 1rem;
   }
 
   .tank-icon {
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 0.5rem;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 0.75rem;
     display: flex;
     align-items: center;
     justify-content: center;
     background: #1e293b;
     color: #94a3b8;
+    font-size: 1.5rem;
+    font-weight: 800;
+    border: 2px solid;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3) inset;
   }
 
-  .tank-theme-blue .tank-icon { background: rgba(59, 130, 246, 0.1); color: #60a5fa; }
-  .tank-theme-green .tank-icon { background: rgba(34, 197, 94, 0.1); color: #4ade80; }
-  .tank-theme-yellow .tank-icon { background: rgba(234, 179, 8, 0.1); color: #facc15; }
+  .tank-theme-blue .tank-icon {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(168, 85, 247, 0.1));
+    color: #a78bfa;
+    border-color: rgba(139, 92, 246, 0.3);
+  }
+  .tank-theme-green .tank-icon {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(52, 211, 153, 0.1));
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.3);
+  }
+  .tank-theme-yellow .tank-icon {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(16, 185, 129, 0.1));
+    color: #10b981;
+    border-color: rgba(16, 185, 129, 0.3);
+  }
 
   .tank-label {
-    font-weight: 600;
-    font-size: 0.875rem;
+    font-weight: 700;
+    font-size: 1.125rem;
     color: #f1f5f9;
+    letter-spacing: -0.025em;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 
   .tank-status-text {
     font-size: 0.75rem;
-    color: #64748b;
-    font-weight: 500;
+    color: #94a3b8;
+    font-weight: 600;
     text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.125rem;
   }
 
   .tank-controls {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.75rem;
   }
 
   .control-btn {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.25rem;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 0.375rem;
-    padding: 0.5rem 0.75rem;
-    min-width: 4rem;
+    gap: 0.375rem;
+    background: rgba(30, 41, 59, 0.6);
+    border: 1.5px solid rgba(51, 65, 85, 0.8);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    min-width: 4.5rem;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  .control-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0), rgba(139, 92, 246, 0.1));
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .control-btn:hover::before {
+    opacity: 1;
   }
 
   .control-btn:hover {
-    background: #334155;
+    border-color: rgba(139, 92, 246, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
   }
 
   .control-btn.active {
-    background: #3b82f6;
-    border-color: #2563eb;
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    border-color: #a78bfa;
     color: white;
+    box-shadow:
+      0 0 20px rgba(139, 92, 246, 0.4),
+      0 4px 12px rgba(0, 0, 0, 0.3);
   }
 
-  .tank-theme-green .control-btn.active { background: #22c55e; border-color: #16a34a; }
-  .tank-theme-yellow .control-btn.active { background: #eab308; border-color: #ca8a04; color: #0f172a; }
+  .tank-theme-green .control-btn.active {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-color: #34d399;
+    box-shadow:
+      0 0 20px rgba(16, 185, 129, 0.4),
+      0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+  .tank-theme-yellow .control-btn.active {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border-color: #34d399;
+    box-shadow:
+      0 0 20px rgba(16, 185, 129, 0.4),
+      0 4px 12px rgba(0, 0, 0, 0.3);
+  }
 
   .btn-label {
-    font-size: 0.75rem;
-    font-weight: 600;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    z-index: 1;
   }
 
   .btn-indicator {
-    width: 1.5rem;
+    width: 2rem;
     height: 0.25rem;
     border-radius: 9999px;
-    background: #334155;
+    background: rgba(51, 65, 85, 0.8);
+    transition: all 0.3s;
+    z-index: 1;
   }
 
   .control-btn.active .btn-indicator {
-    background: rgba(255, 255, 255, 0.5);
-  }
-  
-  .tank-theme-yellow .control-btn.active .btn-indicator {
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(255, 255, 255, 0.6);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
   }
 
-  /* Monitor Items */
+  /* Monitor Items - Enhanced cards */
   .monitor-item {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 0.5rem;
-    padding: 0.75rem;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(10, 15, 30, 0.9) 100%);
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  /* Pump Cards */
+  .monitor-item:hover {
+    border-color: rgba(139, 92, 246, 0.3);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.1);
+  }
+
+  /* Pump Cards - More sophisticated design */
   .pump-card {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 0.5rem;
-    padding: 0.75rem;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(10, 15, 30, 0.9) 100%);
+    border: 1.5px solid rgba(139, 92, 246, 0.2);
+    border-radius: 0.75rem;
+    padding: 1rem;
     display: flex;
     flex-direction: column;
     align-items: center;
     cursor: pointer;
-    transition: all 0.2s;
-    min-height: 5rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    min-height: 5.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .pump-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0), rgba(139, 92, 246, 0.1));
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .pump-card:hover::before {
+    opacity: 1;
   }
 
   .pump-card:hover {
-    border-color: #475569;
-    background: #1e293b;
+    border-color: rgba(139, 92, 246, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(139, 92, 246, 0.15);
   }
 
   .pump-card.active {
-    border-color: #d97706;
-    background: rgba(217, 119, 6, 0.1);
+    border-color: #10b981;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.1));
+    box-shadow:
+      0 0 24px rgba(16, 185, 129, 0.3),
+      0 4px 12px rgba(0, 0, 0, 0.3);
   }
 
-  /* Aux Relay Buttons */
+  .pump-card.active::before {
+    opacity: 1;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.05));
+  }
+
+  /* Aux Relay Buttons - Enhanced */
   .aux-relay-btn {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 0.5rem;
-    padding: 0.75rem;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(10, 15, 30, 0.9) 100%);
+    border: 1.5px solid rgba(139, 92, 246, 0.2);
+    border-radius: 0.75rem;
+    padding: 1rem;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .aux-relay-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0), rgba(139, 92, 246, 0.1));
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .aux-relay-btn:hover::before {
+    opacity: 1;
   }
 
   .aux-relay-btn:hover {
-    background: #1e293b;
+    border-color: rgba(139, 92, 246, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(139, 92, 246, 0.15);
   }
 
   .aux-relay-btn.active {
-    background: #1e3a8a;
-    border-color: #3b82f6;
-    color: #bfdbfe;
+    background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+    border-color: #a78bfa;
+    color: white;
+    box-shadow:
+      0 0 24px rgba(139, 92, 246, 0.4),
+      0 4px 12px rgba(0, 0, 0, 0.3);
   }
 
-  /* Custom Scrollbar */
+  .aux-relay-btn.active::before {
+    opacity: 0;
+  }
+
+  /* Custom Scrollbar - Enhanced */
   .custom-scrollbar::-webkit-scrollbar {
-    width: 4px;
+    width: 6px;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar-track {
-    background: #0f172a; 
+    background: rgba(15, 23, 42, 0.5);
+    border-radius: 3px;
   }
-  
+
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #334155; 
-    border-radius: 2px;
+    background: linear-gradient(to bottom, #8b5cf6, #7c3aed);
+    border-radius: 3px;
+    transition: background 0.3s;
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #475569; 
+    background: linear-gradient(to bottom, #a78bfa, #8b5cf6);
+  }
+
+  /* Badge styling overrides */
+  :global(.section-count-badge) {
+    background: rgba(139, 92, 246, 0.15) !important;
+    color: #a78bfa !important;
+    border: 1px solid rgba(139, 92, 246, 0.3) !important;
+    font-weight: 700 !important;
+    font-size: 0.75rem !important;
+  }
+
+  /* Emergency button enhancement */
+  :global(.emergency-btn) {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.3) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.05em !important;
+  }
+
+  :global(.emergency-btn:hover) {
+    box-shadow: 0 0 30px rgba(239, 68, 68, 0.5) !important;
+    transform: scale(1.05) !important;
+  }
+
+  /* Animation for active states */
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+    }
+    50% {
+      box-shadow: 0 0 30px rgba(16, 185, 129, 0.5);
+    }
+  }
+
+  .pump-card.active {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  /* Dosing Slider - Custom styled range input */
+  .dosing-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    background: linear-gradient(to right, rgba(139, 92, 246, 0.3), rgba(139, 92, 246, 0.1));
+    border-radius: 9999px;
+    outline: none;
+    cursor: pointer;
+    border: 1px solid rgba(139, 92, 246, 0.2);
+  }
+
+  .dosing-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow:
+      0 0 0 3px rgba(139, 92, 246, 0.2),
+      0 4px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .dosing-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow:
+      0 0 0 5px rgba(139, 92, 246, 0.3),
+      0 6px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .dosing-slider::-webkit-slider-thumb:active {
+    transform: scale(1.05);
+  }
+
+  .dosing-slider::-moz-range-thumb {
+    width: 1.25rem;
+    height: 1.25rem;
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow:
+      0 0 0 3px rgba(139, 92, 246, 0.2),
+      0 4px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .dosing-slider::-moz-range-thumb:hover {
+    transform: scale(1.15);
+    box-shadow:
+      0 0 0 5px rgba(139, 92, 246, 0.3),
+      0 6px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Preset Buttons */
+  .preset-btn {
+    background: rgba(30, 41, 59, 0.6);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .preset-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(139, 92, 246, 0.05));
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .preset-btn:hover {
+    border-color: rgba(139, 92, 246, 0.4);
+    color: #e2e8f0;
+    transform: translateY(-1px);
+  }
+
+  .preset-btn:hover::before {
+    opacity: 1;
+  }
+
+  .preset-btn.active {
+    background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+    border-color: #a78bfa;
+    color: white;
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.4);
+  }
+
+  .preset-btn.active::before {
+    opacity: 0;
+  }
+
+  /* Pump Status Badge */
+  .pump-status-badge {
+    font-size: 0.625rem;
+    font-weight: 800;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    letter-spacing: 0.05em;
+    animation: pulse-badge 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse-badge {
+    0%, 100% {
+      opacity: 1;
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+    }
+    50% {
+      opacity: 0.8;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.5);
+    }
+  }
+
+  /* Pump Progress Bar */
+  .pump-progress-bar {
+    background: linear-gradient(90deg, #10b981, #34d399);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.5);
+    animation: shimmer 2s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.85;
+    }
+  }
+
+  /* Relay Status Indicator */
+  .relay-status-indicator {
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.375rem;
+    background: rgba(71, 85, 105, 0.4);
+    border: 1px solid rgba(100, 116, 139, 0.3);
+    color: #94a3b8;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .relay-status-indicator.active {
+    background: rgba(168, 85, 247, 0.2);
+    border-color: rgba(168, 85, 247, 0.4);
+    color: #c4b5fd;
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
+  }
+
+  /* Log Entries */
+  .log-entry {
+    display: flex;
+    gap: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.6), rgba(10, 15, 30, 0.7));
+    border-left: 2px solid rgba(139, 92, 246, 0.3);
+    border-radius: 0.375rem;
+    transition: all 0.2s;
+    font-size: 0.75rem;
+  }
+
+  .log-entry:hover {
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(10, 15, 30, 0.9));
+    border-left-color: rgba(139, 92, 246, 0.5);
+    transform: translateX(2px);
+  }
+
+  .log-timestamp {
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    color: #8b5cf6;
+    min-width: 4.5rem;
+    flex-shrink: 0;
+  }
+
+  .log-message {
+    color: #cbd5e1;
+    line-height: 1.4;
+    font-weight: 500;
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 767px) {
+    .dashboard-container {
+      padding: 0.75rem;
+      gap: 1rem;
+    }
+
+    .status-bar {
+      flex-wrap: wrap;
+      gap: 1rem;
+      padding: 1rem;
+    }
+
+    .tank-row {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 1rem;
+    }
+
+    .tank-info {
+      justify-content: center;
+    }
+
+    .tank-controls {
+      width: 100%;
+      justify-content: space-evenly;
+    }
+
+    .control-btn {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .section-title-text {
+      font-size: 1rem;
+    }
+
+    .tank-icon {
+      width: 3rem;
+      height: 3rem;
+      font-size: 1.25rem;
+    }
+
+    .tank-label {
+      font-size: 1rem;
+    }
+
+    .pump-card {
+      min-height: 5rem;
+      padding: 0.75rem;
+    }
   }
 </style>

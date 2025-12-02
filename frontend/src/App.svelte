@@ -6,6 +6,7 @@
   import Settings from './Settings.svelte';
   import HeadGrower from './HeadGrower.svelte';
   import Nutrients from './Nutrients.svelte';
+  import FlowMeters from './FlowMeters.svelte';
 
   let currentPage = $state('headgrower');
   let systemStatus = $state('disconnected');
@@ -62,6 +63,12 @@
           subtitle: 'Configuration and preferences',
           breadcrumbs: [{ title: 'Settings' }]
         };
+      case 'flowmeters':
+        return {
+          title: 'Flow Meter Diagnostics',
+          subtitle: 'Real-time GPIO monitoring and pulse detection troubleshooting',
+          breadcrumbs: [{ title: 'Diagnostics', href: '#' }, { title: 'Flow Meters' }]
+        };
       default:
         return {
           title: 'Nutrient Mixing System',
@@ -98,6 +105,8 @@
         <Dashboard />
       {:else if currentPage === 'stage2'}
         <Stage2Testing />
+      {:else if currentPage === 'flowmeters'}
+        <FlowMeters />
       {:else if currentPage === 'settings'}
         <Settings />
       {/if}

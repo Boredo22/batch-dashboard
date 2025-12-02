@@ -8,6 +8,46 @@
   } = $props();
 
   const sidebar = getContext('sidebar');
+
+  let hoverTimeout = $state(null);
+
+  function handleMouseEnter() {
+    if (sidebar.isMobile) return;
+
+    // Clear any existing timeout
+    if (hoverTimeout) {
+      clearTimeout(hoverTimeout);
+      hoverTimeout = null;
+    }
+
+    // Expand immediately on hover
+    if (!sidebar.isOpen) {
+      sidebar.openSidebar();
+    }
+  }
+
+  function handleMouseLeave() {
+    if (sidebar.isMobile) return;
+
+    // Collapse after a short delay when mouse leaves
+    hoverTimeout = setTimeout(() => {
+      sidebar.closeSidebar();
+      hoverTimeout = null;
+    }, 300);
+  }
+
+  function handleClick() {
+    if (sidebar.isMobile) return;
+
+    // Clear any pending collapse timeout
+    if (hoverTimeout) {
+      clearTimeout(hoverTimeout);
+      hoverTimeout = null;
+    }
+
+    // Toggle sidebar on click
+    sidebar.toggleSidebar();
+  }
 </script>
 
 <aside
@@ -19,6 +59,9 @@
   data-variant={sidebar.variant}
   data-collapsible={sidebar.collapsible}
   data-state={sidebar.isOpen ? 'expanded' : 'collapsed'}
+  onmouseenter={handleMouseEnter}
+  onmouseleave={handleMouseLeave}
+  onclick={handleClick}
   {...restProps}
 >
   {@render children?.()}
@@ -34,11 +77,17 @@
     border-right: 1px solid var(--sidebar-border);
     background: var(--sidebar-background);
     color: var(--sidebar-foreground);
-    transition: width 0.2s ease, transform 0.2s ease;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s ease;
+    cursor: pointer;
+    z-index: 50;
   }
 
   .sidebar.collapsed {
     width: var(--sidebar-width-icon);
+  }
+
+  .sidebar:not(.mobile):hover {
+    box-shadow: 4px 0 24px rgba(139, 92, 246, 0.15);
   }
 
   .sidebar.mobile {

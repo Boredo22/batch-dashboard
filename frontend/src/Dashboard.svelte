@@ -1,5 +1,8 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { Card, CardContent, CardHeader } from '$lib/components/ui/card';
+  import { Badge } from '$lib/components/ui/badge';
+  import { Button } from '$lib/components/ui/button';
   import RelayControlCard from '$lib/components/hardware/relay-control-card.svelte';
   import PumpControlCard from '$lib/components/hardware/pump-control-card.svelte';
   import FlowMeterCard from '$lib/components/hardware/flow-meter-card.svelte';
@@ -52,7 +55,19 @@
   let flowGallons = $state(1);
 
   // Progress tracking for log messages
-  let lastProgressReported = $state(new Map()); // pump_id -> last_percentage
+  let lastProgressReported = $state(new Map());
+
+  // Collapsible section states
+  let expandedSections = $state({
+    relays: true,
+    pumps: true,
+    flow: true,
+    ecph: true
+  });
+
+  // Derived values
+  let activeRelayCount = $derived(relays.filter(r => r.status === 'on').length);
+  let activePumpCount = $derived(pumps.filter(p => p.status === 'dispensing').length);
 
   let statusInterval;
 
@@ -62,14 +77,11 @@
       const response = await fetch('/api/hardware/status');
       if (response.ok) {
         const data = await response.json();
-        // Merge API data with defaults, keeping defaults if API doesn't provide
         if (data.relays && data.relays.length > 0) {
-          // Update relays data, converting state to status for consistency
           relays = data.relays.map(relay => ({
             ...relay,
             status: relay.state ? 'on' : 'off'
           }));
-          console.log('Loaded relays:', relays);
         }
         if (data.pumps && data.pumps.length > 0) {
           pumps = data.pumps.map(pump => ({
@@ -92,7 +104,6 @@
       console.error('Error fetching hardware data:', error);
       systemStatus = 'Disconnected';
       errorMessage = error.message;
-      // Keep default hardware data visible even when API fails
     }
   }
 
@@ -105,14 +116,12 @@
         phValue = data.ph_value || 0;
         ecPhMonitoring = data.ec_ph_monitoring || false;
 
-        // Update pump progress information from detailed status
         if (data.pumps) {
           pumps = pumps.map(pump => {
             const statusInfo = data.pumps[pump.id];
             if (statusInfo) {
-              // Add progress log message for dispensing pumps (every 10% progress)
               if (statusInfo.is_dispensing && statusInfo.current_volume > 0 && statusInfo.target_volume > 0) {
-                const currentPercent = Math.floor((statusInfo.current_volume / statusInfo.target_volume) * 100 / 10) * 10; // Round to nearest 10%
+                const currentPercent = Math.floor((statusInfo.current_volume / statusInfo.target_volume) * 100 / 10) * 10;
                 const lastPercent = lastProgressReported.get(pump.id) || -10;
 
                 if (currentPercent > lastPercent && currentPercent >= 10) {
@@ -122,11 +131,10 @@
                 }
               }
 
-              // Check if pump just finished dispensing
               if (!statusInfo.is_dispensing && pump.is_dispensing) {
                 const completionMsg = `Pump ${pump.id} (${pump.name}) completed dispensing: ${statusInfo.current_volume?.toFixed(1) || 0}ml dispensed`;
                 addLog(completionMsg);
-                lastProgressReported.delete(pump.id); // Clean up tracking
+                lastProgressReported.delete(pump.id);
               }
 
               return {
@@ -148,7 +156,6 @@
   }
 
   async function controlRelay(relayId, action) {
-    // Handle ALL OFF special case
     if (relayId === 0 && action === 'off') {
       await allRelaysOff();
       return;
@@ -167,7 +174,6 @@
         addLog(userMessage);
         addLog(rawMessage);
 
-        // Update local state for responsive UI
         relays = relays.map(relay =>
           relay.id === relayId ? { ...relay, status: action } : relay
         );
@@ -196,7 +202,6 @@
         addLog(userMessage);
         addLog(rawMessage);
 
-        // Update local state to turn all relays off
         relays = relays.map(relay => ({ ...relay, status: 'off' }));
       } else {
         const error = await response.json();
@@ -230,7 +235,6 @@
         addLog(userMessage);
         addLog(rawMessage);
 
-        // Reset progress tracking for this pump
         lastProgressReported.set(parseInt(pumpId), -10);
       } else {
         const error = await response.json();
@@ -380,19 +384,22 @@
 
   function addLog(message) {
     const timestamp = new Date().toLocaleTimeString();
-    logs = [{ time: timestamp, message }, ...logs].slice(0, 100); // Keep last 100 logs
+    logs = [{ time: timestamp, message }, ...logs].slice(0, 100);
   }
 
   function clearLogs() {
     logs = [];
   }
 
+  function toggleSection(section) {
+    expandedSections[section] = !expandedSections[section];
+  }
+
   onMount(async () => {
-    addLog('System starting...');
+    addLog('Hardware testing page started');
     await fetchHardwareData();
     await fetchSystemStatus();
 
-    // Set up polling for system status
     statusInterval = setInterval(async () => {
       await fetchSystemStatus();
     }, 2000);
@@ -408,213 +415,485 @@
   });
 </script>
 
-<div class="dashboard">
-  <!-- Status Banner -->
-  <div class="status-banner">
-    <div class="status-left">
-      <div class="connection-status">
-        <div class="status-indicator status-{systemStatus.toLowerCase()}"></div>
-        <span class="status-text">{systemStatus}</span>
+<div class="dashboard-container">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="header-content">
+      <div class="header-text">
+        <h1 class="page-title">Hardware Testing</h1>
+        <p class="page-subtitle">Stage 1: Individual Component Testing</p>
       </div>
-      {#if ecPhMonitoring}
-        <div class="quick-metrics">
-          EC: {ecValue.toFixed(2)} | pH: {phValue.toFixed(2)}
+
+      <div class="header-status">
+        <div class="status-group">
+          <div class="status-label">SYSTEM STATUS</div>
+          <div class="flex items-center gap-2">
+            <div class="status-dot {systemStatus === 'Connected' ? 'bg-green-500' : 'bg-red-500'}"></div>
+            <span class="text-sm font-medium text-slate-200">{systemStatus}</span>
+          </div>
         </div>
-      {/if}
+
+        <div class="status-divider"></div>
+
+        <div class="status-group">
+          <div class="status-label">ACTIVE COMPONENTS</div>
+          <div class="flex gap-4">
+            <div class="flex items-baseline gap-1">
+              <span class="text-xs text-slate-400">Relays:</span>
+              <span class="text-sm font-bold text-purple-400">{activeRelayCount}</span>
+            </div>
+            <div class="flex items-baseline gap-1">
+              <span class="text-xs text-slate-400">Pumps:</span>
+              <span class="text-sm font-bold text-green-400">{activePumpCount}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+
     {#if errorMessage}
-      <span class="error-message">{errorMessage}</span>
+      <div class="error-banner">
+        <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span>{errorMessage}</span>
+      </div>
     {/if}
   </div>
 
-  <!-- Hardware Control Cards - Grid Layout -->
-  <div class="cards-container">
-    <!-- Left Column - Hardware Controls -->
-    <div class="controls-column">
-      <RelayControlCard {relays} onRelayControl={controlRelay} />
+  <!-- Main Grid Layout -->
+  <div class="main-grid">
+    <!-- Left Column -->
+    <div class="grid-column">
+      <!-- Relay Control Card -->
+      <Card class="dashboard-card">
+        <CardHeader class="pb-3">
+          <div class="section-header-collapsible">
+            <button
+              class="section-toggle-btn"
+              onclick={() => toggleSection('relays')}
+              aria-expanded={expandedSections.relays}
+            >
+              <div class="flex items-center gap-2">
+                <span class="section-title-text">Relay Control</span>
+                <Badge variant="secondary" class="section-count-badge">{activeRelayCount} / 13</Badge>
+              </div>
+              <svg
+                class="chevron-icon {expandedSections.relays ? 'chevron-expanded' : ''}"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+        </CardHeader>
+        {#if expandedSections.relays}
+        <CardContent>
+          <RelayControlCard {relays} onRelayControl={controlRelay} />
+        </CardContent>
+        {/if}
+      </Card>
 
-      <PumpControlCard
-        {pumps}
-        bind:selectedPump
-        bind:pumpAmount
-        onDispensePump={dispensePump}
-        onStopPump={stopPump}
-      />
+      <!-- Pump Control Card -->
+      <Card class="dashboard-card">
+        <CardHeader class="pb-3">
+          <div class="section-header-collapsible">
+            <button
+              class="section-toggle-btn"
+              onclick={() => toggleSection('pumps')}
+              aria-expanded={expandedSections.pumps}
+            >
+              <div class="flex items-center gap-2">
+                <span class="section-title-text">Pump Testing</span>
+                <Badge variant="secondary" class="section-count-badge">{activePumpCount} / 8</Badge>
+              </div>
+              <svg
+                class="chevron-icon {expandedSections.pumps ? 'chevron-expanded' : ''}"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+        </CardHeader>
+        {#if expandedSections.pumps}
+        <CardContent>
+          <PumpControlCard
+            {pumps}
+            bind:selectedPump
+            bind:pumpAmount
+            onDispensePump={dispensePump}
+            onStopPump={stopPump}
+          />
+        </CardContent>
+        {/if}
+      </Card>
     </div>
 
-    <!-- Middle Column - Sensors -->
-    <div class="sensors-column">
-      <FlowMeterCard
-        flowMeters={flowMeters}
-        bind:selectedFlowMeter
-        bind:flowGallons
-        onStartFlow={startFlow}
-        onStopFlow={stopFlow}
-      />
+    <!-- Right Column -->
+    <div class="grid-column">
+      <!-- Flow Meter Card -->
+      <Card class="dashboard-card">
+        <CardHeader class="pb-3">
+          <div class="section-header-collapsible">
+            <button
+              class="section-toggle-btn"
+              onclick={() => toggleSection('flow')}
+              aria-expanded={expandedSections.flow}
+            >
+              <div class="flex items-center gap-2">
+                <span class="section-title-text">Flow Meter Testing</span>
+                <Badge variant="secondary" class="section-count-badge">2 Meters</Badge>
+              </div>
+              <svg
+                class="chevron-icon {expandedSections.flow ? 'chevron-expanded' : ''}"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+        </CardHeader>
+        {#if expandedSections.flow}
+        <CardContent>
+          <FlowMeterCard
+            flowMeters={flowMeters}
+            bind:selectedFlowMeter
+            bind:flowGallons
+            onStartFlow={startFlow}
+            onStopFlow={stopFlow}
+          />
+        </CardContent>
+        {/if}
+      </Card>
 
-      <ECPHMonitorCard
-        {ecValue}
-        {phValue}
-        {ecPhMonitoring}
-        onStartMonitoring={startEcPhMonitoring}
-        onStopMonitoring={stopEcPhMonitoring}
-      />
-    </div>
+      <!-- EC/pH Monitor Card -->
+      <Card class="dashboard-card">
+        <CardHeader class="pb-3">
+          <div class="section-header-collapsible">
+            <button
+              class="section-toggle-btn"
+              onclick={() => toggleSection('ecph')}
+              aria-expanded={expandedSections.ecph}
+            >
+              <div class="flex items-center gap-2">
+                <span class="section-title-text">EC/pH Sensor Monitoring</span>
+                {#if ecPhMonitoring}
+                  <Badge variant="outline" class="monitoring-badge bg-green-500/10 text-green-400 border-green-500/30">LIVE</Badge>
+                {:else}
+                  <Badge variant="outline" class="monitoring-badge">STANDBY</Badge>
+                {/if}
+              </div>
+              <svg
+                class="chevron-icon {expandedSections.ecph ? 'chevron-expanded' : ''}"
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+        </CardHeader>
+        {#if expandedSections.ecph}
+        <CardContent>
+          <ECPHMonitorCard
+            {ecValue}
+            {phValue}
+            {ecPhMonitoring}
+            onStartMonitoring={startEcPhMonitoring}
+            onStopMonitoring={stopEcPhMonitoring}
+          />
+        </CardContent>
+        {/if}
+      </Card>
 
-    <!-- Right Column - System Log -->
-    <div class="log-column">
-      <SystemLogCard {logs} onClearLogs={clearLogs} />
+      <!-- System Log Card -->
+      <Card class="dashboard-card">
+        <CardHeader class="pb-3">
+          <div class="flex justify-between items-center w-full">
+            <div class="flex items-center gap-2">
+              <span class="section-title-text">System Activity Log</span>
+            </div>
+            <Button variant="ghost" size="sm" class="h-6 text-xs text-slate-500" onclick={clearLogs}>Clear</Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <SystemLogCard {logs} onClearLogs={clearLogs} />
+        </CardContent>
+      </Card>
     </div>
   </div>
 </div>
 
 <style>
-  :root {
-    --bg-primary: #0f172a;
-    --bg-secondary: #1e293b;
-    --bg-tertiary: #334155;
-
-    --accent-steel: #64748b;
-
-    --status-success: #059669;
-    --status-error: #dc2626;
-
-    --text-primary: #f1f5f9;
-    --text-secondary: #e2e8f0;
-    --text-muted: #94a3b8;
-
-    --border-subtle: #334155;
-
-    --space-sm: 0.5rem;
-    --space-md: 0.75rem;
-
-    --text-xs: 0.6875rem;
-    --text-sm: 0.8125rem;
-  }
-
   :global(body) {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
+    background-color: #0a0f1e;
+    color: #e2e8f0;
   }
 
-  .dashboard {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-md);
+  .dashboard-container {
+    width: 100%;
     max-width: 100%;
     margin: 0 auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    box-sizing: border-box;
+    min-height: 100vh;
   }
 
-  .status-banner {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    background: rgba(15, 23, 42, 0.95);
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--border-subtle);
-    padding: var(--space-sm) var(--space-md) var(--space-md);
+  /* Page Header - Enhanced with gradient and better spacing */
+  .page-header {
+    width: 100%;
+    background: linear-gradient(135deg, #1a1f35 0%, #151929 100%);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    gap: 1rem;
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(139, 92, 246, 0.1) inset;
+    box-sizing: border-box;
+    backdrop-filter: blur(10px);
+  }
+
+  .header-content {
+    display: flex;
     justify-content: space-between;
+    align-items: center;
+    gap: 2rem;
+    flex-wrap: wrap;
   }
 
-  .status-left {
+  .header-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .page-title {
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    color: #f1f5f9;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(135deg, #f1f5f9 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .page-subtitle {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .header-status {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
+    gap: 1.5rem;
   }
 
-  .connection-status {
+  .status-group {
     display: flex;
-    align-items: center;
-    gap: var(--space-sm);
+    flex-direction: column;
+    gap: 0.375rem;
   }
 
-  .status-indicator {
+  .status-label {
+    font-size: 0.625rem;
+    font-weight: 800;
+    color: #8b5cf6;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  .status-dot {
     width: 0.625rem;
     height: 0.625rem;
-    border-radius: 50%;
+    border-radius: 9999px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  .status-indicator.status-connected {
-    background: var(--status-success);
+  .status-divider {
+    width: 1px;
+    height: 2.5rem;
+    background: linear-gradient(to bottom, transparent, rgba(139, 92, 246, 0.3), transparent);
   }
 
-  .status-indicator.status-disconnected {
-    background: var(--status-error);
-  }
-
-  .status-text {
-    font-size: var(--text-sm);
+  .error-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 0.5rem;
+    color: #fca5a5;
+    font-size: 0.875rem;
     font-weight: 500;
-    color: var(--text-primary);
   }
 
-  .quick-metrics {
-    font-size: var(--text-xs);
-    color: var(--text-muted);
-    padding: 0.25rem 0.5rem;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 0.25rem;
-  }
-
-  .error-message {
-    font-size: var(--text-xs);
-    color: var(--status-error);
-  }
-
-  .cards-container {
+  /* Main Grid */
+  .main-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 320px;
-    gap: var(--space-md);
-    padding: 0 var(--space-md) var(--space-md);
-    max-width: 100%;
-    margin: 0 auto;
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+    width: 100%;
   }
 
-  .controls-column,
-  .sensors-column {
+  @media (min-width: 768px) {
+    .main-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .grid-column {
     display: flex;
     flex-direction: column;
-    gap: var(--space-md);
+    gap: 1.25rem;
   }
 
-  .log-column {
+  /* Cards - Enhanced with better shadows and borders */
+  :global(.dashboard-card) {
+    background: linear-gradient(135deg, #1a1f35 0%, #151929 100%) !important;
+    border: 1px solid rgba(139, 92, 246, 0.15) !important;
+    box-shadow:
+      0 8px 24px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(139, 92, 246, 0.08) inset !important;
+    border-radius: 0.75rem !important;
+    backdrop-filter: blur(10px) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+
+  :global(.dashboard-card:hover) {
+    border-color: rgba(139, 92, 246, 0.25) !important;
+    box-shadow:
+      0 12px 32px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(139, 92, 246, 0.12) inset !important;
+  }
+
+  /* Section Headers - Collapsible */
+  .section-header-collapsible {
+    width: 100%;
+  }
+
+  .section-toggle-btn {
+    width: 100%;
     display: flex;
-    flex-direction: column;
-    position: sticky;
-    top: 4rem;
-    height: calc(100vh - 5rem);
-    align-self: start;
+    justify-content: space-between;
+    align-items: center;
+    background: none;
+    border: none;
+    color: #f1f5f9;
+    cursor: pointer;
+    padding: 0;
+    transition: all 0.2s;
   }
 
-  /* Responsive Design for Tablet */
-  @media (max-width: 1400px) {
-    .cards-container {
-      grid-template-columns: 1fr 1fr 300px;
+  .section-toggle-btn:hover .section-title-text {
+    color: #a78bfa;
+  }
+
+  .section-title-text {
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    transition: color 0.2s;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  .chevron-icon {
+    color: #6b7280;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .chevron-expanded {
+    transform: rotate(180deg);
+    color: #8b5cf6;
+  }
+
+  /* Badge styling overrides */
+  :global(.section-count-badge) {
+    background: rgba(139, 92, 246, 0.15) !important;
+    color: #a78bfa !important;
+    border: 1px solid rgba(139, 92, 246, 0.3) !important;
+    font-weight: 700 !important;
+    font-size: 0.75rem !important;
+  }
+
+  :global(.monitoring-badge) {
+    font-size: 0.625rem !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.05em !important;
+    padding: 0.125rem 0.5rem !important;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 767px) {
+    .dashboard-container {
+      padding: 0.75rem;
+      gap: 1rem;
+    }
+
+    .page-header {
+      padding: 1rem;
+    }
+
+    .header-content {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .page-title {
+      font-size: 1.5rem;
+    }
+
+    .header-status {
+      flex-wrap: wrap;
+      width: 100%;
+    }
+
+    .section-title-text {
+      font-size: 1rem;
     }
   }
 
-  @media (max-width: 1200px) {
-    .cards-container {
-      grid-template-columns: 1fr 1fr 280px;
-      gap: var(--space-sm);
-    }
-  }
-
-  @media (max-width: 768px) {
-    .cards-container {
-      grid-template-columns: 1fr;
-      gap: var(--space-md);
+  @media (max-width: 480px) {
+    .page-title {
+      font-size: 1.25rem;
     }
 
-    .log-column {
-      position: relative;
-      height: auto;
-      top: 0;
+    .page-subtitle {
+      font-size: 0.75rem;
     }
   }
 </style>
