@@ -947,6 +947,166 @@ def api_stop_flow(flow_id):
             'error': str(e)
         }), 500
 
+@app.route('/api/flow/<int:flow_id>/status', methods=['GET'])
+def api_get_flow_status(flow_id):
+    """Get detailed flow meter status including pulse count"""
+    try:
+        status = get_flow_status(flow_id)
+
+        if status is None:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid flow meter ID: {flow_id}'
+            }), 400
+
+        return jsonify({
+            'success': True,
+            'flow_id': flow_id,
+            'status': status
+        })
+    except Exception as e:
+        logger.error(f"Error getting flow status {flow_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# -----------------------------------------------------------------------------
+# FLOW METER DIAGNOSTICS - For troubleshooting page
+# -----------------------------------------------------------------------------
+
+@app.route('/api/flow/<int:flow_id>/diagnostics/gpio', methods=['GET'])
+def api_flow_gpio_diagnostics(flow_id):
+    """Get GPIO pin status and configuration for flow meter"""
+    try:
+        from hardware.hardware_comms import get_flow_controller
+        from config import FLOW_METER_GPIO_PINS, FLOW_METER_NAMES, FLOW_METER_CALIBRATION
+
+        if flow_id not in FLOW_METER_GPIO_PINS:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid flow meter ID: {flow_id}'
+            }), 400
+
+        gpio_pin = FLOW_METER_GPIO_PINS[flow_id]
+        meter_name = FLOW_METER_NAMES.get(flow_id, f'Flow Meter {flow_id}')
+        calibration = FLOW_METER_CALIBRATION.get(flow_id, 220)
+
+        # Try to read GPIO level if controller is available
+        gpio_level = None
+        gpio_level_voltage = None
+
+        flow_controller = get_flow_controller()
+        if flow_controller:
+            try:
+                import lgpio
+                if flow_controller.h is not None:
+                    level = lgpio.gpio_read(flow_controller.h, gpio_pin)
+                    gpio_level = 'HIGH' if level else 'LOW'
+                    gpio_level_voltage = '~3.3V' if level else '~0V'
+            except Exception as e:
+                logger.debug(f"Could not read GPIO level: {e}")
+
+        return jsonify({
+            'success': True,
+            'flow_id': flow_id,
+            'diagnostics': {
+                'meter_name': meter_name,
+                'gpio_pin': gpio_pin,
+                'calibration_ppg': calibration,
+                'gpio_level': gpio_level,
+                'gpio_voltage': gpio_level_voltage,
+                'interrupt_edge': 'FALLING',
+                'pull_resistor': 'PULL_UP'
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error getting GPIO diagnostics for flow {flow_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/flow/<int:flow_id>/diagnostics/pulse-test', methods=['POST'])
+def api_flow_pulse_test(flow_id):
+    """Start a pulse counting test for specified duration"""
+    try:
+        from hardware.hardware_comms import get_flow_controller
+        from config import FLOW_METER_GPIO_PINS
+
+        if flow_id not in FLOW_METER_GPIO_PINS:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid flow meter ID: {flow_id}'
+            }), 400
+
+        data = request.get_json() or {}
+        duration = int(data.get('duration', 10))  # Default 10 seconds
+
+        flow_controller = get_flow_controller()
+        if not flow_controller:
+            return jsonify({
+                'success': False,
+                'error': 'Flow controller not available'
+            }), 500
+
+        # Reset pulse counter and activate monitoring
+        flow_controller.flow_meters[flow_id]['pulse_count'] = 0
+        flow_controller.flow_meters[flow_id]['status'] = 1
+
+        return jsonify({
+            'success': True,
+            'flow_id': flow_id,
+            'message': f'Pulse test started for {duration} seconds',
+            'test_duration': duration,
+            'start_time': time.time()
+        })
+    except Exception as e:
+        logger.error(f"Error starting pulse test for flow {flow_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/flow/<int:flow_id>/diagnostics/reset', methods=['POST'])
+def api_flow_reset_counter(flow_id):
+    """Reset pulse counter for flow meter"""
+    try:
+        from hardware.hardware_comms import get_flow_controller
+        from config import FLOW_METER_GPIO_PINS
+
+        if flow_id not in FLOW_METER_GPIO_PINS:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid flow meter ID: {flow_id}'
+            }), 400
+
+        flow_controller = get_flow_controller()
+        if not flow_controller:
+            return jsonify({
+                'success': False,
+                'error': 'Flow controller not available'
+            }), 500
+
+        # Reset all counters
+        flow_controller.flow_meters[flow_id]['pulse_count'] = 0
+        flow_controller.flow_meters[flow_id]['last_count'] = 0
+        flow_controller.flow_meters[flow_id]['current_gallons'] = 0
+        flow_controller.flow_meters[flow_id]['target_gallons'] = 0
+        flow_controller.flow_meters[flow_id]['status'] = 0
+
+        return jsonify({
+            'success': True,
+            'flow_id': flow_id,
+            'message': 'Flow meter counter reset'
+        })
+    except Exception as e:
+        logger.error(f"Error resetting flow {flow_id}: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # -----------------------------------------------------------------------------
 # EC/pH SENSOR CONTROL - Using exact same patterns as simple_gui.py
 # -----------------------------------------------------------------------------
