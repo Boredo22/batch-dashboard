@@ -692,6 +692,20 @@ class HardwareComms:
         except Exception as e:
             logger.error(f"Exception getting flow status {flow_id}: {e}")
             return None
+
+    def get_flow_controller(self):
+        """
+        Get the flow controller instance for low-level access
+
+        Returns:
+            FlowMeterController or None if not available
+        """
+        sys = self.get_system()
+        if not sys:
+            logger.error("System not available for getting flow controller")
+            return None
+
+        return sys.flow_controller if hasattr(sys, 'flow_controller') else None
     
     # =========================================================================
     # EC/pH SENSOR CONTROL - Same patterns as simple_gui.py
@@ -1111,6 +1125,10 @@ def get_sensor_calibration_status() -> dict:
     """Get sensor calibration status - convenience function"""
     return get_hardware_comms().get_sensor_calibration_status()
 
+def get_flow_controller():
+    """Get flow controller instance - convenience function"""
+    return get_hardware_comms().get_flow_controller()
+
 def cleanup_hardware():
     """Cleanup hardware resources - convenience function"""
     global _hardware_comms
@@ -1118,6 +1136,9 @@ def cleanup_hardware():
         if _hardware_comms:
             _hardware_comms.cleanup()
             _hardware_comms = None
+
+# Legacy export for backward compatibility
+flow_controller = None  # Will be dynamically accessed via get_flow_controller()
 
 # =============================================================================
 # TESTING FUNCTIONS

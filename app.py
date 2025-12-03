@@ -949,7 +949,7 @@ def api_get_flow_status(flow_id):
 def api_flow_gpio_diagnostics(flow_id):
     """Get GPIO pin status and configuration for flow meter"""
     try:
-        from hardware.hardware_comms import flow_controller
+        from hardware.hardware_comms import get_flow_controller
         from config import FLOW_METER_GPIO_PINS, FLOW_METER_NAMES, FLOW_METER_CALIBRATION
 
         if flow_id not in FLOW_METER_GPIO_PINS:
@@ -966,6 +966,7 @@ def api_flow_gpio_diagnostics(flow_id):
         gpio_level = None
         gpio_level_voltage = None
 
+        flow_controller = get_flow_controller()
         if flow_controller:
             try:
                 import lgpio
@@ -1000,7 +1001,7 @@ def api_flow_gpio_diagnostics(flow_id):
 def api_flow_pulse_test(flow_id):
     """Start a pulse counting test for specified duration"""
     try:
-        from hardware.hardware_comms import flow_controller
+        from hardware.hardware_comms import get_flow_controller
         from config import FLOW_METER_GPIO_PINS
 
         if flow_id not in FLOW_METER_GPIO_PINS:
@@ -1012,6 +1013,7 @@ def api_flow_pulse_test(flow_id):
         data = request.get_json() or {}
         duration = int(data.get('duration', 10))  # Default 10 seconds
 
+        flow_controller = get_flow_controller()
         if not flow_controller:
             return jsonify({
                 'success': False,
@@ -1040,7 +1042,7 @@ def api_flow_pulse_test(flow_id):
 def api_flow_reset_counter(flow_id):
     """Reset pulse counter for flow meter"""
     try:
-        from hardware.hardware_comms import flow_controller
+        from hardware.hardware_comms import get_flow_controller
         from config import FLOW_METER_GPIO_PINS
 
         if flow_id not in FLOW_METER_GPIO_PINS:
@@ -1049,6 +1051,7 @@ def api_flow_reset_counter(flow_id):
                 'error': f'Invalid flow meter ID: {flow_id}'
             }), 400
 
+        flow_controller = get_flow_controller()
         if not flow_controller:
             return jsonify({
                 'success': False,
