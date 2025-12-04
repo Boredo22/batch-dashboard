@@ -1016,7 +1016,7 @@ def api_flow_gpio_diagnostics(flow_id):
                 'calibration_ppg': calibration,
                 'gpio_level': gpio_level,
                 'gpio_voltage': gpio_level_voltage,
-                'interrupt_edge': 'FALLING',
+                'interrupt_edge': 'RISING',
                 'pull_resistor': 'PULL_UP'
             }
         })
