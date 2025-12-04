@@ -87,16 +87,17 @@ def main():
             cleanup()
             return
         
-        # Set up interrupt callback for FALLING edge (pulse detection)
-        print(f"\n⚡ Setting up interrupt on FALLING edge...")
-        callback_id = lgpio.callback(h, GPIO_PIN, lgpio.FALLING_EDGE, pulse_callback)
+        # Set up interrupt callback for RISING edge (pulse detection)
+        # Note: Idle=LOW due to 1kΩ voltage divider pull-down beating Pi's ~50kΩ internal pull-up
+        print(f"\n⚡ Setting up interrupt on RISING edge...")
+        callback_id = lgpio.callback(h, GPIO_PIN, lgpio.RISING_EDGE, pulse_callback)
         print(f"✅ Interrupt callback registered")
         
         print(f"\n🎯 STARTING PULSE DETECTION...")
         print(f"💡 Expectations:")
-        print(f"   • Idle state: GPIO reads HIGH (~3V)")
-        print(f"   • Pulse state: GPIO reads LOW (~0V)")
-        print(f"   • Trigger: FALLING edge (HIGH → LOW)")
+        print(f"   • Idle state: GPIO reads LOW (~0V) - 1kΩ divider pulls down")
+        print(f"   • Pulse state: GPIO reads HIGH (~3V) - 24V through divider")
+        print(f"   • Trigger: RISING edge (LOW → HIGH)")
         print()
         print(f"🚰 Now test your flow meter:")
         print(f"   • Turn on water/pump")

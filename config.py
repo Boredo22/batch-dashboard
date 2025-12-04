@@ -117,7 +117,7 @@ FLOW_METER_CALIBRATION = {
 }
 
 # Flow meter settings
-FLOW_METER_INTERRUPT_EDGE = "FALLING"  # Interrupt on falling edge
+FLOW_METER_INTERRUPT_EDGE = "RISING"  # Interrupt on rising edge (idle=LOW due to 1kΩ pull-down in voltage divider)
 
 # =============================================================================
 # EZO EC/pH SENSOR CONFIGURATION (Direct I2C on Raspberry Pi)
