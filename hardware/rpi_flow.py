@@ -107,9 +107,9 @@ class FlowMeterController:
             meter = self.flow_meters[meter_id]
             current_time = time.time()
 
-            # Simple debouncing: ignore pulses within 1ms of each other
+            # Simple debouncing: ignore pulses within 0.6ms of each other
             # This prevents bounce from mechanical switches or electrical noise
-            if current_time - meter['last_pulse_time'] < 0.001:
+            if current_time - meter['last_pulse_time'] < 0.0006:
                 return
 
             meter['pulse_count'] += 1
