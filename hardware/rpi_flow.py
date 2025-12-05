@@ -67,18 +67,19 @@ class FlowMeterController:
             # Create an lgpio handle
             self.h = lgpio.gpiochip_open(0)
             
-            # Setup flow meter pins with pull-up resistors
+            # Setup flow meter pins with pull-up resistors and edge detection
             for meter_id, pin in self.flow_pins_map.items():
-                # Configure as input with pull-up
-                lgpio.gpio_claim_input(self.h, pin, lgpio.SET_PULL_UP)
-                
                 # Determine interrupt edge
                 edge = lgpio.FALLING_EDGE if FLOW_METER_INTERRUPT_EDGE == "FALLING" else lgpio.RISING_EDGE
-                
+
+                # Use gpio_claim_alert instead of gpio_claim_input
+                # gpio_claim_alert enables kernel edge detection required for callbacks
+                lgpio.gpio_claim_alert(self.h, pin, edge, lgpio.SET_PULL_UP)
+
                 # Add callback for interrupt (fix lambda closure issue)
                 def make_callback(m_id):
                     return lambda chip, gpio, level, tick: self.pulse_interrupt(m_id)
-                
+
                 callback_id = lgpio.callback(self.h, pin, edge, make_callback(meter_id))
                 
                 # Store the callback info
