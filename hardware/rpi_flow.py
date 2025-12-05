@@ -127,11 +127,16 @@ class FlowMeterController:
 
             meter['last_pulse_time'] = current_time
 
-            # Only log every 10th pulse to reduce spam (or when status is active)
-            if meter['status'] == 1 and (meter['pulse_count'] % 10 == 0 or meter['pulse_count'] < 10):
+            # Log pulses for debugging - every 10th pulse to reduce spam
+            if meter['pulse_count'] % 10 == 0 or meter['pulse_count'] < 10:
                 meter_name = get_flow_meter_name(meter_id)
-                logger.debug(f"{meter_name}: {meter['pulse_count']} pulses, "
-                           f"{meter['flow_rate']:.2f} GPM")
+                if meter['status'] == 1:
+                    # Active flow - show progress with flow rate
+                    logger.info(f"{meter_name}: {meter['pulse_count']} pulses, "
+                               f"{meter['flow_rate']:.2f} GPM")
+                else:
+                    # Not in active flow - just show pulse count
+                    logger.info(f"{meter_name}: pulse detected (total: {meter['pulse_count']})")
         else:
             logger.error(f"Pulse received for unknown meter ID: {meter_id}")
     
