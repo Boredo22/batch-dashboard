@@ -97,6 +97,20 @@ EZO_RESPONSE_CODES = {
 # =============================================================================
 # FLOW METER CONFIGURATION
 # =============================================================================
+# Hardware: VFS1001 flow meter → 817 optocoupler module → Pi GPIO
+#
+# Wiring:
+#   Flow meter signal (24V pulses) → Optocoupler IN1
+#   Flow meter GND → Optocoupler input GND
+#   Pi 3.3V → Optocoupler middle jumper (powers output pull-ups)
+#   Optocoupler V1 → Pi GPIO 24 (flow meter 1)
+#   Optocoupler output GND → Pi GND
+#
+# Signal behavior (INVERTED by optocoupler):
+#   Flow pulse (24V HIGH) → Opto LED on → Output LOW → FALLING edge
+#   No pulse (0V) → Opto LED off → Output HIGH (via pull-up)
+#
+# Edge detection: FALLING (detects start of each flow pulse)
 
 # Flow meter GPIO pin mappings
 FLOW_METER_GPIO_PINS = {
@@ -117,7 +131,7 @@ FLOW_METER_CALIBRATION = {
 }
 
 # Flow meter settings
-FLOW_METER_INTERRUPT_EDGE = "RISING"  # Interrupt on rising edge (idle=LOW due to 1kΩ pull-down in voltage divider)
+FLOW_METER_INTERRUPT_EDGE = "FALLING"  # Interrupt on FALLING edge (optocoupler inverts signal: flow pulse HIGH → output LOW)
 
 # =============================================================================
 # EZO EC/pH SENSOR CONFIGURATION (Direct I2C on Raspberry Pi)
