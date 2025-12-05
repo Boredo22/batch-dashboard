@@ -48,11 +48,15 @@ class FlowMeterController:
             self.flow_meters[meter_id] = {
                 'pulse_count': 0,
                 'last_count': 0,
-                'status': 0,  # 0=inactive, 1=active
+                'status': 0,  # 0=inactive, 1=active, 2=completed
                 'target_gallons': 0,
                 'current_gallons': 0,
                 'pulses_per_gallon': FLOW_METER_CALIBRATION.get(meter_id, 220),
-                'last_update': 0
+                'last_update': 0,
+                'last_pulse_time': 0,
+                'pulse_rate': 0,  # Pulses per second
+                'flow_rate': 0,  # Gallons per minute
+                'completion_notified': False  # Track if completion message was sent
             }
         
         # GPIO handle
@@ -98,17 +102,36 @@ class FlowMeterController:
             raise
     
     def pulse_interrupt(self, meter_id):
-        """Handle pulse interrupt from flow meter"""
+        """Handle pulse interrupt from flow meter with debouncing"""
         if meter_id in self.flow_meters:
-            self.flow_meters[meter_id]['pulse_count'] += 1
-            meter_name = get_flow_meter_name(meter_id)
-            pulse_count = self.flow_meters[meter_id]['pulse_count']
-            
-            # Log every pulse for debugging (can be reduced later)
-            logger.info(f"PULSE DETECTED: {meter_name} (ID:{meter_id}) - Count: {pulse_count}")
-            
-            # Also print to console for immediate feedback
-            print(f"🌊 PULSE: {meter_name} - Count: {pulse_count}")
+            meter = self.flow_meters[meter_id]
+            current_time = time.time()
+
+            # Simple debouncing: ignore pulses within 1ms of each other
+            # This prevents bounce from mechanical switches or electrical noise
+            if current_time - meter['last_pulse_time'] < 0.001:
+                return
+
+            meter['pulse_count'] += 1
+
+            # Calculate pulse rate (for flow rate calculation)
+            time_diff = current_time - meter['last_pulse_time']
+            if time_diff > 0 and meter['last_pulse_time'] > 0:
+                # Exponential moving average for smooth rate calculation
+                new_rate = 1.0 / time_diff  # pulses per second
+                meter['pulse_rate'] = 0.7 * meter['pulse_rate'] + 0.3 * new_rate
+
+                # Calculate flow rate in gallons per minute
+                if meter['pulses_per_gallon'] > 0:
+                    meter['flow_rate'] = (meter['pulse_rate'] * 60) / meter['pulses_per_gallon']
+
+            meter['last_pulse_time'] = current_time
+
+            # Only log every 10th pulse to reduce spam (or when status is active)
+            if meter['status'] == 1 and (meter['pulse_count'] % 10 == 0 or meter['pulse_count'] < 10):
+                meter_name = get_flow_meter_name(meter_id)
+                logger.debug(f"{meter_name}: {meter['pulse_count']} pulses, "
+                           f"{meter['flow_rate']:.2f} GPM")
         else:
             logger.error(f"Pulse received for unknown meter ID: {meter_id}")
     
@@ -131,11 +154,15 @@ class FlowMeterController:
         meter['current_gallons'] = 0
         meter['target_gallons'] = target_gallons
         meter['status'] = 1  # Active
-        
+        meter['last_pulse_time'] = 0
+        meter['pulse_rate'] = 0
+        meter['flow_rate'] = 0
+        meter['completion_notified'] = False  # Reset completion flag
+
         # Update calibration if provided
         if pulses_per_gallon is not None:
             meter['pulses_per_gallon'] = pulses_per_gallon
-        
+
         meter['last_update'] = time.time()
         
         meter_name = get_flow_meter_name(meter_id)
@@ -159,42 +186,62 @@ class FlowMeterController:
         """Update flow meter status and check for completion"""
         if not validate_flow_meter_id(meter_id):
             return False
-        
+
         meter = self.flow_meters[meter_id]
-        
-        # Skip if meter is not active
-        if meter['status'] == 0:
+
+        # Skip if meter is not active (0=inactive, 2=completed)
+        if meter['status'] != 1:
             return False
-        
+
         # Check if pulse count has changed
         if meter['pulse_count'] != meter['last_count']:
             new_gallons = meter['pulse_count'] // meter['pulses_per_gallon']
             meter['last_count'] = meter['pulse_count']
-            
+
             # Update if gallons changed
             if new_gallons != meter['current_gallons']:
                 meter['current_gallons'] = new_gallons
                 meter['last_update'] = time.time()
-                
+
                 meter_name = get_flow_meter_name(meter_id)
-                logger.debug(f"{meter_name}: {meter['current_gallons']}/{meter['target_gallons']} gallons")
-                
+                logger.debug(f"{meter_name}: {meter['current_gallons']}/{meter['target_gallons']} gallons "
+                           f"({meter['flow_rate']:.2f} GPM)")
+
                 # Check if target reached
                 if meter['target_gallons'] <= meter['current_gallons']:
-                    meter['status'] = 0  # Stop
+                    meter['status'] = 2  # Completed (not inactive, so we can track completion)
                     logger.info(f"{meter_name} completed: {meter['current_gallons']} gallons")
                     return False  # Completed
-        
+
         return meter['status'] == 1  # Still active
     
     def get_flow_status(self, meter_id):
         """Get flow meter status"""
         if not validate_flow_meter_id(meter_id):
             return None
-        
+
         status = self.flow_meters[meter_id].copy()
         status['name'] = get_flow_meter_name(meter_id)
         return status
+
+    def is_completed_and_unnotified(self, meter_id):
+        """Check if flow meter completed but hasn't been notified yet"""
+        if not validate_flow_meter_id(meter_id):
+            return False
+
+        meter = self.flow_meters[meter_id]
+        return meter['status'] == 2 and not meter['completion_notified']
+
+    def mark_completion_notified(self, meter_id):
+        """Mark that completion notification has been sent"""
+        if not validate_flow_meter_id(meter_id):
+            return False
+
+        meter = self.flow_meters[meter_id]
+        if meter['status'] == 2:
+            meter['completion_notified'] = True
+            return True
+        return False
     
     def get_all_flow_status(self):
         """Get status of all flow meters"""
@@ -285,11 +332,15 @@ class MockFlowMeterController(FlowMeterController):
             self.flow_meters[meter_id] = {
                 'pulse_count': 0,
                 'last_count': 0,
-                'status': 0,
+                'status': 0,  # 0=inactive, 1=active, 2=completed
                 'target_gallons': 0,
                 'current_gallons': 0,
                 'pulses_per_gallon': FLOW_METER_CALIBRATION.get(meter_id, 220),
-                'last_update': 0
+                'last_update': 0,
+                'last_pulse_time': 0,
+                'pulse_rate': 0,
+                'flow_rate': 0,
+                'completion_notified': False
             }
             # Mock the flow_pins structure used by the real controller
             self.flow_pins[meter_id] = {
