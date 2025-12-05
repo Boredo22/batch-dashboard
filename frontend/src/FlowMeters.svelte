@@ -324,7 +324,7 @@
           disabled={isTestRunning}
           class={selectedMeter === 1 ? "bg-purple-600 hover:bg-purple-700" : "border-gray-600 text-gray-300 hover:bg-gray-700"}
         >
-          Flow Meter 1 (Tank Fill)
+          Flow Meter 1 - GPIO 23 (Tank Fill)
         </Button>
         <Button
           variant={selectedMeter === 2 ? "default" : "outline"}
@@ -332,7 +332,7 @@
           disabled={isTestRunning}
           class={selectedMeter === 2 ? "bg-purple-600 hover:bg-purple-700" : "border-gray-600 text-gray-300 hover:bg-gray-700"}
         >
-          Flow Meter 2 (Tank Send)
+          Flow Meter 2 - GPIO 24 (Send to Room)
         </Button>
       </div>
     </CardContent>
