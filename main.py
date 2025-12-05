@@ -48,72 +48,48 @@ for component, level in LOG_LEVELS.items():
     component_logger.setLevel(getattr(logging, level))
 
 class FeedControlSystem:
-    def __init__(self, uno_port=None, use_mock_flow=None):
-        """Initialize the complete feed control system"""
+    def __init__(self, use_mock_flow=False):
+        """Initialize the feed control system - pure Pi, no Arduino"""
         self.running = False
         self.command_queue = queue.Queue()
         self.worker_thread = None
         self.message_callback = None
-        
-        # Use config for mock settings
-        if use_mock_flow is None:
-            use_mock_flow = MOCK_SETTINGS.get('flow_meters', False)
-        
-        # Initialize controllers
-        logger.info("Initializing feed control system with config.py...")
-        
+
+        # Initialize controllers - all on Pi now
+        logger.info("Initializing Pi-native feed control system...")
+
         try:
-            # Initialize pump controller
-            if MOCK_SETTINGS.get('pumps', False):
-                logger.info("Using mock pump controller")
-                self.pump_controller = None  # Would implement mock pump controller
-            else:
-                self.pump_controller = EZOPumpController()
-                logger.info("✓ EZO pump controller initialized")
+            self.pump_controller = EZOPumpController()
+            logger.info("✓ EZO pump controller initialized (I2C addresses 11-18)")
         except Exception as e:
             logger.error(f"✗ Pump controller failed: {e}")
             self.pump_controller = None
-        
+
         try:
-            # Initialize relay controller
-            if MOCK_SETTINGS.get('relays', False):
-                logger.info("Using mock relay controller")
-                self.relay_controller = None  # Would implement mock relay controller
-            else:
-                self.relay_controller = RelayController()
-                logger.info("✓ Relay controller initialized")
+            self.relay_controller = RelayController()
+            logger.info("✓ Relay controller initialized (GPIO)")
         except Exception as e:
             logger.error(f"✗ Relay controller failed: {e}")
             self.relay_controller = None
-        
+
         try:
-            # Initialize flow controller
-            if use_mock_flow or MOCK_SETTINGS.get('flow_meters', False):
+            if use_mock_flow:
                 self.flow_controller = MockFlowMeterController()
                 logger.info("✓ Mock flow controller initialized")
             else:
                 self.flow_controller = FlowMeterController()
-                logger.info("✓ Flow controller initialized")
+                logger.info("✓ Flow controller initialized (GPIO)")
         except Exception as e:
             logger.error(f"✗ Flow controller failed: {e}")
             self.flow_controller = None
-        
+
         try:
-            # Initialize EZO EC/pH sensor controller (replaces Arduino Uno)
-            if MOCK_SETTINGS.get('ecph', False) or MOCK_SETTINGS.get('arduino', False):
-                logger.info("Using mock EC/pH sensors")
-                self.sensor_controller = None  # Would implement mock sensor controller
-            else:
-                self.sensor_controller = EZOSensorController()
-                if self.sensor_controller.connect():
-                    logger.info(f"✓ EZO pH/EC sensors initialized via I2C")
-                else:
-                    logger.warning("✗ EZO pH/EC sensors connection failed")
-                    self.sensor_controller = None
+            self.sensor_controller = EZOSensorController()
+            logger.info("✓ pH/EC sensor controller initialized (I2C 0x63/0x64)")
         except Exception as e:
-            logger.error(f"✗ EZO pH/EC sensor controller failed: {e}")
+            logger.error(f"✗ Sensor controller failed: {e}")
             self.sensor_controller = None
-        
+
         # Timing for status updates
         self.last_status_update = 0
         self.last_pump_check = 0
@@ -413,7 +389,7 @@ class FeedControlSystem:
         self.send_message(f"- EZO Pumps: {len(pumps)} units (I2C)")
         self.send_message(f"- Control Relays: {len(relays)} units (GPIO)")
         self.send_message(f"- Flow Meters: {len(flow_meters)} units (GPIO interrupts)")
-        self.send_message("- EC/pH Sensors: Arduino Uno (Serial)")
+        self.send_message("- EC/pH Sensors: EZO via I2C (0x63/0x64)")
         self.send_message("")
         self.send_message("System Status:")
         
@@ -525,17 +501,12 @@ def main():
     
     print("Raspberry Pi Feed Control System (Using config.py)")
     print("=" * 55)
-    
+
     # Check command line arguments
     use_mock_flow = "--mock-flow" in sys.argv
-    uno_port = None
-    
-    for i, arg in enumerate(sys.argv):
-        if arg == "--uno-port" and i + 1 < len(sys.argv):
-            uno_port = sys.argv[i + 1]
-    
+
     # Create and start system
-    system = FeedControlSystem(uno_port=uno_port, use_mock_flow=use_mock_flow)
+    system = FeedControlSystem(use_mock_flow=use_mock_flow)
     system.start()
     
     # Interactive command loop

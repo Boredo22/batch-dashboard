@@ -26,17 +26,7 @@ from config import (
     validate_pump_id
 )
 
-import platform
-
-try:
-    import smbus2
-except ImportError:
-    if platform.system() == 'Windows':
-        print("Running on Windows - using mock smbus2")
-        from .mock_hardware_libs import smbus2
-    else:
-        print("smbus2 not installed. Install with: pip install smbus2")
-        exit(1)
+from hardware.i2c_manager import get_i2c_manager
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +34,10 @@ class EZOPumpController:
     def __init__(self, bus_number=None):
         """Initialize EZO Pump Controller"""
         self.bus_number = bus_number or I2C_BUS_NUMBER
-        self.bus = None
-        
+
+        # Use shared I2C manager
+        self.i2c = get_i2c_manager()
+
         # Pump information storage
         self.pump_info = {}
         self.calibration_status = {}  # Add calibration cache
@@ -64,92 +56,49 @@ class EZOPumpController:
                 'last_error': '',
                 'connected': False
             }
-        
+
         # Voltage polling control - DISABLED to prevent interference with dispenses
         self.voltage_poll_interval = 60.0  # Poll voltage every minute
         self.voltage_polling_enabled = False  # DISABLED - causing dispense interference
         self.startup_voltage_poll_complete = False
-        
-        # Initialize I2C bus
-        self.initialize_bus()
-        
+
         # Initialize pumps but skip voltage polling on startup
         self.initialize_pumps()
         # self.poll_all_pump_voltages()  # DISABLED - voltage polling causes dispense issues
         self.startup_voltage_poll_complete = True
     
-    def initialize_bus(self):
-        """Initialize I2C bus connection"""
-        try:
-            self.bus = smbus2.SMBus(self.bus_number)
-            logger.info(f"Initialized I2C bus {self.bus_number}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to initialize I2C bus {self.bus_number}: {e}")
-            return False
-    
     def send_command(self, pump_id, command, delay=None):
-        """Send command to EZO pump using proper I2C method"""
+        """Send command to EZO pump using shared I2C manager"""
         if not validate_pump_id(pump_id):
             logger.error(f"Invalid pump ID: {pump_id}")
             return None
-        
-        if not self.bus:
-            logger.error("I2C bus not initialized")
-            return None
-        
+
         address = PUMP_ADDRESSES[pump_id]
         delay = delay or EZO_COMMAND_DELAY
-        
+
         retries = 0
         while retries < EZO_MAX_RETRIES:
-            try:
-                # Send command using raw I2C (equivalent to Arduino Wire library)
-                msg = smbus2.i2c_msg.write(address, list(command.encode()))
-                self.bus.i2c_rdwr(msg)
-                
-                # Wait for processing
-                time.sleep(delay)
-                
-                # Read response
-                msg = smbus2.i2c_msg.read(address, 32)
-                self.bus.i2c_rdwr(msg)
-                
-                data = list(msg)
-                
-                # Parse response
-                if len(data) > 0:
-                    response_code = data[0]
-                    
-                    if response_code == 1:  # Success
-                        response_text = ''.join([chr(x) for x in data[1:] if 32 <= x <= 126]).strip()
-                        logger.debug(f"Pump {pump_id} ({command}): {response_text}")
-                        self.pump_info[pump_id]['connected'] = True
-                        self.pump_info[pump_id]['last_error'] = ''
-                        return response_text
-                    elif response_code == 254:  # Still processing
-                        retries += 1
-                        time.sleep(EZO_RETRY_DELAY)
-                        continue
-                    else:
-                        error_msg = EZO_RESPONSE_CODES.get(response_code, f"Unknown error: {response_code}")
-                        logger.warning(f"Pump {pump_id} error: {error_msg}")
-                        self.pump_info[pump_id]['last_error'] = error_msg
-                        return None
-                else:
-                    logger.warning(f"Pump {pump_id}: No response data")
-                    return None
-                
-            except Exception as e:
+            # Use shared I2C manager
+            success, response_code, response_text = self.i2c.send_command(address, command, delay)
+
+            if success:
+                logger.debug(f"Pump {pump_id} ({command}): {response_text}")
+                self.pump_info[pump_id]['connected'] = True
+                self.pump_info[pump_id]['last_error'] = ''
+                return response_text
+            elif response_code == 254:  # Still processing
                 retries += 1
-                logger.debug(f"Pump {pump_id} retry {retries}/{EZO_MAX_RETRIES}: {e}")
-                if retries < EZO_MAX_RETRIES:
-                    time.sleep(EZO_RETRY_DELAY * retries)
-                else:
-                    logger.error(f"Pump {pump_id} failed after {EZO_MAX_RETRIES} retries: {e}")
-                    self.pump_info[pump_id]['connected'] = False
-                    self.pump_info[pump_id]['last_error'] = str(e)
-        
+                time.sleep(EZO_RETRY_DELAY)
+                continue
+            else:
+                error_msg = EZO_RESPONSE_CODES.get(response_code, f"Unknown error: {response_code}")
+                logger.warning(f"Pump {pump_id} error: {error_msg}")
+                self.pump_info[pump_id]['last_error'] = error_msg
+                return None
+
+        # Failed after retries
+        logger.error(f"Pump {pump_id} failed after {EZO_MAX_RETRIES} retries")
+        self.pump_info[pump_id]['connected'] = False
         return None
     
     def initialize_pumps(self):
@@ -525,14 +474,10 @@ class EZOPumpController:
         return success
     
     def close(self):
-        """Close I2C bus connection"""
-        if self.bus:
-            try:
-                self.bus.close()
-                self.bus = None
-                logger.info("I2C bus closed")
-            except Exception as e:
-                logger.error(f"Error closing I2C bus: {e}")
+        """Close I2C bus connection (shared manager handles bus lifecycle)"""
+        # Shared I2C manager handles bus lifecycle
+        # No need to close the bus here as other controllers may still be using it
+        logger.debug("Pump controller cleanup (I2C bus managed by shared manager)")
     
     def __del__(self):
         """Destructor - ensure cleanup"""

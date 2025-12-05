@@ -33,7 +33,8 @@
       "Bash(/home/pi/batch-dashboard/.venv/bin/python:*)",
       "Bash(chmod:*)",
       "Bash(tasklist:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(del \"c:\\Users\\bored\\batch-dashboard\\hardware\\rpi_unoComm.py\")"
     ],
     "deny": [],
     "ask": []

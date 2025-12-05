@@ -13,7 +13,6 @@ import logging
 import sys
 import threading
 from pathlib import Path
-from smbus2 import SMBus
 
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -21,12 +20,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Import configuration
 from config import (
     I2C_BUS_NUMBER,
-    EZO_PH_ADDRESS,
-    EZO_EC_ADDRESS,
+    PH_SENSOR_ADDRESS,
+    EC_SENSOR_ADDRESS,
     PH_CALIBRATION_SOLUTIONS,
     EC_CALIBRATION_SOLUTIONS,
     EZO_COMMAND_DELAY
 )
+
+from hardware.i2c_manager import get_i2c_manager
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +40,9 @@ class EZOSensorController:
     """
 
     def __init__(self):
-        self.bus = None
-        self.connected = False
+        # Use shared I2C manager
+        self.i2c = get_i2c_manager()
+        self.connected = True
         self.monitoring_active = False
         self.monitoring_thread = None
         self.monitoring_interval = 5.0  # Read sensors every 5 seconds
@@ -51,44 +53,36 @@ class EZOSensorController:
             'last_update': 0
         }
 
-    def connect(self):
-        """Connect to I2C bus and configure sensors"""
+        # Configure sensors on initialization
         try:
-            self.bus = SMBus(I2C_BUS_NUMBER)
-            self.connected = True
-
             # Configure EC sensor outputs (EC only, disable other readings)
-            self._send_command(EZO_EC_ADDRESS, "O,EC,1")   # Enable EC
-            self._send_command(EZO_EC_ADDRESS, "O,TDS,0")  # Disable TDS
-            self._send_command(EZO_EC_ADDRESS, "O,S,0")    # Disable salinity
-            self._send_command(EZO_EC_ADDRESS, "O,SG,0")   # Disable specific gravity
+            self._send_command(EC_SENSOR_ADDRESS, "O,EC,1")   # Enable EC
+            self._send_command(EC_SENSOR_ADDRESS, "O,TDS,0")  # Disable TDS
+            self._send_command(EC_SENSOR_ADDRESS, "O,S,0")    # Disable salinity
+            self._send_command(EC_SENSOR_ADDRESS, "O,SG,0")   # Disable specific gravity
 
-            logger.info("✓ Connected to EZO pH/EC sensors via I2C")
-            return True
-
+            logger.info("✓ EZO pH/EC sensors initialized via shared I2C manager")
         except Exception as e:
-            logger.error(f"Failed to connect to EZO pH/EC sensors: {e}")
+            logger.error(f"Failed to configure EZO pH/EC sensors: {e}")
             self.connected = False
-            return False
-    
+
+    def connect(self):
+        """Compatibility method - already connected via shared I2C manager"""
+        return self.connected
+
     def close(self):
-        """Close I2C connection and stop monitoring"""
+        """Close sensor controller and stop monitoring"""
         # Stop monitoring thread first
         if self.monitoring_active:
             self.stop_monitoring()
 
-        # Close I2C bus
-        if self.bus:
-            self.bus.close()
-            self.bus = None
+        # Shared I2C manager handles bus lifecycle
+        logger.debug("Sensor controller cleanup (I2C bus managed by shared manager)")
         self.connected = False
     
     def _send_command(self, address, command, response_time=0.9):
         """
-        Send command to EZO circuit and read response
-
-        CRITICAL: EZO sensors use direct I2C communication without registers.
-        Unlike register-based sensors, we write bytes directly to the device.
+        Send command to EZO circuit and read response using shared I2C manager
 
         Args:
             address: I2C address
@@ -98,54 +92,26 @@ class EZOSensorController:
         Returns:
             Response string or None if error
         """
-        if not self.connected or not self.bus:
-            logger.warning(f"Cannot send command - not connected to I2C bus")
+        if not self.connected:
+            logger.warning(f"Cannot send command - sensor controller not connected")
             return None
 
-        try:
-            # Send command - DIRECT I2C WRITE (no register address)
-            # Convert command string to bytes
-            command_bytes = [ord(c) for c in command]
+        # Use shared I2C manager
+        success, response_code, response_text = self.i2c.send_command(address, command, response_time)
 
-            # EZO protocol: First byte goes to "register" position, rest as data
-            # This is how smbus2 handles direct I2C writes
-            if len(command_bytes) == 1:
-                self.bus.write_byte(address, command_bytes[0])
-            else:
-                self.bus.write_i2c_block_data(address, command_bytes[0], command_bytes[1:])
+        if success:
+            logger.debug(f"EZO 0x{address:02X} <- '{command}' -> '{response_text}'")
+            return response_text
+        elif response_code == 2:
+            logger.error(f"EZO 0x{address:02X}: Syntax error for command '{command}'")
+        elif response_code == 254:
+            logger.warning(f"EZO 0x{address:02X}: Still processing (may need longer delay)")
+        elif response_code == 255:
+            logger.warning(f"EZO 0x{address:02X}: No data available")
+        else:
+            logger.error(f"EZO 0x{address:02X}: Unknown response code {response_code}")
 
-            logger.debug(f"EZO 0x{address:02X} <- '{command}'")
-
-            # Wait for processing (EZO chips need time to process)
-            time.sleep(response_time)
-
-            # Read response - DIRECT I2C READ
-            # EZO returns up to 31 bytes: [response_code, data...]
-            response_data = self.bus.read_i2c_block_data(address, 0x00, 31)
-            response_code = response_data[0]
-
-            if response_code == 1:  # Success
-                # Convert bytes to string, stopping at null terminator
-                response_string = ''.join([chr(b) for b in response_data[1:] if b != 0])
-                logger.debug(f"EZO 0x{address:02X} -> '{response_string.strip()}'")
-                return response_string.strip()
-            elif response_code == 2:
-                logger.error(f"EZO 0x{address:02X}: Syntax error for command '{command}'")
-            elif response_code == 254:
-                logger.warning(f"EZO 0x{address:02X}: Still processing (may need longer delay)")
-            elif response_code == 255:
-                logger.warning(f"EZO 0x{address:02X}: No data available")
-            else:
-                logger.error(f"EZO 0x{address:02X}: Unknown response code {response_code}")
-
-            return None
-
-        except OSError as e:
-            logger.error(f"I2C communication error at 0x{address:02X}: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Unexpected error communicating with EZO sensor at 0x{address:02X}: {e}")
-            return None
+        return None
     
     def _monitoring_loop(self):
         """Background thread that continuously reads sensors when monitoring is active"""
@@ -201,7 +167,7 @@ class EZOSensorController:
 
     def read_ph(self):
         """Read pH value"""
-        response = self._send_command(EZO_PH_ADDRESS, "R")
+        response = self._send_command(PH_SENSOR_ADDRESS, "R")
         if response:
             try:
                 value = float(response)
@@ -215,7 +181,7 @@ class EZOSensorController:
     
     def read_ec(self):
         """Read EC value (returns mS/cm)"""
-        response = self._send_command(EZO_EC_ADDRESS, "R")
+        response = self._send_command(EC_SENSOR_ADDRESS, "R")
         if response:
             try:
                 # EZO returns μS/cm, convert to mS/cm
@@ -255,7 +221,7 @@ class EZOSensorController:
             value = PH_CALIBRATION_SOLUTIONS['mid']
 
         command = f"Cal,mid,{value:.2f}"
-        response = self._send_command(EZO_PH_ADDRESS, command)
+        response = self._send_command(PH_SENSOR_ADDRESS, command)
         
         if response is not None:
             logger.info(f"pH mid calibration at {value:.2f}: Success")
@@ -270,7 +236,7 @@ class EZOSensorController:
             value = PH_CALIBRATION_SOLUTIONS['low']
 
         command = f"Cal,low,{value:.2f}"
-        response = self._send_command(EZO_PH_ADDRESS, command)
+        response = self._send_command(PH_SENSOR_ADDRESS, command)
 
         if response is not None:
             logger.info(f"pH low calibration at {value:.2f}: Success")
@@ -285,7 +251,7 @@ class EZOSensorController:
             value = PH_CALIBRATION_SOLUTIONS['high']
 
         command = f"Cal,high,{value:.2f}"
-        response = self._send_command(EZO_PH_ADDRESS, command)
+        response = self._send_command(PH_SENSOR_ADDRESS, command)
 
         if response is not None:
             logger.info(f"pH high calibration at {value:.2f}: Success")
@@ -296,7 +262,7 @@ class EZOSensorController:
 
     def clear_ph_calibration(self):
         """Clear all pH calibration"""
-        response = self._send_command(EZO_PH_ADDRESS, "Cal,clear")
+        response = self._send_command(PH_SENSOR_ADDRESS, "Cal,clear")
 
         if response is not None:
             logger.info("pH calibration cleared")
@@ -307,7 +273,7 @@ class EZOSensorController:
 
     def get_ph_calibration_status(self):
         """Get number of pH calibration points (0-3)"""
-        response = self._send_command(EZO_PH_ADDRESS, "Cal,?")
+        response = self._send_command(PH_SENSOR_ADDRESS, "Cal,?")
         if response:
             try:
                 return int(response.split(',')[1])
@@ -321,7 +287,7 @@ class EZOSensorController:
     
     def calibrate_ec_dry(self):
         """Calibrate EC dry (in air)"""
-        response = self._send_command(EZO_EC_ADDRESS, "Cal,dry")
+        response = self._send_command(EC_SENSOR_ADDRESS, "Cal,dry")
         
         if response is not None:
             logger.info("EC dry calibration: Success")
@@ -336,7 +302,7 @@ class EZOSensorController:
             value = EC_CALIBRATION_SOLUTIONS['single']
 
         command = f"Cal,{value}"
-        response = self._send_command(EZO_EC_ADDRESS, command)
+        response = self._send_command(EC_SENSOR_ADDRESS, command)
 
         if response is not None:
             logger.info(f"EC single calibration at {value} μS/cm: Success")
@@ -351,7 +317,7 @@ class EZOSensorController:
             value = EC_CALIBRATION_SOLUTIONS['low']
 
         command = f"Cal,low,{value}"
-        response = self._send_command(EZO_EC_ADDRESS, command)
+        response = self._send_command(EC_SENSOR_ADDRESS, command)
 
         if response is not None:
             logger.info(f"EC low calibration at {value} μS/cm: Success")
@@ -366,7 +332,7 @@ class EZOSensorController:
             value = EC_CALIBRATION_SOLUTIONS['high']
 
         command = f"Cal,high,{value}"
-        response = self._send_command(EZO_EC_ADDRESS, command)
+        response = self._send_command(EC_SENSOR_ADDRESS, command)
 
         if response is not None:
             logger.info(f"EC high calibration at {value} μS/cm: Success")
@@ -377,7 +343,7 @@ class EZOSensorController:
 
     def clear_ec_calibration(self):
         """Clear all EC calibration"""
-        response = self._send_command(EZO_EC_ADDRESS, "Cal,clear")
+        response = self._send_command(EC_SENSOR_ADDRESS, "Cal,clear")
 
         if response is not None:
             logger.info("EC calibration cleared")
@@ -388,7 +354,7 @@ class EZOSensorController:
 
     def get_ec_calibration_status(self):
         """Get EC calibration state (0=none, 1=single, 2=dual)"""
-        response = self._send_command(EZO_EC_ADDRESS, "Cal,?")
+        response = self._send_command(EC_SENSOR_ADDRESS, "Cal,?")
         if response:
             try:
                 return int(response.split(',')[1])
@@ -406,8 +372,8 @@ class EZOSensorController:
     
     def get_sensor_info(self):
         """Get information about both sensors"""
-        ph_info = self._send_command(EZO_PH_ADDRESS, "I")
-        ec_info = self._send_command(EZO_EC_ADDRESS, "I")
+        ph_info = self._send_command(PH_SENSOR_ADDRESS, "I")
+        ec_info = self._send_command(EC_SENSOR_ADDRESS, "I")
         
         return {
             'ph': {
