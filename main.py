@@ -384,7 +384,7 @@ class FeedControlSystem:
                 for meter_id in get_available_flow_meters():
                     still_running = self.flow_controller.update_flow_status(meter_id)
                     status = self.flow_controller.get_flow_status(meter_id)
-                    
+
                     if status and status['status'] == 1:  # Active
                         message = MESSAGE_FORMATS["flow_status"].format(
                             flow_id=meter_id,
@@ -392,10 +392,11 @@ class FeedControlSystem:
                             pulses=status['pulse_count']
                         )
                         self.send_message(message)
-                    elif not still_running and status and status['current_gallons'] > 0:
-                        # Flow completed
+                    elif self.flow_controller.is_completed_and_unnotified(meter_id):
+                        # Flow completed and not yet notified - send message once
                         message = MESSAGE_FORMATS["flow_complete"].format(flow_id=meter_id)
                         self.send_message(message)
+                        self.flow_controller.mark_completion_notified(meter_id)
     
     def _print_system_info(self):
         """Print system startup information"""
