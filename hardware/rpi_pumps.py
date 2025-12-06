@@ -8,6 +8,9 @@ Works independently without hardware manager - compatible with simple_gui.py pat
 
 import time
 import logging
+import sys
+from pathlib import Path
+from datetime import datetime
 from config import (
     PUMP_ADDRESSES,
     PUMP_NAMES,
@@ -27,6 +30,17 @@ from config import (
 )
 
 from hardware.i2c_manager import get_i2c_manager
+
+# Add project root to path for state_manager import
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+try:
+    from state_manager import state
+except ImportError:
+    # Fallback if state_manager not available
+    state = None
 
 logger = logging.getLogger(__name__)
 
@@ -284,7 +298,16 @@ class EZOPumpController:
             self.pump_info[pump_id]['current_volume'] = 0.0
             self.pump_info[pump_id]['is_dispensing'] = True
             self.pump_info[pump_id]['last_check'] = time.time()
-            
+
+            # Persist state to database
+            if state is not None:
+                state.set_pump_state(pump_id, True)
+                state.set_pump_job(pump_id, {
+                    "total_ml": volume_ml,
+                    "ml_dispensed": 0.0,
+                    "started_at": datetime.now().isoformat()
+                })
+
             pump_name = get_pump_name(pump_id)
             logger.info(f"Started dispensing {volume_ml}ml from {pump_name}")
             return True
@@ -303,20 +326,28 @@ class EZOPumpController:
                 # Parse dispensed volume
                 volume_str = response.split(",")[1]
                 dispensed_volume = float(volume_str)
-                
+
                 # Update pump state
                 self.pump_info[pump_id]['current_volume'] = dispensed_volume
                 self.pump_info[pump_id]['is_dispensing'] = False
                 self.pump_info[pump_id]['total_volume'] += dispensed_volume
-                
+
+                # Persist state to database
+                if state is not None:
+                    state.set_pump_state(pump_id, False)
+                    state.clear_pump_job(pump_id)
+
                 pump_name = get_pump_name(pump_id)
                 logger.info(f"Stopped {pump_name}: {dispensed_volume}ml dispensed")
                 return dispensed_volume
             except (IndexError, ValueError) as e:
                 logger.error(f"Error parsing stop response: {e}")
-        
+
         # Still try to update state even if parsing failed
         self.pump_info[pump_id]['is_dispensing'] = False
+        if state is not None:
+            state.set_pump_state(pump_id, False)
+            state.clear_pump_job(pump_id)
         return None
     
     def check_pump_status(self, pump_id):
@@ -335,17 +366,29 @@ class EZOPumpController:
                 current_volume = float(response)
                 self.pump_info[pump_id]['current_volume'] = current_volume
                 self.pump_info[pump_id]['last_check'] = time.time()
-                
+
+                # Update job progress in state manager
+                if state is not None:
+                    job = state.get_pump_job(pump_id)
+                    if job:
+                        job['ml_dispensed'] = current_volume
+                        state.set_pump_job(pump_id, job)
+
                 # Check if target reached (with small tolerance)
                 target = self.pump_info[pump_id]['target_volume']
                 if current_volume >= (target - 0.1):  # 0.1ml tolerance
                     self.pump_info[pump_id]['is_dispensing'] = False
                     self.pump_info[pump_id]['total_volume'] += current_volume
-                    
+
+                    # Clear job and update state
+                    if state is not None:
+                        state.set_pump_state(pump_id, False)
+                        state.clear_pump_job(pump_id)
+
                     pump_name = get_pump_name(pump_id)
                     logger.info(f"{pump_name} completed: {current_volume}ml/{target}ml")
                     return False  # Completed
-                
+
                 return True  # Still dispensing
             except ValueError:
                 logger.warning(f"Invalid volume response from pump {pump_id}: {response}")
@@ -364,6 +407,11 @@ class EZOPumpController:
             # Update both pump info and cached calibration status
             self.pump_info[pump_id]['calibrated'] = True
             self.calibration_status[pump_id] = 1  # At least single point calibration
+
+            # Save calibration date to state manager
+            if state is not None:
+                state.set_pump_calibration_date(pump_id, datetime.now().isoformat())
+
             pump_name = get_pump_name(pump_id)
             logger.info(f"Calibrated {pump_name} with {volume_ml}ml")
             return True

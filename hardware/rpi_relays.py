@@ -6,6 +6,8 @@ Works independently without hardware manager - compatible with simple_gui.py pat
 """
 
 import logging
+import sys
+from pathlib import Path
 from config import (
     RELAY_GPIO_PINS,
     RELAY_NAMES,
@@ -16,6 +18,19 @@ from config import (
 )
 
 import platform
+
+# Add project root to path for state_manager import
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+try:
+    from state_manager import init_state_from_hardware, state
+except ImportError:
+    # Fallback if state_manager not available (for standalone testing)
+    def init_state_from_hardware(*args, **kwargs):
+        pass
+    state = None
 
 try:
     import lgpio
@@ -102,6 +117,10 @@ class RelayController:
                 logger.info(f"Relay {relay_id} ({relay_name}) initialized to {state_str} (GPIO {pin} = {current_gpio_state})")
 
             logger.info(f"Initialized {len(self.relay_pins)} relay pins with ULN2803A - preserved existing states")
+
+            # Sync relay states to persistent storage
+            init_state_from_hardware(self.relay_states)
+
             self._gpio_initialized = True
             return True
             
@@ -142,10 +161,14 @@ class RelayController:
                 gpio_state = 0 if state else 1  # LOW = ON, HIGH = OFF
             
             lgpio.gpio_write(self.h, pin, gpio_state)
-            
+
             # Update state tracking
             self.relay_states[relay_id] = state
-            
+
+            # Persist state to database
+            if state is not None:
+                state.set_relay(relay_id, state)
+
             state_str = "ON" if state else "OFF"
             relay_name = get_relay_name(relay_id)
             logger.info(f"Relay {relay_id} ({relay_name}) set to {state_str}")

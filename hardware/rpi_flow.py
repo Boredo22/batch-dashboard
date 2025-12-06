@@ -7,6 +7,9 @@ Works independently without hardware manager - compatible with simple_gui.py pat
 
 import time
 import logging
+import sys
+from pathlib import Path
+from datetime import datetime
 from config import (
     FLOW_METER_GPIO_PINS,
     FLOW_METER_NAMES,
@@ -20,6 +23,17 @@ from config import (
 )
 
 import platform
+
+# Add project root to path for state_manager import
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+try:
+    from state_manager import state
+except ImportError:
+    # Fallback if state_manager not available
+    state = None
 
 try:
     import lgpio
@@ -167,9 +181,22 @@ class FlowMeterController:
         # Update calibration if provided
         if pulses_per_gallon is not None:
             meter['pulses_per_gallon'] = pulses_per_gallon
+            # Save calibration to state manager
+            if state is not None:
+                state.set_flow_meter_calibration(meter_id, pulses_per_gallon)
 
         meter['last_update'] = time.time()
-        
+
+        # Persist state to database
+        if state is not None:
+            state.set_flow_meter_state(meter_id, True)
+            state.set_flow_meter_job(meter_id, {
+                "target_gallons": target_gallons,
+                "gallons_measured": 0.0,
+                "operation_type": "monitoring",  # Can be updated by caller
+                "started_at": datetime.now().isoformat()
+            })
+
         meter_name = get_flow_meter_name(meter_id)
         logger.info(f"Started {meter_name}: target {target_gallons} gallons, "
                    f"{meter['pulses_per_gallon']} pulses/gallon")
@@ -179,12 +206,21 @@ class FlowMeterController:
         """Stop flow monitoring"""
         if not validate_flow_meter_id(meter_id):
             return False
-        
+
         meter = self.flow_meters[meter_id]
+        final_gallons = meter['current_gallons']
         meter['status'] = 0  # Inactive
-        
+
+        # Persist state to database
+        if state is not None:
+            state.set_flow_meter_state(meter_id, False)
+            # Increment lifetime total
+            state.increment_flow_meter_total(meter_id, final_gallons)
+            # Clear job
+            state.clear_flow_meter_job(meter_id)
+
         meter_name = get_flow_meter_name(meter_id)
-        logger.info(f"Stopped {meter_name}")
+        logger.info(f"Stopped {meter_name}: Total measured: {final_gallons:.2f} gallons")
         return True
     
     def update_flow_status(self, meter_id):
@@ -208,6 +244,13 @@ class FlowMeterController:
                 meter['current_gallons'] = new_gallons
                 meter['last_update'] = time.time()
 
+                # Update job progress in state manager
+                if state is not None:
+                    job = state.get_flow_meter_job(meter_id)
+                    if job:
+                        job['gallons_measured'] = float(new_gallons)
+                        state.set_flow_meter_job(meter_id, job)
+
                 meter_name = get_flow_meter_name(meter_id)
                 logger.debug(f"{meter_name}: {meter['current_gallons']}/{meter['target_gallons']} gallons "
                            f"({meter['flow_rate']:.2f} GPM)")
@@ -215,6 +258,13 @@ class FlowMeterController:
                 # Check if target reached
                 if meter['target_gallons'] <= meter['current_gallons']:
                     meter['status'] = 2  # Completed (not inactive, so we can track completion)
+
+                    # Update state manager on completion
+                    if state is not None:
+                        state.set_flow_meter_state(meter_id, False)
+                        state.increment_flow_meter_total(meter_id, float(new_gallons))
+                        state.clear_flow_meter_job(meter_id)
+
                     logger.info(f"{meter_name} completed: {meter['current_gallons']} gallons")
                     return False  # Completed
 

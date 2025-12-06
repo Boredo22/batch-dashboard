@@ -13,6 +13,7 @@ import logging
 import sys
 import threading
 from pathlib import Path
+from datetime import datetime
 
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -28,6 +29,13 @@ from config import (
 )
 
 from hardware.i2c_manager import get_i2c_manager
+
+# Import state manager for persistence
+try:
+    from state_manager import state
+except ImportError:
+    # Fallback if state_manager not available
+    state = None
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +131,11 @@ class EZOSensorController:
                 readings = self.read_sensors()
                 if readings['ph'] is not None or readings['ec'] is not None:
                     logger.debug(f"Sensor readings - pH: {readings['ph']}, EC: {readings['ec']}")
+
+                    # Persist latest readings to state manager
+                    if state is not None and readings['ph'] is not None and readings['ec'] is not None:
+                        state.set_ecph_values(readings['ec'], readings['ph'])
+
             except Exception as e:
                 logger.error(f"Error in monitoring loop: {e}")
 
@@ -138,6 +151,10 @@ class EZOSensorController:
             return True
 
         self.monitoring_active = True
+
+        # Persist monitoring state
+        if state is not None:
+            state.set_ecph_monitoring(True)
 
         # Start background monitoring thread
         self.monitoring_thread = threading.Thread(
@@ -157,6 +174,10 @@ class EZOSensorController:
             return True
 
         self.monitoring_active = False
+
+        # Persist monitoring state
+        if state is not None:
+            state.set_ecph_monitoring(False)
 
         # Wait for monitoring thread to finish
         if self.monitoring_thread and self.monitoring_thread.is_alive():
@@ -222,8 +243,11 @@ class EZOSensorController:
 
         command = f"Cal,mid,{value:.2f}"
         response = self._send_command(PH_SENSOR_ADDRESS, command)
-        
+
         if response is not None:
+            # Save calibration date
+            if state is not None:
+                state.set_ph_calibration_date(datetime.now().isoformat())
             logger.info(f"pH mid calibration at {value:.2f}: Success")
             return True
         else:
@@ -239,6 +263,9 @@ class EZOSensorController:
         response = self._send_command(PH_SENSOR_ADDRESS, command)
 
         if response is not None:
+            # Save calibration date
+            if state is not None:
+                state.set_ph_calibration_date(datetime.now().isoformat())
             logger.info(f"pH low calibration at {value:.2f}: Success")
             return True
         else:
@@ -254,6 +281,9 @@ class EZOSensorController:
         response = self._send_command(PH_SENSOR_ADDRESS, command)
 
         if response is not None:
+            # Save calibration date
+            if state is not None:
+                state.set_ph_calibration_date(datetime.now().isoformat())
             logger.info(f"pH high calibration at {value:.2f}: Success")
             return True
         else:
@@ -288,8 +318,11 @@ class EZOSensorController:
     def calibrate_ec_dry(self):
         """Calibrate EC dry (in air)"""
         response = self._send_command(EC_SENSOR_ADDRESS, "Cal,dry")
-        
+
         if response is not None:
+            # Save calibration date
+            if state is not None:
+                state.set_ec_calibration_date(datetime.now().isoformat())
             logger.info("EC dry calibration: Success")
             return True
         else:
@@ -305,6 +338,9 @@ class EZOSensorController:
         response = self._send_command(EC_SENSOR_ADDRESS, command)
 
         if response is not None:
+            # Save calibration date
+            if state is not None:
+                state.set_ec_calibration_date(datetime.now().isoformat())
             logger.info(f"EC single calibration at {value} μS/cm: Success")
             return True
         else:
@@ -320,6 +356,9 @@ class EZOSensorController:
         response = self._send_command(EC_SENSOR_ADDRESS, command)
 
         if response is not None:
+            # Save calibration date
+            if state is not None:
+                state.set_ec_calibration_date(datetime.now().isoformat())
             logger.info(f"EC low calibration at {value} μS/cm: Success")
             return True
         else:
@@ -335,6 +374,9 @@ class EZOSensorController:
         response = self._send_command(EC_SENSOR_ADDRESS, command)
 
         if response is not None:
+            # Save calibration date
+            if state is not None:
+                state.set_ec_calibration_date(datetime.now().isoformat())
             logger.info(f"EC high calibration at {value} μS/cm: Success")
             return True
         else:

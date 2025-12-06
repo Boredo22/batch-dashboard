@@ -48,18 +48,15 @@ except ImportError:
         STATUS_UPDATE_INTERVAL = 2.0
         PUMP_CHECK_INTERVAL = 1.0
         FLOW_UPDATE_INTERVAL = 0.5
-        MAX_PUMP_VOLUME_ML = 2500.0
-        MIN_PUMP_VOLUME_ML = 0.5
-        MAX_FLOW_GALLONS = 100
-        I2C_BUS_NUMBER = 1
-        EZO_COMMAND_DELAY = 0.3
-        COMMAND_START = "Start"
-        COMMAND_END = "end"
-        ARDUINO_UNO_BAUDRATE = 115200
-        MOCK_SETTINGS = {}
-        DEBUG_MODE = False
-        VERBOSE_LOGGING = False
-        LOG_LEVEL = "INFO"
+
+# Import state manager for hardware state persistence
+try:
+    from state_manager import state, get_system_snapshot
+except ImportError:
+    # Fallback if state_manager not available
+    state = None
+    def get_system_snapshot():
+        return {"error": "State manager not available"}
 
 # Setup logging
 logging.basicConfig(
@@ -487,6 +484,11 @@ def api_status():
             }
             pumps_list.append(pump_data)
 
+        # Add persisted relay states from state manager
+        persisted_relays = {}
+        if state is not None:
+            persisted_relays = state.get_all_relays()
+
         return jsonify({
             'success': True,
             'status': status,
@@ -501,10 +503,27 @@ def api_status():
                           for fid in hardware['flow_meters']['ids']],
             'ec_value': status.get('ec', 0),
             'ph_value': status.get('ph', 0),
-            'ec_ph_monitoring': status.get('ec_ph_active', False)
+            'ec_ph_monitoring': status.get('ec_ph_active', False),
+            'persisted_relay_states': persisted_relays
         })
     except Exception as e:
         logger.error(f"Error getting status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/state')
+def api_state():
+    """Get persistent hardware state from state manager"""
+    try:
+        snapshot = get_system_snapshot()
+        return jsonify({
+            'success': True,
+            'state': snapshot
+        })
+    except Exception as e:
+        logger.error(f"Error getting state snapshot: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
