@@ -21,12 +21,12 @@
         commands: [],
         responses: ['Tank validation complete', 'Volume check: 25 gallons available']
       },
-      { 
-        id: 'mix_relays_on', 
-        name: 'Start Mixing', 
-        description: 'Turn on tank mixing relays (circulation pumps)',
-        commands: tank ? tank.mix_relays.map(id => `"Start;Relay;${id};ON;end"`) : [],
-        responses: tank ? tank.mix_relays.map(id => `"Relay ${id} ON"`) : []
+      {
+        id: 'mix_relays_on',
+        name: 'Start Mixing',
+        description: 'Turn on tank mixing relays via GPIO (circulation pumps)',
+        commands: tank ? tank.mix_relays.map(id => `POST /api/relay/${id}/on`) : [],
+        responses: tank ? tank.mix_relays.map(id => `"Relay ${id} turned ON"`) : []
       },
       { 
         id: 'mixing_delay', 
@@ -35,26 +35,26 @@
         commands: [],
         responses: ['Timer: 20 seconds', 'Initial circulation complete']
       },
-      { 
-        id: 'ecph_start', 
-        name: 'Start EC/pH Monitor', 
-        description: 'Begin monitoring solution parameters',
-        commands: [`"Start;EcPh;ON;end"`],
-        responses: [`"Started EC/pH monitoring"`]
+      {
+        id: 'ecph_start',
+        name: 'Start EC/pH Monitor',
+        description: 'Begin monitoring solution parameters via EZO I2C sensors (0x63/0x64)',
+        commands: [`POST /api/ecph/start`],
+        responses: [`"Started EC/pH monitoring - EZO sensors ready"`]
       },
-      { 
-        id: 'pump_dosing', 
-        name: 'Nutrient Dosing', 
-        description: 'Run peristaltic pumps for calculated dosage rates',
+      {
+        id: 'pump_dosing',
+        name: 'Nutrient Dosing',
+        description: 'Run EZO peristaltic pumps for calculated dosage rates via I2C',
         commands: tank ? [
-          `"Start;Dispense;${tank.pumps[0]};${Math.round(gallons * 2.5)};end"`, // Nutrient A
-          `"Start;Dispense;${tank.pumps[1]};${Math.round(gallons * 2.5)};end"`, // Nutrient B  
-          `"Start;Dispense;${tank.pumps[2]};${Math.round(gallons * 1.0)};end"`   // Cal-Mag
+          `POST /api/pump/${tank.pumps[0]}/dispense (${Math.round(gallons * 2.5)}ml)`, // Nutrient A
+          `POST /api/pump/${tank.pumps[1]}/dispense (${Math.round(gallons * 2.5)}ml)`, // Nutrient B
+          `POST /api/pump/${tank.pumps[2]}/dispense (${Math.round(gallons * 1.0)}ml)`   // Cal-Mag
         ] : [],
         responses: tank ? [
-          `"Dispensing ${Math.round(gallons * 2.5)}ml from pump ${tank.pumps[0]}"`, // Nutrient A
-          `"Dispensing ${Math.round(gallons * 2.5)}ml from pump ${tank.pumps[1]}"`, // Nutrient B
-          `"Dispensing ${Math.round(gallons * 1.0)}ml from pump ${tank.pumps[2]}"`   // Cal-Mag
+          `"Started dispensing ${Math.round(gallons * 2.5)}ml from pump ${tank.pumps[0]}"`, // Nutrient A
+          `"Started dispensing ${Math.round(gallons * 2.5)}ml from pump ${tank.pumps[1]}"`, // Nutrient B
+          `"Started dispensing ${Math.round(gallons * 1.0)}ml from pump ${tank.pumps[2]}"`   // Cal-Mag
         ] : []
       },
       { 
@@ -78,19 +78,19 @@
         commands: [],
         responses: ['Reading sensors...', 'EC: 1.8 mS/cm, pH: 6.2']
       },
-      { 
-        id: 'ecph_stop', 
-        name: 'Stop Monitoring', 
-        description: 'Stop EC/pH monitoring system',
-        commands: [`"Start;EcPh;OFF;end"`],
+      {
+        id: 'ecph_stop',
+        name: 'Stop Monitoring',
+        description: 'Stop EC/pH monitoring on EZO I2C sensors',
+        commands: [`POST /api/ecph/stop`],
         responses: [`"Stopped EC/pH monitoring"`]
       },
-      { 
-        id: 'mix_relays_off', 
-        name: 'Stop Mixing', 
-        description: 'Turn off tank mixing relays',
-        commands: tank ? tank.mix_relays.map(id => `"Start;Relay;${id};OFF;end"`) : [],
-        responses: tank ? tank.mix_relays.map(id => `"Relay ${id} OFF"`) : []
+      {
+        id: 'mix_relays_off',
+        name: 'Stop Mixing',
+        description: 'Turn off tank mixing relays via GPIO',
+        commands: tank ? tank.mix_relays.map(id => `POST /api/relay/${id}/off`) : [],
+        responses: tank ? tank.mix_relays.map(id => `"Relay ${id} turned OFF"`) : []
       },
       { 
         id: 'validation', 
@@ -274,7 +274,7 @@
       </div>
       <div class="hardware-item">
         <i class="fas fa-heartbeat"></i>
-        <span>EC/pH Monitoring System</span>
+        <span>EZO EC/pH Sensors (I2C 0x63/0x64 via Atlas isolation shield)</span>
       </div>
     </div>
   </div>
@@ -306,7 +306,7 @@
     </div>
     <div class="log-examples">
       <div class="log-example command">
-        <span class="log-type">Commands:</span> "Start;Relay;4;ON;end" | "Start;Dispense;1;50;end" | "Start;EcPh;ON;end"
+        <span class="log-type">API Calls:</span> POST /api/relay/4/on | POST /api/pump/1/dispense | POST /api/ecph/start
       </div>
       <div class="log-example success">
         <span class="log-type">Success:</span> "Mix job started" | "Dosing complete" | "Final EC: 1.8, pH: 6.2"
@@ -322,68 +322,95 @@
 </div>
 
 <style>
+  :root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-card: #1e293b;
+    --bg-card-hover: #334155;
+    --accent-steel: #64748b;
+    --accent-slate: #475569;
+    --status-success: #059669;
+    --status-warning: #d97706;
+    --status-error: #dc2626;
+    --text-primary: #f1f5f9;
+    --text-secondary: #e2e8f0;
+    --text-muted: #94a3b8;
+    --border-subtle: #334155;
+    --border-emphasis: #475569;
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 0.75rem;
+    --text-xs: 0.6875rem;
+    --text-sm: 0.8125rem;
+    --text-base: 0.9375rem;
+  }
+
   .mix-job-container {
-    background: #2d3748;
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    border: 1px solid #4a5568;
+    background: var(--bg-card);
+    border-radius: 0.375rem;
+    padding: var(--space-md);
+    border: 1px solid var(--border-subtle);
   }
 
   .section-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid #4a5568;
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .section-header h3 {
     margin: 0;
-    color: #e2e8f0;
-    font-size: 1.1rem;
-    font-weight: 600;
+    color: var(--text-primary);
+    font-size: var(--text-base);
+    font-weight: 500;
   }
 
   .section-header i {
-    margin-right: 8px;
-    color: #10b981;
+    margin-right: var(--space-sm);
+    color: var(--accent-steel);
   }
 
   .job-status {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 0.85rem;
-    font-weight: 600;
+    gap: var(--space-sm);
+    height: 1.25rem;
+    padding: 0 0.5rem;
+    border-radius: 0.25rem;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    border: 1px solid transparent;
   }
 
   .job-status.active {
-    background: #1a2e1a;
-    color: #4ade80;
+    background: rgba(5, 150, 105, 0.15);
+    color: var(--status-success);
+    border-color: rgba(5, 150, 105, 0.3);
   }
 
   .job-status.idle {
-    background: #2d2d2d;
-    color: #a0aec0;
+    background: rgba(100, 116, 139, 0.15);
+    color: var(--text-muted);
+    border-color: var(--border-subtle);
   }
 
   .status-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     animation: pulse 2s infinite;
   }
 
   .job-status.active .status-dot {
-    background: #22c55e;
+    background: var(--status-success);
   }
 
   .job-status.idle .status-dot {
-    background: #6b7280;
+    background: var(--text-muted);
   }
 
   @keyframes pulse {
@@ -392,205 +419,212 @@
   }
 
   .job-config {
-    margin-bottom: 24px;
+    margin-bottom: var(--space-md);
   }
 
   .config-info {
-    margin-bottom: 16px;
+    margin-bottom: var(--space-md);
   }
 
   .info-card {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px;
-    background: #1a202c;
-    border: 1px solid #f59e0b;
-    border-radius: 8px;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    background: var(--bg-primary);
+    border: 1px solid var(--status-warning);
+    border-radius: 0.375rem;
   }
 
   .info-card i {
-    color: #f59e0b;
-    font-size: 1.2rem;
+    color: var(--status-warning);
+    font-size: var(--text-base);
   }
 
   .info-text {
-    color: #e2e8f0;
-    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
     line-height: 1.4;
   }
 
   .input-group {
-    margin-bottom: 16px;
+    margin-bottom: var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
   }
 
   .input-group label {
-    display: block;
     font-weight: 500;
-    color: #e2e8f0;
-    font-size: 0.9rem;
-    margin-bottom: 6px;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
   }
 
   .input-group select {
     width: 100%;
-    padding: 12px;
-    border: 2px solid #4a5568;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    transition: border-color 0.2s;
-    background: #1a202c;
-    color: #e2e8f0;
+    height: 2.5rem;
+    padding: 0 var(--space-md);
+    border: 1px solid var(--border-emphasis);
+    border-radius: 0.25rem;
+    font-size: var(--text-sm);
+    transition: border-color 0.15s ease;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    outline: none;
   }
 
   .input-group select:focus {
-    outline: none;
-    border-color: #10b981;
+    border-color: var(--accent-steel);
   }
 
   .job-progress {
-    margin-bottom: 24px;
+    margin-bottom: var(--space-md);
   }
 
   .progress-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: var(--space-md);
   }
 
   .job-info {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0.25rem;
   }
 
   .job-label {
-    font-size: 0.8rem;
-    color: #a0aec0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
     font-weight: 500;
   }
 
   .job-details {
-    font-size: 0.9rem;
-    color: #e2e8f0;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    font-weight: 500;
   }
 
   .timer {
-    font-size: 0.85rem;
-    color: #10b981;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    color: var(--status-success);
+    font-weight: 500;
   }
 
   .progress-percent {
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: #10b981;
+    font-size: 1.125rem;
+    font-weight: 600;
+    font-family: ui-monospace, monospace;
+    color: var(--accent-steel);
   }
 
   .progress-bar {
     width: 100%;
-    height: 8px;
-    background: #1a202c;
-    border-radius: 4px;
+    height: 0.5rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 0.25rem;
     overflow: hidden;
-    margin-bottom: 16px;
+    margin-bottom: var(--space-md);
   }
 
   .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #10b981, #059669);
+    background: var(--accent-steel);
     transition: width 0.3s ease;
   }
 
   .live-readings {
     display: flex;
-    gap: 24px;
-    margin-bottom: 16px;
-    padding: 12px;
-    background: #1a202c;
-    border-radius: 8px;
-    border: 1px solid #4a5568;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+    padding: var(--space-md);
+    background: var(--bg-primary);
+    border-radius: 0.25rem;
+    border: 1px solid var(--border-subtle);
   }
 
   .reading-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 0.25rem;
   }
 
   .reading-label {
-    font-size: 0.8rem;
-    color: #a0aec0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
     font-weight: 500;
   }
 
   .reading-value {
-    font-size: 1.1rem;
-    font-weight: bold;
-    color: #e2e8f0;
+    font-size: var(--text-base);
+    font-weight: 500;
+    font-family: ui-monospace, monospace;
+    color: var(--text-primary);
   }
 
   .reading-value.warning {
-    color: #f59e0b;
+    color: var(--status-warning);
     animation: pulse 1s infinite;
   }
 
   .action-btn {
     width: 100%;
-    padding: 12px 16px;
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
+    height: 2.5rem;
+    padding: 0 1rem;
+    border-radius: 0.25rem;
+    font-weight: 500;
+    font-size: var(--text-sm);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 0.375rem;
+    border: 1px solid;
   }
 
   .start-btn {
-    background: #10b981;
-    color: white;
+    background: rgba(5, 150, 105, 0.15);
+    color: var(--status-success);
+    border-color: rgba(5, 150, 105, 0.3);
   }
 
   .start-btn:hover {
-    background: #059669;
-    transform: translateY(-1px);
+    background: rgba(5, 150, 105, 0.25);
   }
 
   .stop-btn {
-    background: #ef4444;
-    color: white;
+    background: rgba(220, 38, 38, 0.15);
+    color: var(--status-error);
+    border-color: rgba(220, 38, 38, 0.3);
   }
 
   .stop-btn:hover {
-    background: #dc2626;
-    transform: translateY(-1px);
+    background: rgba(220, 38, 38, 0.25);
   }
 
   .process-steps {
-    margin-bottom: 24px;
+    margin-bottom: var(--space-md);
   }
 
   .steps-header {
-    margin-bottom: 12px;
+    margin-bottom: var(--space-md);
   }
 
   .steps-header h4 {
     margin: 0;
-    color: #e2e8f0;
-    font-size: 1rem;
-    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-weight: 500;
   }
 
   .steps-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-sm);
     max-height: 300px;
     overflow-y: auto;
   }
@@ -598,44 +632,44 @@
   .step-item {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 12px;
-    border-radius: 8px;
-    background: #1a202c;
-    border: 1px solid #4a5568;
-    transition: all 0.2s;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    border-radius: 0.25rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    transition: all 0.15s ease;
   }
 
   .step-item.active {
-    background: #1a2e1a;
-    border-color: #10b981;
+    background: rgba(100, 116, 139, 0.1);
+    border-color: var(--accent-steel);
   }
 
   .step-item.completed {
-    background: #1a2e1a;
-    border-color: #22c55e;
+    background: rgba(5, 150, 105, 0.1);
+    border-color: rgba(5, 150, 105, 0.3);
   }
 
   .step-indicator {
-    width: 20px;
-    height: 20px;
+    width: 1.25rem;
+    height: 1.25rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.8rem;
-    margin-top: 2px;
+    font-size: var(--text-xs);
+    margin-top: 0.125rem;
   }
 
   .step-item.pending .step-indicator {
-    color: #6b7280;
+    color: var(--text-muted);
   }
 
   .step-item.active .step-indicator {
-    color: #10b981;
+    color: var(--accent-steel);
   }
 
   .step-item.completed .step-indicator {
-    color: #22c55e;
+    color: var(--status-success);
   }
 
   .step-content {
@@ -643,95 +677,95 @@
   }
 
   .step-name {
-    font-weight: 600;
-    color: #e2e8f0;
-    font-size: 0.9rem;
-    margin-bottom: 4px;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    margin-bottom: 0.25rem;
   }
 
   .step-description {
-    font-size: 0.8rem;
-    color: #a0aec0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
     line-height: 1.4;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-sm);
   }
 
   .step-commands, .step-responses {
-    margin-top: 8px;
+    margin-top: var(--space-sm);
   }
 
   .commands-label, .responses-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #cbd5e0;
-    margin-bottom: 4px;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
   }
 
   .commands-label {
-    color: #f59e0b;
+    color: var(--status-warning);
   }
 
   .responses-label {
-    color: #22c55e;
+    color: var(--status-success);
   }
 
   .command-item, .response-item {
-    font-size: 0.75rem;
-    font-family: 'Courier New', monospace;
-    background: #0f172a;
-    padding: 4px 8px;
-    border-radius: 4px;
-    margin-bottom: 2px;
+    font-size: var(--text-xs);
+    font-family: ui-monospace, monospace;
+    background: var(--bg-secondary);
+    padding: 0.25rem var(--space-sm);
+    border-radius: 0.25rem;
+    margin-bottom: 0.125rem;
     border-left: 2px solid;
   }
 
   .command-item {
-    border-left-color: #f59e0b;
-    color: #fbbf24;
+    border-left-color: var(--status-warning);
+    color: var(--status-warning);
   }
 
   .response-item {
-    border-left-color: #22c55e;
-    color: #86efac;
+    border-left-color: var(--status-success);
+    color: var(--status-success);
   }
 
   .hardware-info, .dosage-info {
-    margin-bottom: 20px;
+    margin-bottom: var(--space-md);
   }
 
   .hardware-header, .dosage-header {
-    margin-bottom: 12px;
+    margin-bottom: var(--space-md);
   }
 
   .hardware-header h4, .dosage-header h4 {
     margin: 0;
-    color: #e2e8f0;
-    font-size: 1rem;
-    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-weight: 500;
   }
 
   .hardware-list, .dosage-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-sm);
   }
 
   .hardware-item, .dosage-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.9rem;
-    color: #cbd5e0;
+    gap: var(--space-sm);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
   }
 
   .hardware-item i {
-    color: #10b981;
-    width: 16px;
+    color: var(--accent-steel);
+    width: 1rem;
   }
 
   .dosage-item {
     justify-content: space-between;
-    padding: 6px 0;
+    padding: 0.375rem 0;
   }
 
   .nutrient-name {
@@ -739,77 +773,78 @@
   }
 
   .dosage-rate {
-    color: #10b981;
-    font-weight: 600;
+    color: var(--status-success);
+    font-weight: 500;
+    font-family: ui-monospace, monospace;
   }
 
   .log-info {
-    padding-top: 16px;
-    border-top: 1px solid #4a5568;
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-subtle);
   }
 
   .log-info-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #a0aec0;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-muted);
   }
 
   .log-info-header i {
-    color: #10b981;
+    color: var(--accent-steel);
   }
 
   .log-examples {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0.25rem;
   }
 
   .log-example {
-    font-size: 0.8rem;
-    padding: 4px 0;
-    color: #cbd5e0;
+    font-size: var(--text-xs);
+    padding: 0.25rem 0;
+    color: var(--text-secondary);
   }
 
   .log-type {
-    font-weight: 600;
+    font-weight: 500;
   }
 
   .log-example.command .log-type {
-    color: #f59e0b;
+    color: var(--status-warning);
   }
 
   .log-example.success .log-type {
-    color: #22c55e;
+    color: var(--status-success);
   }
 
   .log-example.warning .log-type {
-    color: #f59e0b;
+    color: var(--status-warning);
   }
 
   .log-example.error .log-type {
-    color: #ef4444;
+    color: var(--status-error);
   }
 
   @media (max-width: 600px) {
     .progress-header {
       flex-direction: column;
       align-items: flex-start;
-      gap: 8px;
+      gap: var(--space-sm);
     }
-    
+
     .live-readings {
       flex-direction: column;
-      gap: 12px;
+      gap: var(--space-md);
     }
 
     .dosage-item {
       flex-direction: column;
       align-items: flex-start;
-      gap: 4px;
+      gap: 0.25rem;
     }
   }
 </style>

@@ -99,116 +99,140 @@
 </div>
 
 <style>
+  :root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-card: #1e293b;
+    --bg-card-hover: #334155;
+    --accent-steel: #64748b;
+    --accent-slate: #475569;
+    --status-success: #059669;
+    --status-warning: #d97706;
+    --status-error: #dc2626;
+    --text-primary: #f1f5f9;
+    --text-secondary: #e2e8f0;
+    --text-muted: #94a3b8;
+    --border-subtle: #334155;
+    --border-emphasis: #475569;
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 0.75rem;
+    --text-xs: 0.6875rem;
+    --text-sm: 0.8125rem;
+    --text-base: 0.9375rem;
+  }
+
   .pump-control-container {
-    background: #2d3748;
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    border: 1px solid #4a5568;
+    background: var(--bg-card);
+    border-radius: 0.375rem;
+    padding: var(--space-md);
+    border: 1px solid var(--border-subtle);
   }
 
   .section-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid #4a5568;
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .section-header h3 {
     margin: 0;
-    color: #e2e8f0;
-    font-size: 1.1rem;
-    font-weight: 600;
+    color: var(--text-primary);
+    font-size: var(--text-base);
+    font-weight: 500;
   }
 
   .section-header i {
-    margin-right: 8px;
-    color: #3b82f6;
+    margin-right: var(--space-sm);
+    color: var(--accent-steel);
   }
 
   .controls-header {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-md);
   }
 
   .input-group {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
   }
 
   .input-group label {
     font-weight: 500;
-    color: #e2e8f0;
-    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
     white-space: nowrap;
   }
 
   .input-group input {
-    padding: 8px 12px;
-    border: 2px solid #4a5568;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    transition: border-color 0.2s;
-    background: #1a202c;
-    color: #e2e8f0;
+    height: 2.5rem;
+    padding: 0 var(--space-md);
+    border: 1px solid var(--border-emphasis);
+    border-radius: 0.25rem;
+    font-size: var(--text-sm);
+    transition: border-color 0.15s ease;
+    background: var(--bg-primary);
+    color: var(--text-primary);
     width: 80px;
+    outline: none;
   }
 
   .input-group input:focus {
-    outline: none;
-    border-color: #3b82f6;
+    border-color: var(--accent-steel);
   }
 
   .pump-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: var(--space-md);
   }
 
   .pump-card {
-    background: #1a202c;
-    border: 2px solid #4a5568;
-    border-radius: 10px;
-    padding: 16px;
-    transition: all 0.2s;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 0.25rem;
+    padding: var(--space-md);
+    transition: all 0.15s ease;
   }
 
   .pump-card.selected {
-    border-color: #3b82f6;
-    background: #1a2332;
+    border-color: var(--accent-steel);
+    background: var(--bg-secondary);
   }
 
   .pump-card.active {
-    background: #1a2e1a;
-    border-color: #22c55e;
+    background: rgba(5, 150, 105, 0.1);
+    border-color: rgba(5, 150, 105, 0.3);
   }
 
   .pump-card.inactive {
-    background: #1a202c;
-    border-color: #4a5568;
+    background: var(--bg-primary);
+    border-color: var(--border-subtle);
   }
 
   .pump-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: var(--space-md);
   }
 
   .pump-name {
-    font-weight: 600;
-    color: #e2e8f0;
-    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: var(--text-sm);
   }
 
   .pump-status-info {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-sm);
   }
 
   .voltage-display {
@@ -217,37 +241,42 @@
   }
 
   .voltage-value {
-    font-size: 0.75rem;
-    font-weight: 600;
-    padding: 2px 6px;
-    border-radius: 4px;
+    height: 1.25rem;
+    padding: 0 0.5rem;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    border-radius: 0.25rem;
     background: rgba(0, 0, 0, 0.3);
-    border: 1px solid;
+    border: 1px solid transparent;
+    display: flex;
+    align-items: center;
   }
 
   .voltage-normal {
-    color: #22c55e;
-    border-color: #22c55e;
+    color: var(--status-success);
+    background: rgba(5, 150, 105, 0.15);
+    border-color: rgba(5, 150, 105, 0.3);
   }
 
   .voltage-warning {
-    color: #f59e0b;
-    border-color: #f59e0b;
+    color: var(--status-warning);
+    background: rgba(217, 119, 6, 0.15);
+    border-color: rgba(217, 119, 6, 0.3);
   }
 
   .status-dot {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     animation: pulse 2s infinite;
   }
 
   .status-dot.on {
-    background: #22c55e;
+    background: var(--status-success);
   }
 
   .status-dot.off {
-    background: #6b7280;
+    background: var(--text-muted);
   }
 
   @keyframes pulse {
@@ -258,111 +287,109 @@
   .pump-controls {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 0.375rem;
   }
 
   .control-btn {
-    padding: 8px;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 600;
+    height: 2.5rem;
+    padding: 0 0.875rem;
+    border-radius: 0.25rem;
+    font-size: var(--text-sm);
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 0.25rem;
+    border: 1px solid;
   }
 
   .control-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
   }
 
   .dispense-btn {
-    background: #1a2e1a;
-    color: #4ade80;
-    border: 1px solid #22c55e;
+    background: rgba(5, 150, 105, 0.15);
+    color: var(--status-success);
+    border-color: rgba(5, 150, 105, 0.3);
   }
 
   .dispense-btn.selected {
-    background: #22c55e;
+    background: var(--status-success);
     color: white;
+    border-color: var(--status-success);
   }
 
   .dispense-btn:hover:not(:disabled) {
-    background: #22c55e;
-    color: white;
-    transform: translateY(-1px);
+    background: rgba(5, 150, 105, 0.25);
   }
 
   .stop-btn {
-    background: #2d1a1a;
-    color: #f87171;
-    border: 1px solid #ef4444;
+    background: rgba(220, 38, 38, 0.15);
+    color: var(--status-error);
+    border-color: rgba(220, 38, 38, 0.3);
   }
 
   .stop-btn:hover:not(:disabled) {
-    background: #ef4444;
-    color: white;
-    transform: translateY(-1px);
+    background: rgba(220, 38, 38, 0.25);
   }
 
   @media (max-width: 600px) {
     .section-header {
       flex-direction: column;
-      gap: 12px;
+      gap: var(--space-md);
       align-items: flex-start;
     }
-    
+
     .pump-grid {
       grid-template-columns: 1fr;
     }
   }
 
   .log-info {
-    margin-top: 20px;
-    padding-top: 16px;
-    border-top: 1px solid #4a5568;
+    margin-top: var(--space-md);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-subtle);
   }
 
   .log-info-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #a0aec0;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-muted);
   }
 
   .log-info-header i {
-    color: #3b82f6;
+    color: var(--accent-steel);
   }
 
   .log-examples {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0.25rem;
   }
 
   .log-example {
-    font-size: 0.8rem;
-    padding: 4px 0;
-    color: #cbd5e0;
+    font-size: var(--text-xs);
+    padding: 0.25rem 0;
+    color: var(--text-secondary);
   }
 
   .log-type {
-    font-weight: 600;
+    font-weight: 500;
   }
 
   .log-example.success .log-type {
-    color: #22c55e;
+    color: var(--status-success);
   }
 
   .log-example.error .log-type {
-    color: #ef4444;
+    color: var(--status-error);
   }
 
 </style>

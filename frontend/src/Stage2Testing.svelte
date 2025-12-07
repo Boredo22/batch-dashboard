@@ -1,20 +1,25 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { Card, CardContent, CardHeader } from '$lib/components/ui/card';
+  import { Badge } from '$lib/components/ui/badge';
   import FillJobTesting from './components/FillJobTesting.svelte';
   import SendJobTesting from './components/SendJobTesting.svelte';
   import MixJobTesting from './components/MixJobTesting.svelte';
-  import SystemLog from './components/SystemLog.svelte';
+  import SystemLogCard from '$lib/components/hardware/system-log-card.svelte';
 
   // State variables using Svelte 5 runes
   let logs = $state([]);
   let systemStatus = $state('Disconnected');
   let errorMessage = $state('');
-  
+
   // Job states
   let activeFillJob = $state(null);
   let activeSendJob = $state(null);
   let activeMixJob = $state(null);
-  
+
+  // Derived values
+  let activeJobCount = $derived([activeFillJob, activeSendJob, activeMixJob].filter(Boolean).length);
+
   let statusInterval;
 
   // API functions
@@ -140,10 +145,14 @@
     logs = [{ time: timestamp, message }, ...logs].slice(0, 100);
   }
 
+  function clearLogs() {
+    logs = [];
+  }
+
   onMount(async () => {
-    addLog('Stage 2 Testing initialized...');
+    addLog('Job Testing Dashboard initialized - Pi-native architecture');
     await fetchSystemStatus();
-    
+
     // Set up polling for system status
     statusInterval = setInterval(async () => {
       await fetchSystemStatus();
@@ -157,185 +166,323 @@
   });
 </script>
 
-<div class="app">
-  <div class="top-bar">
-    <h1>Stage 2: Job Testing Dashboard</h1>
-    <div class="status-info">
-      <div class="status-badge {systemStatus.toLowerCase()}">
-        {systemStatus}
+<div class="dashboard-container">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="header-content">
+      <div class="header-text">
+        <h1 class="page-title">Job Testing Dashboard</h1>
+        <p class="page-subtitle">Stage 2: Complete Process Testing</p>
       </div>
-      <div class="active-jobs">
-        {#if activeFillJob || activeSendJob || activeMixJob}
-          <span class="jobs-indicator">
-            <i class="fas fa-cogs"></i>
-            {[activeFillJob, activeSendJob, activeMixJob].filter(Boolean).length} Active
-          </span>
-        {:else}
-          <span class="jobs-indicator idle">
-            <i class="fas fa-pause"></i>
-            Idle
-          </span>
-        {/if}
+
+      <div class="header-status">
+        <div class="status-group">
+          <div class="status-label">SYSTEM STATUS</div>
+          <div class="flex items-center gap-2">
+            <div class="status-dot {systemStatus === 'Connected' ? 'bg-green-500' : 'bg-red-500'}"></div>
+            <span class="text-sm font-medium text-slate-200">{systemStatus}</span>
+          </div>
+        </div>
+
+        <div class="status-divider"></div>
+
+        <div class="status-group">
+          <div class="status-label">ACTIVE JOBS</div>
+          <div class="flex items-baseline gap-1">
+            {#if activeJobCount > 0}
+              <span class="text-2xl font-bold text-green-400">{activeJobCount}</span>
+              <span class="text-xs text-slate-400">running</span>
+            {:else}
+              <span class="text-sm text-slate-400">Idle</span>
+            {/if}
+          </div>
+        </div>
       </div>
     </div>
+
+    {#if errorMessage}
+      <div class="error-banner">
+        <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span>{errorMessage}</span>
+      </div>
+    {/if}
   </div>
 
+  <!-- Main Grid Layout -->
   <div class="main-grid">
-    <div class="left-panel">
-      <FillJobTesting 
-        activeJob={activeFillJob}
-        onStartJob={startFillJob}
-        onStopJob={() => stopJob('fill')}
-      />
-      <SendJobTesting 
-        activeJob={activeSendJob}
-        onStartJob={startSendJob}
-        onStopJob={() => stopJob('send')}
-      />
-      <MixJobTesting 
-        activeJob={activeMixJob}
-        onStartJob={startMixJob}
-        onStopJob={() => stopJob('mix')}
-      />
+    <!-- Left Column - Job Controls -->
+    <div class="grid-column">
+      <Card class="job-card">
+        <CardContent class="p-0">
+          <FillJobTesting
+            activeJob={activeFillJob}
+            onStartJob={startFillJob}
+            onStopJob={() => stopJob('fill')}
+          />
+        </CardContent>
+      </Card>
+
+      <Card class="job-card">
+        <CardContent class="p-0">
+          <SendJobTesting
+            activeJob={activeSendJob}
+            onStartJob={startSendJob}
+            onStopJob={() => stopJob('send')}
+          />
+        </CardContent>
+      </Card>
+
+      <Card class="job-card">
+        <CardContent class="p-0">
+          <MixJobTesting
+            activeJob={activeMixJob}
+            onStartJob={startMixJob}
+            onStopJob={() => stopJob('mix')}
+          />
+        </CardContent>
+      </Card>
     </div>
 
-    <div class="right-panel">
-      <SystemLog {logs} />
+    <!-- Right Column - System Log -->
+    <div class="grid-column">
+      <Card class="dashboard-card log-card">
+        <CardHeader class="pb-3">
+          <div class="flex justify-between items-center w-full">
+            <div class="flex items-center gap-2">
+              <span class="section-title-text">Job Activity Log</span>
+              <Badge variant="secondary" class="section-count-badge">{logs.length}</Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <SystemLogCard {logs} onClearLogs={clearLogs} />
+        </CardContent>
+      </Card>
     </div>
   </div>
 </div>
 
 <style>
-  .app {
-    width: 100vw;
-    height: 100vh;
-    background: #1a1a1a;
-    color: white;
-    display: flex;
-    flex-direction: column;
+  :global(body) {
+    background-color: #0a0f1e;
+    color: #e2e8f0;
   }
 
-  .top-bar {
-    background: #2d3748;
-    padding: 1rem 2rem;
+  .dashboard-container {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    box-sizing: border-box;
+    min-height: 100vh;
+  }
+
+  /* Page Header - Enhanced with gradient and better spacing */
+  .page-header {
+    width: 100%;
+    background: linear-gradient(135deg, #1a1f35 0%, #151929 100%);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(139, 92, 246, 0.1) inset;
+    box-sizing: border-box;
+    backdrop-filter: blur(10px);
+  }
+
+  .header-content {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid #4a5568;
+    gap: 2rem;
+    flex-wrap: wrap;
   }
 
-  .top-bar h1 {
-    margin: 0;
-    color: white;
-    font-size: 1.5rem;
-  }
-
-  .status-info {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .status-badge {
-    padding: 0.5rem 1rem;
-    border-radius: 0.5rem;
-    font-weight: bold;
-    text-transform: uppercase;
-    font-size: 0.875rem;
-  }
-
-  .status-badge.connected {
-    background: #22c55e;
-    color: white;
-  }
-
-  .status-badge.disconnected {
-    background: #ef4444;
-    color: white;
-  }
-
-  .status-badge.error {
-    background: #f97316;
-    color: white;
-  }
-
-  .jobs-indicator {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0.5rem 1rem;
-    border-radius: 0.5rem;
-    font-weight: 600;
-    font-size: 0.875rem;
-  }
-
-  .jobs-indicator:not(.idle) {
-    background: #1a2e1a;
-    color: #4ade80;
-    border: 1px solid #22c55e;
-  }
-
-  .jobs-indicator.idle {
-    background: #2d2d2d;
-    color: #a0aec0;
-    border: 1px solid #4a5568;
-  }
-
-  .main-grid {
-    flex: 1;
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: 1.5rem;
-    padding: 1.5rem;
-    overflow: hidden;
-    max-width: 100%;
-  }
-
-  .left-panel {
+  .header-text {
     display: flex;
     flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .page-title {
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    color: #f1f5f9;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: linear-gradient(135deg, #f1f5f9 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .page-subtitle {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .header-status {
+    display: flex;
+    align-items: center;
     gap: 1.5rem;
-    overflow-y: auto;
-    padding-right: 0.5rem;
   }
 
-  .right-panel {
-    background: #2d3748;
+  .status-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .status-label {
+    font-size: 0.625rem;
+    font-weight: 800;
+    color: #8b5cf6;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  .status-dot {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 9999px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .status-divider {
+    width: 1px;
+    height: 2.5rem;
+    background: linear-gradient(to bottom, transparent, rgba(139, 92, 246, 0.3), transparent);
+  }
+
+  .error-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
     border-radius: 0.5rem;
-    border: 1px solid #4a5568;
-    min-height: 0;
+    color: #fca5a5;
+    font-size: 0.875rem;
+    font-weight: 500;
   }
 
-  @media (max-width: 1400px) {
+  /* Main Grid */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+    width: 100%;
+  }
+
+  @media (min-width: 1024px) {
     .main-grid {
-      grid-template-columns: 1fr;
-      grid-template-rows: 1fr auto;
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
+  .grid-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  /* Job Cards - Remove default card styling, let job components handle it */
+  :global(.job-card) {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  /* System Log Card */
+  :global(.log-card) {
+    background: linear-gradient(135deg, #1a1f35 0%, #151929 100%) !important;
+    border: 1px solid rgba(139, 92, 246, 0.15) !important;
+    box-shadow:
+      0 8px 24px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(139, 92, 246, 0.08) inset !important;
+    border-radius: 0.75rem !important;
+    backdrop-filter: blur(10px) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    max-height: calc(100vh - 200px);
+    display: flex;
+    flex-direction: column;
+  }
+
+  :global(.log-card:hover) {
+    border-color: rgba(139, 92, 246, 0.25) !important;
+    box-shadow:
+      0 12px 32px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(139, 92, 246, 0.12) inset !important;
+  }
+
+  /* Section title styling */
+  .section-title-text {
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    transition: color 0.2s;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Badge styling overrides */
+  :global(.section-count-badge) {
+    background: rgba(139, 92, 246, 0.15) !important;
+    color: #a78bfa !important;
+    border: 1px solid rgba(139, 92, 246, 0.3) !important;
+    font-weight: 700 !important;
+    font-size: 0.75rem !important;
+  }
+
+  /* Responsive Design */
+  @media (max-width: 1023px) {
+    .dashboard-container {
+      padding: 0.75rem;
       gap: 1rem;
     }
-    
-    .right-panel {
-      height: 350px;
+
+    .page-header {
+      padding: 1rem;
+    }
+
+    .header-content {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .page-title {
+      font-size: 1.5rem;
+    }
+
+    .header-status {
+      flex-wrap: wrap;
+      width: 100%;
     }
   }
 
-  @media (max-width: 768px) {
-    .top-bar {
-      flex-direction: column;
-      gap: 0.5rem;
-      padding: 1rem;
+  @media (max-width: 480px) {
+    .page-title {
+      font-size: 1.25rem;
     }
-    
-    .status-info {
-      flex-direction: column;
-      gap: 8px;
-    }
-    
-    .main-grid {
-      padding: 1rem;
-    }
-    
-    .right-panel {
-      height: 300px;
+
+    .page-subtitle {
+      font-size: 0.75rem;
     }
   }
 </style>

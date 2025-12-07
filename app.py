@@ -25,8 +25,12 @@ from hardware.hardware_comms import (
     calibrate_pump, clear_pump_calibration, check_pump_calibration_status,
     pause_pump, get_pump_voltage, get_current_dispensed_volume,
     get_pump_status, refresh_pump_calibrations,
-    read_ec_ph_sensors, calibrate_ph, calibrate_ec, get_sensor_calibration_status
+    read_ec_ph_sensors, calibrate_ph, calibrate_ec, get_sensor_calibration_status,
+    get_hardware_comms
 )
+
+# Import job manager for multi-step job orchestration
+from job_manager import JobManager
 
 # Import configuration constants and all settings
 try:
@@ -76,8 +80,17 @@ if not safety_manager:
     print("Another instance running or safety setup failed")
     sys.exit(1)
 
+# Initialize job manager (will be started after hardware init)
+job_manager = None
+
 # Register cleanup on app shutdown
-atexit.register(cleanup_hardware)
+def cleanup_on_shutdown():
+    """Cleanup both hardware and job manager"""
+    if job_manager:
+        job_manager.stop()
+    cleanup_hardware()
+
+atexit.register(cleanup_on_shutdown)
 
 # =============================================================================
 # STATIC FILE SERVING - Serve Svelte build files
@@ -489,6 +502,11 @@ def api_status():
         if state is not None:
             persisted_relays = state.get_all_relays()
 
+        # Add job status if job manager is available
+        job_status = {}
+        if job_manager:
+            job_status = job_manager.get_all_jobs_status()
+
         return jsonify({
             'success': True,
             'status': status,
@@ -504,7 +522,11 @@ def api_status():
             'ec_value': status.get('ec', 0),
             'ph_value': status.get('ph', 0),
             'ec_ph_monitoring': status.get('ec_ph_active', False),
-            'persisted_relay_states': persisted_relays
+            'persisted_relay_states': persisted_relays,
+            # Add job status for Stage 2 Testing page
+            'active_fill_job': job_status.get('active_fill_job'),
+            'active_mix_job': job_status.get('active_mix_job'),
+            'active_send_job': job_status.get('active_send_job')
         })
     except Exception as e:
         logger.error(f"Error getting status: {e}")
@@ -1572,6 +1594,205 @@ def api_test_sensor():
             'test_type': test_type
         }), 500
 
+# =============================================================================
+# MULTI-STEP JOB ENDPOINTS - Job orchestration for Stage 2 Testing
+# =============================================================================
+
+@app.route('/api/jobs/fill/start', methods=['POST'])
+def api_start_fill_job():
+    """Start a tank fill job"""
+    try:
+        if not job_manager:
+            return jsonify({
+                'success': False,
+                'error': 'Job manager not initialized'
+            }), 500
+
+        data = request.get_json() or {}
+        tank_id = int(data.get('tank_id', 0))
+        gallons = float(data.get('gallons', 0))
+
+        if not tank_id or not gallons:
+            return jsonify({
+                'success': False,
+                'error': 'tank_id and gallons parameters required'
+            }), 400
+
+        result = job_manager.start_fill_job(tank_id, gallons)
+        return jsonify(result)
+
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': f'Invalid parameters: {e}'
+        }), 400
+    except Exception as e:
+        logger.error(f"Error starting fill job: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/jobs/fill/stop', methods=['POST'])
+def api_stop_fill_job():
+    """Stop the active fill job"""
+    try:
+        if not job_manager:
+            return jsonify({
+                'success': False,
+                'error': 'Job manager not initialized'
+            }), 500
+
+        result = job_manager.stop_job('fill')
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Error stopping fill job: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/jobs/mix/start', methods=['POST'])
+def api_start_mix_job():
+    """Start a tank mixing job"""
+    try:
+        if not job_manager:
+            return jsonify({
+                'success': False,
+                'error': 'Job manager not initialized'
+            }), 500
+
+        data = request.get_json() or {}
+        tank_id = int(data.get('tank_id', 0))
+
+        if not tank_id:
+            return jsonify({
+                'success': False,
+                'error': 'tank_id parameter required'
+            }), 400
+
+        result = job_manager.start_mix_job(tank_id)
+        return jsonify(result)
+
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': f'Invalid parameters: {e}'
+        }), 400
+    except Exception as e:
+        logger.error(f"Error starting mix job: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/jobs/mix/stop', methods=['POST'])
+def api_stop_mix_job():
+    """Stop the active mix job"""
+    try:
+        if not job_manager:
+            return jsonify({
+                'success': False,
+                'error': 'Job manager not initialized'
+            }), 500
+
+        result = job_manager.stop_job('mix')
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Error stopping mix job: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/jobs/send/start', methods=['POST'])
+def api_start_send_job():
+    """Start a send job (tank to room)"""
+    try:
+        if not job_manager:
+            return jsonify({
+                'success': False,
+                'error': 'Job manager not initialized'
+            }), 500
+
+        data = request.get_json() or {}
+        tank_id = int(data.get('tank_id', 0))
+        room_id = data.get('room_id', '')
+        gallons = float(data.get('gallons', 0))
+
+        if not tank_id or not room_id or not gallons:
+            return jsonify({
+                'success': False,
+                'error': 'tank_id, room_id, and gallons parameters required'
+            }), 400
+
+        result = job_manager.start_send_job(tank_id, room_id, gallons)
+        return jsonify(result)
+
+    except ValueError as e:
+        return jsonify({
+            'success': False,
+            'error': f'Invalid parameters: {e}'
+        }), 400
+    except Exception as e:
+        logger.error(f"Error starting send job: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/jobs/send/stop', methods=['POST'])
+def api_stop_send_job():
+    """Stop the active send job"""
+    try:
+        if not job_manager:
+            return jsonify({
+                'success': False,
+                'error': 'Job manager not initialized'
+            }), 500
+
+        result = job_manager.stop_job('send')
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Error stopping send job: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/jobs/status', methods=['GET'])
+def api_get_all_jobs_status():
+    """Get status of all active jobs"""
+    try:
+        if not job_manager:
+            return jsonify({
+                'success': False,
+                'error': 'Job manager not initialized'
+            }), 500
+
+        job_status = job_manager.get_all_jobs_status()
+        return jsonify({
+            'success': True,
+            **job_status
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting jobs status: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 # -----------------------------------------------------------------------------
 # EMERGENCY CONTROLS - Same as simple_gui.py
 # -----------------------------------------------------------------------------
@@ -1631,7 +1852,7 @@ def internal_error(error):
 def init_hardware():
     """Initialize hardware with safety wrapper"""
     logger.info("Starting hardware initialization...")
-    
+
     # Test hardware communications
     try:
         status = get_system_status()
@@ -1648,8 +1869,10 @@ def init_hardware():
 
 def initialize_app():
     """Initialize the application with safety manager"""
+    global job_manager
+
     logger.info("Starting Flask application...")
-    
+
     # Initialize hardware with safety wrapper
     try:
         hardware = safety_manager.safe_hardware_init(init_hardware)
@@ -1657,7 +1880,20 @@ def initialize_app():
     except Exception as e:
         logger.error(f"Hardware init failed: {e}")
         sys.exit(1)
-    
+
+    # Initialize job manager with hardware communications
+    try:
+        hardware_comms = get_hardware_comms()
+        if hardware_comms:
+            job_manager = JobManager(hardware_comms)
+            job_manager.start()
+            logger.info("✓ Job manager initialized and started")
+        else:
+            logger.warning("⚠ Hardware comms not available, job manager not initialized")
+    except Exception as e:
+        logger.error(f"Job manager init failed: {e}")
+        # Don't exit - jobs won't work but hardware control still will
+
     logger.info("Flask application initialized")
 
 if __name__ == '__main__':

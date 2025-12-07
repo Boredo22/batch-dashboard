@@ -21,22 +21,22 @@
     {
       id: 'tank_relay_on',
       name: 'Open Tank Valve',
-      description: 'Turn on tank outlet relay',
-      commands: [`"Start;Relay;${growRooms.find(r => r.id === selectedRoom)?.tank_id};ON;end"`],
-      responses: [`"Relay ${growRooms.find(r => r.id === selectedRoom)?.tank_id} ON"`]
+      description: 'Turn on tank outlet relay via GPIO',
+      commands: [`POST /api/relay/${growRooms.find(r => r.id === selectedRoom)?.tank_id}/on`],
+      responses: [`"Relay ${growRooms.find(r => r.id === selectedRoom)?.tank_id} turned ON"`]
     },
     {
       id: 'room_relay_on',
       name: 'Open Room Valve',
-      description: 'Turn on destination room relay',
-      commands: [`"Start;Relay;${growRooms.find(r => r.id === selectedRoom)?.relay_id};ON;end"`],
-      responses: [`"Relay ${growRooms.find(r => r.id === selectedRoom)?.relay_id} ON"`]
+      description: 'Turn on destination room relay via GPIO',
+      commands: [`POST /api/relay/${growRooms.find(r => r.id === selectedRoom)?.relay_id}/on`],
+      responses: [`"Relay ${growRooms.find(r => r.id === selectedRoom)?.relay_id} turned ON"`]
     },
     {
       id: 'flow_start',
       name: 'Start Flow Meter',
-      description: 'Begin monitoring outbound flow',
-      commands: [`"Start;StartFlow;2;15;220;end"`],
+      description: 'Begin monitoring outbound flow via GPIO pulse counter',
+      commands: [`POST /api/flow/2/start (target: 15 gallons)`],
       responses: [`"Started flow meter 2 for 15 gallons"`]
     },
     { 
@@ -46,26 +46,26 @@
       commands: [],
       responses: ['Flow progress: 60% complete', 'Rate: 1.8 GPM']
     },
-    { 
-      id: 'flow_complete', 
-      name: 'Target Reached', 
+    {
+      id: 'flow_complete',
+      name: 'Target Reached',
       description: 'Stop flow meter when target volume reached',
-      commands: [`"Start;StartFlow;2;0;end"`],
-      responses: [`"Stopped flow meter 2"`]
+      commands: [`POST /api/flow/2/stop`],
+      responses: [`"Stopped flow meter 2 - target reached"`]
     },
-    { 
-      id: 'room_relay_off', 
-      name: 'Close Room Valve', 
-      description: 'Turn off destination room relay',
-      commands: [`"Start;Relay;${growRooms.find(r => r.id === selectedRoom)?.relay_id};OFF;end"`],
-      responses: [`"Relay ${growRooms.find(r => r.id === selectedRoom)?.relay_id} OFF"`]
+    {
+      id: 'room_relay_off',
+      name: 'Close Room Valve',
+      description: 'Turn off destination room relay via GPIO',
+      commands: [`POST /api/relay/${growRooms.find(r => r.id === selectedRoom)?.relay_id}/off`],
+      responses: [`"Relay ${growRooms.find(r => r.id === selectedRoom)?.relay_id} turned OFF"`]
     },
-    { 
-      id: 'tank_relay_off', 
-      name: 'Close Tank Valve', 
-      description: 'Turn off tank outlet relay',
-      commands: [`"Start;Relay;${growRooms.find(r => r.id === selectedRoom)?.tank_id};OFF;end"`],
-      responses: [`"Relay ${growRooms.find(r => r.id === selectedRoom)?.tank_id} OFF"`]
+    {
+      id: 'tank_relay_off',
+      name: 'Close Tank Valve',
+      description: 'Turn off tank outlet relay via GPIO',
+      commands: [`POST /api/relay/${growRooms.find(r => r.id === selectedRoom)?.tank_id}/off`],
+      responses: [`"Relay ${growRooms.find(r => r.id === selectedRoom)?.tank_id} turned OFF"`]
     },
     { 
       id: 'complete', 
@@ -210,15 +210,15 @@
     <div class="hardware-list">
       <div class="hardware-item">
         <i class="fas fa-toggle-on"></i>
-        <span>Tank Outlet Relay (Relay {growRooms.find(r => r.id === selectedRoom)?.tank_id})</span>
+        <span>Tank Outlet Relay (GPIO via ULN2803A - Relay {growRooms.find(r => r.id === selectedRoom)?.tank_id})</span>
       </div>
       <div class="hardware-item">
         <i class="fas fa-toggle-on"></i>
-        <span>Room Valve Relay (Relay {growRooms.find(r => r.id === selectedRoom)?.relay_id})</span>
+        <span>Room Valve Relay (GPIO via ULN2803A - Relay {growRooms.find(r => r.id === selectedRoom)?.relay_id})</span>
       </div>
       <div class="hardware-item">
         <i class="fas fa-water"></i>
-        <span>Outbound Flow Meter (Flow Meter 2)</span>
+        <span>Outbound Flow Meter (GPIO pulse counter - Flow Meter 2)</span>
       </div>
     </div>
   </div>
@@ -230,7 +230,7 @@
     </div>
     <div class="log-examples">
       <div class="log-example command">
-        <span class="log-type">Commands:</span> "Start;Relay;{growRooms.find(r => r.id === selectedRoom)?.relay_id};ON;end" | "Start;StartFlow;2;{gallons};220;end"
+        <span class="log-type">API Calls:</span> POST /api/relay/{growRooms.find(r => r.id === selectedRoom)?.relay_id}/on | POST /api/flow/2/start
       </div>
       <div class="log-example success">
         <span class="log-type">Success:</span> "Send job started" | "Valves opened" | "Solution delivered successfully"
@@ -243,68 +243,95 @@
 </div>
 
 <style>
+  :root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-card: #1e293b;
+    --bg-card-hover: #334155;
+    --accent-steel: #64748b;
+    --accent-slate: #475569;
+    --status-success: #059669;
+    --status-warning: #d97706;
+    --status-error: #dc2626;
+    --text-primary: #f1f5f9;
+    --text-secondary: #e2e8f0;
+    --text-muted: #94a3b8;
+    --border-subtle: #334155;
+    --border-emphasis: #475569;
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 0.75rem;
+    --text-xs: 0.6875rem;
+    --text-sm: 0.8125rem;
+    --text-base: 0.9375rem;
+  }
+
   .send-job-container {
-    background: #2d3748;
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    border: 1px solid #4a5568;
+    background: var(--bg-card);
+    border-radius: 0.375rem;
+    padding: var(--space-md);
+    border: 1px solid var(--border-subtle);
   }
 
   .section-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid #4a5568;
+    margin-bottom: var(--space-md);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border-subtle);
   }
 
   .section-header h3 {
     margin: 0;
-    color: #e2e8f0;
-    font-size: 1.1rem;
-    font-weight: 600;
+    color: var(--text-primary);
+    font-size: var(--text-base);
+    font-weight: 500;
   }
 
   .section-header i {
-    margin-right: 8px;
-    color: #8b5cf6;
+    margin-right: var(--space-sm);
+    color: var(--accent-steel);
   }
 
   .job-status {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 0.85rem;
-    font-weight: 600;
+    gap: var(--space-sm);
+    height: 1.25rem;
+    padding: 0 0.5rem;
+    border-radius: 0.25rem;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    border: 1px solid transparent;
   }
 
   .job-status.active {
-    background: #2a1a2e;
-    color: #c084fc;
+    background: rgba(5, 150, 105, 0.15);
+    color: var(--status-success);
+    border-color: rgba(5, 150, 105, 0.3);
   }
 
   .job-status.idle {
-    background: #2d2d2d;
-    color: #a0aec0;
+    background: rgba(100, 116, 139, 0.15);
+    color: var(--text-muted);
+    border-color: var(--border-subtle);
   }
 
   .status-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     animation: pulse 2s infinite;
   }
 
   .job-status.active .status-dot {
-    background: #8b5cf6;
+    background: var(--status-success);
   }
 
   .job-status.idle .status-dot {
-    background: #6b7280;
+    background: var(--text-muted);
   }
 
   @keyframes pulse {
@@ -313,189 +340,194 @@
   }
 
   .job-config {
-    margin-bottom: 24px;
+    margin-bottom: var(--space-md);
   }
 
   .config-grid {
     display: grid;
     grid-template-columns: 1fr 120px;
-    gap: 16px;
-    margin-bottom: 16px;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
   }
 
   .input-group {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 0.375rem;
   }
 
   .input-group label {
     font-weight: 500;
-    color: #e2e8f0;
-    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
   }
 
   .input-group select, .input-group input {
-    padding: 12px;
-    border: 2px solid #4a5568;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    transition: border-color 0.2s;
-    background: #1a202c;
-    color: #e2e8f0;
+    height: 2.5rem;
+    padding: 0 var(--space-md);
+    border: 1px solid var(--border-emphasis);
+    border-radius: 0.25rem;
+    font-size: var(--text-sm);
+    transition: border-color 0.15s ease;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    outline: none;
   }
 
   .input-group select:focus, .input-group input:focus {
-    outline: none;
-    border-color: #8b5cf6;
+    border-color: var(--accent-steel);
   }
 
   .job-progress {
-    margin-bottom: 24px;
+    margin-bottom: var(--space-md);
   }
 
   .progress-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: var(--space-md);
   }
 
   .job-info {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0.25rem;
   }
 
   .job-label {
-    font-size: 0.8rem;
-    color: #a0aec0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
     font-weight: 500;
   }
 
   .job-details {
-    font-size: 0.9rem;
-    color: #e2e8f0;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    color: var(--text-primary);
+    font-weight: 500;
   }
 
   .progress-percent {
-    font-size: 1.2rem;
-    font-weight: bold;
-    color: #8b5cf6;
+    font-size: 1.125rem;
+    font-weight: 600;
+    font-family: ui-monospace, monospace;
+    color: var(--accent-steel);
   }
 
   .progress-bar {
     width: 100%;
-    height: 8px;
-    background: #1a202c;
-    border-radius: 4px;
+    height: 0.5rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 0.25rem;
     overflow: hidden;
-    margin-bottom: 16px;
+    margin-bottom: var(--space-md);
   }
 
   .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #8b5cf6, #7c3aed);
+    background: var(--accent-steel);
     transition: width 0.3s ease;
   }
 
   .action-btn {
     width: 100%;
-    padding: 12px 16px;
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
+    height: 2.5rem;
+    padding: 0 1rem;
+    border-radius: 0.25rem;
+    font-weight: 500;
+    font-size: var(--text-sm);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 0.375rem;
+    border: 1px solid;
   }
 
   .start-btn {
-    background: #8b5cf6;
-    color: white;
+    background: rgba(5, 150, 105, 0.15);
+    color: var(--status-success);
+    border-color: rgba(5, 150, 105, 0.3);
   }
 
   .start-btn:hover {
-    background: #7c3aed;
-    transform: translateY(-1px);
+    background: rgba(5, 150, 105, 0.25);
   }
 
   .stop-btn {
-    background: #ef4444;
-    color: white;
+    background: rgba(220, 38, 38, 0.15);
+    color: var(--status-error);
+    border-color: rgba(220, 38, 38, 0.3);
   }
 
   .stop-btn:hover {
-    background: #dc2626;
-    transform: translateY(-1px);
+    background: rgba(220, 38, 38, 0.25);
   }
 
   .process-steps {
-    margin-bottom: 24px;
+    margin-bottom: var(--space-md);
   }
 
   .steps-header {
-    margin-bottom: 12px;
+    margin-bottom: var(--space-md);
   }
 
   .steps-header h4 {
     margin: 0;
-    color: #e2e8f0;
-    font-size: 1rem;
-    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-weight: 500;
   }
 
   .steps-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-sm);
   }
 
   .step-item {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 12px;
-    border-radius: 8px;
-    background: #1a202c;
-    border: 1px solid #4a5568;
-    transition: all 0.2s;
+    gap: var(--space-md);
+    padding: var(--space-md);
+    border-radius: 0.25rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    transition: all 0.15s ease;
   }
 
   .step-item.active {
-    background: #2a1a2e;
-    border-color: #8b5cf6;
+    background: rgba(100, 116, 139, 0.1);
+    border-color: var(--accent-steel);
   }
 
   .step-item.completed {
-    background: #1a2e1a;
-    border-color: #22c55e;
+    background: rgba(5, 150, 105, 0.1);
+    border-color: rgba(5, 150, 105, 0.3);
   }
 
   .step-indicator {
-    width: 20px;
-    height: 20px;
+    width: 1.25rem;
+    height: 1.25rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.8rem;
-    margin-top: 2px;
+    font-size: var(--text-xs);
+    margin-top: 0.125rem;
   }
 
   .step-item.pending .step-indicator {
-    color: #6b7280;
+    color: var(--text-muted);
   }
 
   .step-item.active .step-indicator {
-    color: #8b5cf6;
+    color: var(--accent-steel);
   }
 
   .step-item.completed .step-indicator {
-    color: #22c55e;
+    color: var(--status-success);
   }
 
   .step-content {
@@ -503,148 +535,148 @@
   }
 
   .step-name {
-    font-weight: 600;
-    color: #e2e8f0;
-    font-size: 0.9rem;
-    margin-bottom: 4px;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    margin-bottom: 0.25rem;
   }
 
   .step-description {
-    font-size: 0.8rem;
-    color: #a0aec0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
     line-height: 1.4;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-sm);
   }
 
   .step-commands, .step-responses {
-    margin-top: 8px;
+    margin-top: var(--space-sm);
   }
 
   .commands-label, .responses-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #cbd5e0;
-    margin-bottom: 4px;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
   }
 
   .commands-label {
-    color: #f59e0b;
+    color: var(--status-warning);
   }
 
   .responses-label {
-    color: #22c55e;
+    color: var(--status-success);
   }
 
   .command-item, .response-item {
-    font-size: 0.75rem;
-    font-family: 'Courier New', monospace;
-    background: #0f172a;
-    padding: 4px 8px;
-    border-radius: 4px;
-    margin-bottom: 2px;
+    font-size: var(--text-xs);
+    font-family: ui-monospace, monospace;
+    background: var(--bg-secondary);
+    padding: 0.25rem var(--space-sm);
+    border-radius: 0.25rem;
+    margin-bottom: 0.125rem;
     border-left: 2px solid;
   }
 
   .command-item {
-    border-left-color: #f59e0b;
-    color: #fbbf24;
+    border-left-color: var(--status-warning);
+    color: var(--status-warning);
   }
 
   .response-item {
-    border-left-color: #22c55e;
-    color: #86efac;
+    border-left-color: var(--status-success);
+    color: var(--status-success);
   }
 
   .hardware-info {
-    margin-bottom: 20px;
+    margin-bottom: var(--space-md);
   }
 
   .hardware-header {
-    margin-bottom: 12px;
+    margin-bottom: var(--space-md);
   }
 
   .hardware-header h4 {
     margin: 0;
-    color: #e2e8f0;
-    font-size: 1rem;
-    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-weight: 500;
   }
 
   .hardware-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-sm);
   }
 
   .hardware-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.9rem;
-    color: #cbd5e0;
+    gap: var(--space-sm);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
   }
 
   .hardware-item i {
-    color: #8b5cf6;
-    width: 16px;
+    color: var(--accent-steel);
+    width: 1rem;
   }
 
   .log-info {
-    padding-top: 16px;
-    border-top: 1px solid #4a5568;
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-subtle);
   }
 
   .log-info-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #a0aec0;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--text-muted);
   }
 
   .log-info-header i {
-    color: #8b5cf6;
+    color: var(--accent-steel);
   }
 
   .log-examples {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0.25rem;
   }
 
   .log-example {
-    font-size: 0.8rem;
-    padding: 4px 0;
-    color: #cbd5e0;
+    font-size: var(--text-xs);
+    padding: 0.25rem 0;
+    color: var(--text-secondary);
   }
 
   .log-type {
-    font-weight: 600;
+    font-weight: 500;
   }
 
   .log-example.command .log-type {
-    color: #f59e0b;
+    color: var(--status-warning);
   }
 
   .log-example.success .log-type {
-    color: #22c55e;
+    color: var(--status-success);
   }
 
   .log-example.error .log-type {
-    color: #ef4444;
+    color: var(--status-error);
   }
 
   @media (max-width: 600px) {
     .config-grid {
       grid-template-columns: 1fr;
     }
-    
+
     .progress-header {
       flex-direction: column;
       align-items: flex-start;
-      gap: 8px;
+      gap: var(--space-sm);
     }
   }
 </style>
