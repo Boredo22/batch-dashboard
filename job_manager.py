@@ -24,14 +24,28 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 
 from config import (
-    TANK_CAPACITIES,
-    RELAY_MAPPING,
-    FLOW_METER_MAPPING,
-    ROOM_RELAY_MAPPING,
-    MIN_FLOW_GALLONS,
-    MAX_FLOW_GALLONS,
-    PULSES_PER_GALLON
+    TANKS,
+    RELAY_GPIO_PINS,
+    FLOW_METER_GPIO_PINS,
+    FLOW_METER_CALIBRATION,
+    ROOMS,
+    MAX_FLOW_GALLONS
 )
+
+# Map to expected variable names for compatibility
+TANK_CAPACITIES = {tank_id: info['capacity_gallons'] for tank_id, info in TANKS.items()}
+
+# Create relay mappings from TANKS configuration
+RELAY_MAPPING = {
+    'tank_fill': {tank_id: info['fill_relay'] for tank_id, info in TANKS.items()},
+    'tank_mix': {tank_id: info['mix_relays'][0] for tank_id, info in TANKS.items()},  # Use first mix relay
+    'tank_send': {tank_id: info['send_relay'] for tank_id, info in TANKS.items()}
+}
+
+FLOW_METER_MAPPING = FLOW_METER_GPIO_PINS
+ROOM_RELAY_MAPPING = {room_id: info['relay'] for room_id, info in ROOMS.items()}
+MIN_FLOW_GALLONS = 1  # Define minimum flow gallons
+PULSES_PER_GALLON = FLOW_METER_CALIBRATION.get(1, 220)  # Use flow meter 1 calibration
 
 logger = logging.getLogger(__name__)
 
