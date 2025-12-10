@@ -6,6 +6,7 @@
   import { Progress } from '$lib/components/ui/progress';
   import { Alert, AlertDescription } from '$lib/components/ui/alert';
   import { Separator } from '$lib/components/ui/separator';
+  import TankOperationsCard from '$lib/components/growers/TankOperationsCard.svelte';
 
   // State using Svelte 5 runes
   let relays = $state([
@@ -47,6 +48,9 @@
   let ecPhMonitoring = $state(false);
   let ecPhData = $state({ ph: null, ec: null, timestamp: null });
 
+  // Nutrient recipes state
+  let recipes = $state([]);
+
   // Collapsible section states using $state
   let expandedSections = $state({
     tanks: true,
@@ -60,9 +64,9 @@
 
   // Tank configuration
   const TANK_CONFIG = {
-    1: { fillRelay: 1, mixRelays: [4, 7], sendRelay: 10, pumps: [1, 2, 3], color: 'blue', label: 'Veg' },
-    2: { fillRelay: 2, mixRelays: [5, 8], sendRelay: 11, pumps: [4, 5, 6], color: 'green', label: 'Bloom' },
-    3: { fillRelay: 3, mixRelays: [6, 9], sendRelay: 12, pumps: [7, 8], color: 'yellow', label: 'Flush' }
+    1: { fillRelay: 1, mixRelays: [4, 7], sendRelay: 10, pumps: [1, 2, 3], color: 'blue', label: 'Flower 1', maxGallons: 100 },
+    2: { fillRelay: 2, mixRelays: [5, 8], sendRelay: 11, pumps: [4, 5, 6], color: 'green', label: 'Flower 2', maxGallons: 100 },
+    3: { fillRelay: 3, mixRelays: [6, 9], sendRelay: 12, pumps: [7, 8], color: 'yellow', label: 'Nursery', maxGallons: 30 }
   };
 
   // Derived values using $derived
@@ -72,6 +76,21 @@
     Object.values(tankStatus).filter(t => t.status !== 'idle').length
   );
   let activeRelayCount = $derived(relays.filter(r => r.status === 'on').length);
+
+  // Fetch nutrient recipes from backend
+  async function fetchRecipes() {
+    try {
+      const response = await fetch('/api/nutrients/recipes');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          recipes = data.data;
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching recipes:', error);
+    }
+  }
 
   // Fetch pump configuration from backend
   async function fetchPumpConfig() {
@@ -286,6 +305,78 @@
   }
 
   // Tank operation helpers
+  async function handleStartTankOperation(operationData) {
+    if (isProcessing) return;
+    isProcessing = true;
+
+    const { tankId, operation, waterAmount, recipe } = operationData;
+    const config = TANK_CONFIG[tankId];
+
+    try {
+      if (operation === 'fill') {
+        addLog(`Starting fill for Tank ${tankId}: ${waterAmount} gallons`);
+        // Start fill relay
+        await controlRelay(config.fillRelay, 'on');
+        // TODO: Start flow meter monitoring with waterAmount
+        tankStatus[tankId].status = 'filling';
+      } else if (operation === 'mix') {
+        addLog(`Starting mix for Tank ${tankId}: ${recipe.name}`);
+        // Activate mix relays
+        await controlRelaySet(config.mixRelays, 'on', `Tank ${tankId} Mix`);
+        // Dispense nutrients from recipe
+        if (recipe.pumps) {
+          for (const [pumpName, amount] of Object.entries(recipe.pumps)) {
+            // Find pump ID from name
+            const pump = pumps.find(p => p.name === pumpName);
+            if (pump) {
+              await dispensePump(pump.id, amount);
+              // Wait a bit between pumps to avoid overload
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          }
+        }
+        tankStatus[tankId].status = 'mixing';
+      } else if (operation === 'send') {
+        addLog(`Starting send for Tank ${tankId}: ${waterAmount} gallons`);
+        // Start send relay
+        await controlRelay(config.sendRelay, 'on');
+        // TODO: Start flow meter monitoring with waterAmount
+        tankStatus[tankId].status = 'sending';
+      }
+    } catch (error) {
+      addLog(`Error starting ${operation} for Tank ${tankId}: ${error.message}`);
+    } finally {
+      isProcessing = false;
+    }
+  }
+
+  async function handleStopTankOperation(tankId) {
+    if (isProcessing) return;
+    isProcessing = true;
+
+    const config = TANK_CONFIG[tankId];
+
+    try {
+      addLog(`Stopping all operations for Tank ${tankId}`);
+
+      // Turn off all relays associated with this tank
+      await controlRelay(config.fillRelay, 'off');
+      await controlRelaySet(config.mixRelays, 'off', `Tank ${tankId} Mix Stop`);
+      await controlRelay(config.sendRelay, 'off');
+
+      // Stop all pumps associated with this tank
+      for (const pumpId of config.pumps) {
+        await stopPump(pumpId);
+      }
+
+      tankStatus[tankId].status = 'idle';
+    } catch (error) {
+      addLog(`Error stopping Tank ${tankId}: ${error.message}`);
+    } finally {
+      isProcessing = false;
+    }
+  }
+
   async function toggleTankFill(tankId) {
     const config = TANK_CONFIG[tankId];
     const fillRelay = relays.find(r => r.id === config.fillRelay);
@@ -437,6 +528,7 @@
   onMount(async () => {
     addLog('Growers dashboard started');
     await fetchPumpConfig();
+    await fetchRecipes();
     await fetchSystemStatus();
 
     // Start EC/pH monitoring automatically
@@ -519,93 +611,19 @@
     
     <!-- Left Column: Tanks & Pumps (Controls) -->
     <div class="grid-column">
-      <!-- Tanks Card -->
-      <Card class="dashboard-card">
-        <CardHeader class="pb-3">
-          <div class="section-header-collapsible">
-            <button
-              class="section-toggle-btn"
-              onclick={() => toggleSection('tanks')}
-              aria-expanded={expandedSections.tanks}
-            >
-              <div class="flex items-center gap-2">
-                <span class="section-title-text">Tank Operations</span>
-                <Badge variant="secondary" class="section-count-badge">{activeTankCount}</Badge>
-              </div>
-              <svg
-                class="chevron-icon {expandedSections.tanks ? 'chevron-expanded' : ''}"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </button>
-          </div>
-        </CardHeader>
-        {#if expandedSections.tanks}
-        <CardContent>
-          <div class="flex flex-col gap-4">
-            {#each [1, 2, 3] as tankId}
-              {@const config = TANK_CONFIG[tankId]}
-              {@const status = tankStatus[tankId]}
-              {@const fillActive = areRelaysActive([config.fillRelay])}
-              {@const mixActive = areRelaysActive(config.mixRelays)}
-              {@const sendActive = areRelaysActive([config.sendRelay])}
-              
-              <div class="tank-row tank-theme-{config.color}">
-                <div class="tank-info">
-                  <div class="tank-icon">
-                    <span class="text-lg font-bold">{tankId}</span>
-                  </div>
-                  <div class="flex flex-col">
-                    <span class="tank-label">{config.label}</span>
-                    <span class="tank-status-text">
-                      {#if fillActive}Filling
-                      {:else if mixActive}Mixing
-                      {:else if sendActive}Sending
-                      {:else}Idle{/if}
-                    </span>
-                  </div>
-                </div>
-
-                <div class="tank-controls">
-                  <button 
-                    class="control-btn {fillActive ? 'active' : ''}" 
-                    onclick={() => toggleTankFill(tankId)}
-                    disabled={isProcessing}
-                  >
-                    <span class="btn-label">Fill</span>
-                    <div class="btn-indicator"></div>
-                  </button>
-                  
-                  <button 
-                    class="control-btn {mixActive ? 'active' : ''}" 
-                    onclick={() => toggleTankMix(tankId)}
-                    disabled={isProcessing}
-                  >
-                    <span class="btn-label">Mix</span>
-                    <div class="btn-indicator"></div>
-                  </button>
-                  
-                  <button 
-                    class="control-btn {sendActive ? 'active' : ''}" 
-                    onclick={() => toggleTankSend(tankId)}
-                    disabled={isProcessing}
-                  >
-                    <span class="btn-label">Send</span>
-                    <div class="btn-indicator"></div>
-                  </button>
-                </div>
-              </div>
-            {/each}
-          </div>
-        </CardContent>
-        {/if}
-      </Card>
+      <!-- Tank Operations Cards -->
+      {#each [1, 2, 3] as tankId}
+        {@const config = TANK_CONFIG[tankId]}
+        <TankOperationsCard
+          {tankId}
+          tankConfig={config}
+          {relays}
+          {recipes}
+          onStartOperation={handleStartTankOperation}
+          onStopOperation={handleStopTankOperation}
+          {isProcessing}
+        />
+      {/each}
 
       <!-- Pumps Card (Moved to Left) -->
       <Card class="dashboard-card">
