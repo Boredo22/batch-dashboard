@@ -1,10 +1,14 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { toast } from 'svelte-sonner';
+  import { logger } from '$lib/utils';
+  import { initWebSocket, disconnectWebSocket, onStatusUpdate, onConnectionChange, isConnected } from '$lib/websocket';
   import { Card, CardContent, CardHeader } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
   import { Button } from '$lib/components/ui/button';
   import RelayControlCard from '$lib/components/hardware/relay-control-card.svelte';
   import PumpControlCard from '$lib/components/hardware/pump-control-card.svelte';
+  import PumpCalibrationWizard from '$lib/components/hardware/pump-calibration-wizard.svelte';
   import FlowMeterCard from '$lib/components/hardware/flow-meter-card.svelte';
   import ECPHMonitorCard from '$lib/components/hardware/ecph-monitor-card.svelte';
   import SystemLogCard from '$lib/components/hardware/system-log-card.svelte';
@@ -65,11 +69,88 @@
     ecph: true
   });
 
+  // Calibration wizard state
+  let showCalibrationWizard = $state(false);
+
   // Derived values
   let activeRelayCount = $derived(relays.filter(r => r.status === 'on').length);
   let activePumpCount = $derived(pumps.filter(p => p.status === 'dispensing').length);
 
   let statusInterval;
+  let unsubscribeStatus;
+  let unsubscribeConnection;
+  let useWebSocket = $state(true); // Toggle between WebSocket and polling
+
+  // WebSocket status handler
+  function handleWebSocketStatus(data) {
+    logger.debug('WebSocket', 'Received status update', data);
+
+    // Update relays
+    if (data.relays && data.relays.length > 0) {
+      relays = data.relays.map(relay => ({
+        ...relay,
+        status: relay.state ? 'on' : 'off'
+      }));
+    }
+
+    // Update pumps
+    if (data.pumps && data.pumps.length > 0) {
+      pumps = data.pumps.map(pump => {
+        // Track dispensing progress
+        if (pump.is_dispensing && pump.current_volume > 0 && pump.target_volume > 0) {
+          const currentPercent = Math.floor((pump.current_volume / pump.target_volume) * 100 / 10) * 10;
+          const lastPercent = lastProgressReported.get(pump.id) || -10;
+
+          if (currentPercent > lastPercent && currentPercent >= 10) {
+            const progressMsg = `Pump ${pump.id} (${pump.name}): ${pump.current_volume.toFixed(1)}ml / ${pump.target_volume.toFixed(1)}ml (${currentPercent}% complete)`;
+            addLog(progressMsg);
+            lastProgressReported.set(pump.id, currentPercent);
+          }
+        }
+
+        // Check for completion
+        const oldPump = pumps.find(p => p.id === pump.id);
+        if (oldPump && oldPump.is_dispensing && !pump.is_dispensing) {
+          const completionMsg = `Pump ${pump.id} (${pump.name}) completed dispensing`;
+          addLog(completionMsg);
+          lastProgressReported.delete(pump.id);
+        }
+
+        return {
+          ...pump,
+          status: pump.is_dispensing ? 'dispensing' : 'idle'
+        };
+      });
+    }
+
+    // Update flow meters
+    if (data.flow_meters && data.flow_meters.length > 0) {
+      flowMeters = data.flow_meters.map(fm => ({
+        ...fm,
+        status: fm.status === 'running' ? 'flowing' : 'idle'
+      }));
+    }
+
+    // Update EC/pH
+    ecValue = data.ec_value || 0;
+    phValue = data.ph_value || 0;
+    ecPhMonitoring = data.ec_ph_monitoring || false;
+  }
+
+  // Connection status handler
+  function handleConnectionChange(status) {
+    logger.info('WebSocket', 'Connection status changed', { status });
+    if (status === 'connected') {
+      systemStatus = 'Connected (WebSocket)';
+      errorMessage = '';
+    } else if (status === 'reconnecting') {
+      systemStatus = 'Reconnecting...';
+    } else if (status === 'error') {
+      systemStatus = 'Connection Error';
+    } else {
+      systemStatus = 'Disconnected';
+    }
+  }
 
   // API functions
   async function fetchHardwareData() {
@@ -161,6 +242,8 @@
       return;
     }
 
+    logger.debug('Hardware', `Controlling relay ${relayId}`, { relayId, action });
+
     try {
       const response = await fetch(`/api/relay/${relayId}/${action}`, {
         method: 'POST'
@@ -173,6 +256,8 @@
 
         addLog(userMessage);
         addLog(rawMessage);
+        toast.success(`Relay ${relayId} turned ${action.toUpperCase()}`);
+        logger.info('Hardware', `Relay ${relayId} ${action}`, { relayId, action, result });
 
         relays = relays.map(relay =>
           relay.id === relayId ? { ...relay, status: action } : relay
@@ -181,10 +266,14 @@
         const error = await response.json();
         addLog(`Error: ${error.error}`);
         addLog(`Raw Error: ${JSON.stringify(error)}`);
+        toast.error(`Failed to control relay: ${error.error || 'Unknown error'}`);
+        logger.error('Hardware', `Relay control failed`, { relayId, action, error });
       }
     } catch (error) {
       console.error('Error controlling relay:', error);
       addLog(`Error controlling relay: ${error.message}`);
+      toast.error(`Network error: ${error.message}`);
+      logger.error('API', `Network error controlling relay`, { relayId, action, error: error.message });
     }
   }
 
@@ -201,22 +290,40 @@
 
         addLog(userMessage);
         addLog(rawMessage);
+        toast.success('All relays turned OFF');
 
         relays = relays.map(relay => ({ ...relay, status: 'off' }));
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
         addLog(`Raw Error: ${JSON.stringify(error)}`);
+        toast.error(`Failed to turn off relays: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error turning off all relays:', error);
       addLog(`Error turning off all relays: ${error.message}`);
+      toast.error(`Network error: ${error.message}`);
+    }
+  }
+
+  function handleComboControl(comboName, action, result) {
+    // Update relay states based on combo activation
+    if (result && result.success && result.relays) {
+      const newState = action === 'on' ? 'on' : 'off';
+      relays = relays.map(relay =>
+        result.relays.includes(relay.id) ? { ...relay, status: newState } : relay
+      );
+
+      addLog(`${comboName} turned ${action.toUpperCase()}`);
+      toast.success(`${comboName} ${action.toUpperCase()}`);
+      logger.info('Hardware', `Combo activated: ${comboName}`, { comboName, action, relays: result.relays });
     }
   }
 
   async function dispensePump(pumpId, amount) {
     if (!pumpId || !amount) {
       addLog('Please select a pump and amount');
+      toast.warning('Please select a pump and enter an amount');
       return;
     }
 
@@ -234,22 +341,26 @@
 
         addLog(userMessage);
         addLog(rawMessage);
+        toast.success(`Dispensing ${amount}ml from pump ${pumpId}`);
 
         lastProgressReported.set(parseInt(pumpId), -10);
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
         addLog(`Raw Error: ${JSON.stringify(error)}`);
+        toast.error(`Failed to dispense: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error dispensing pump:', error);
       addLog(`Error dispensing pump: ${error.message}`);
+      toast.error(`Network error: ${error.message}`);
     }
   }
 
   async function stopPump(pumpId) {
     if (!pumpId) {
       addLog('Please select a pump');
+      toast.warning('Please select a pump to stop');
       return;
     }
 
@@ -265,20 +376,24 @@
 
         addLog(userMessage);
         addLog(rawMessage);
+        toast.success(`Pump ${pumpId} stopped`);
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
         addLog(`Raw Error: ${JSON.stringify(error)}`);
+        toast.error(`Failed to stop pump: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error stopping pump:', error);
       addLog(`Error stopping pump: ${error.message}`);
+      toast.error(`Network error: ${error.message}`);
     }
   }
 
   async function startFlow(flowMeterId, gallons) {
     if (!flowMeterId || !gallons) {
       addLog('Please select a flow meter and gallons');
+      toast.warning('Please select a flow meter and enter gallons');
       return;
     }
 
@@ -296,20 +411,24 @@
 
         addLog(userMessage);
         addLog(rawMessage);
+        toast.success(`Flow meter ${flowMeterId} started for ${gallons} gallons`);
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
         addLog(`Raw Error: ${JSON.stringify(error)}`);
+        toast.error(`Failed to start flow meter: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error starting flow meter:', error);
       addLog(`Error starting flow meter: ${error.message}`);
+      toast.error(`Network error: ${error.message}`);
     }
   }
 
   async function stopFlow(flowMeterId) {
     if (!flowMeterId) {
       addLog('Please select a flow meter');
+      toast.warning('Please select a flow meter to stop');
       return;
     }
 
@@ -325,14 +444,17 @@
 
         addLog(userMessage);
         addLog(rawMessage);
+        toast.success(`Flow meter ${flowMeterId} stopped`);
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
         addLog(`Raw Error: ${JSON.stringify(error)}`);
+        toast.error(`Failed to stop flow meter: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error stopping flow meter:', error);
       addLog(`Error stopping flow meter: ${error.message}`);
+      toast.error(`Network error: ${error.message}`);
     }
   }
 
@@ -347,15 +469,18 @@
 
         addLog(userMessage);
         addLog(rawMessage);
+        toast.success('EC/pH monitoring started');
         ecPhMonitoring = true;
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
         addLog(`Raw Error: ${JSON.stringify(error)}`);
+        toast.error(`Failed to start monitoring: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error starting EC/pH monitoring:', error);
       addLog(`Error starting EC/pH monitoring: ${error.message}`);
+      toast.error(`Network error: ${error.message}`);
     }
   }
 
@@ -370,15 +495,18 @@
 
         addLog(userMessage);
         addLog(rawMessage);
+        toast.success('EC/pH monitoring stopped');
         ecPhMonitoring = false;
       } else {
         const error = await response.json();
         addLog(`Error: ${error.error}`);
         addLog(`Raw Error: ${JSON.stringify(error)}`);
+        toast.error(`Failed to stop monitoring: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error stopping EC/pH monitoring:', error);
       addLog(`Error stopping EC/pH monitoring: ${error.message}`);
+      toast.error(`Network error: ${error.message}`);
     }
   }
 
@@ -397,18 +525,44 @@
 
   onMount(async () => {
     addLog('Hardware testing page started');
-    await fetchHardwareData();
-    await fetchSystemStatus();
 
-    statusInterval = setInterval(async () => {
+    // Try WebSocket first, fall back to polling if unavailable
+    if (useWebSocket) {
+      try {
+        initWebSocket();
+        unsubscribeStatus = onStatusUpdate(handleWebSocketStatus);
+        unsubscribeConnection = onConnectionChange(handleConnectionChange);
+        addLog('WebSocket connection initialized');
+        logger.info('System', 'WebSocket mode enabled');
+      } catch (e) {
+        logger.error('WebSocket', 'Failed to initialize, falling back to polling', { error: e.message });
+        useWebSocket = false;
+      }
+    }
+
+    // Initial data fetch (for both modes)
+    await fetchHardwareData();
+
+    // Polling fallback if WebSocket fails or is disabled
+    if (!useWebSocket) {
       await fetchSystemStatus();
-    }, 2000);
+      statusInterval = setInterval(async () => {
+        await fetchSystemStatus();
+      }, 2000);
+      addLog('Using HTTP polling mode');
+    }
 
     if (pumps.length > 0) selectedPump = pumps[0].id;
     if (flowMeters.length > 0) selectedFlowMeter = flowMeters[0].id;
   });
 
   onDestroy(() => {
+    // Cleanup WebSocket subscriptions
+    if (unsubscribeStatus) unsubscribeStatus();
+    if (unsubscribeConnection) unsubscribeConnection();
+    disconnectWebSocket();
+
+    // Cleanup polling interval
     if (statusInterval) {
       clearInterval(statusInterval);
     }
@@ -496,7 +650,7 @@
         </CardHeader>
         {#if expandedSections.relays}
         <CardContent>
-          <RelayControlCard {relays} onRelayControl={controlRelay} />
+          <RelayControlCard {relays} onRelayControl={controlRelay} onComboControl={handleComboControl} />
         </CardContent>
         {/if}
       </Card>
@@ -526,6 +680,14 @@
                 <polyline points="6 9 12 15 18 9"></polyline>
               </svg>
             </button>
+            <Button
+              variant="outline"
+              size="sm"
+              onclick={() => showCalibrationWizard = true}
+              class="calibrate-btn"
+            >
+              Calibrate
+            </Button>
           </div>
         </CardHeader>
         {#if expandedSections.pumps}
@@ -645,6 +807,14 @@
     </div>
   </div>
 </div>
+
+<!-- Pump Calibration Wizard Modal -->
+{#if showCalibrationWizard}
+  <PumpCalibrationWizard
+    {pumps}
+    onClose={() => showCalibrationWizard = false}
+  />
+{/if}
 
 <style>
   :global(body) {
@@ -804,10 +974,13 @@
   /* Section Headers - Collapsible */
   .section-header-collapsible {
     width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 
   .section-toggle-btn {
-    width: 100%;
+    flex: 1;
     display: flex;
     justify-content: space-between;
     align-items: center;

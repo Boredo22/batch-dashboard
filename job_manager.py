@@ -31,6 +31,7 @@ from config import (
     ROOMS,
     MAX_FLOW_GALLONS
 )
+from state_manager import state
 
 # Map to expected variable names for compatibility
 TANK_CAPACITIES = {tank_id: info['capacity_gallons'] for tank_id, info in TANKS.items()}
@@ -82,6 +83,7 @@ class JobState:
     current_readings: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None
     start_time: Optional[float] = None
+    history_id: Optional[int] = None  # ID from job_history table for tracking
 
     def __post_init__(self):
         if self.completed_steps is None:
@@ -918,7 +920,19 @@ class JobManager:
 
                             if not continue_job:
                                 # Job finished or failed
-                                self.logger.info(f"{job_type} job ended: {self.active_jobs[job_type].status}")
+                                job_state = self.active_jobs[job_type]
+                                self.logger.info(f"{job_type} job ended: {job_state.status}")
+
+                                # Log job completion to history
+                                if job_state and job_state.history_id:
+                                    final_status = 'completed' if job_state.status == JobStatus.COMPLETED.value else 'failed'
+                                    state.log_job_complete(
+                                        job_state.history_id,
+                                        status=final_status,
+                                        actual_value=job_state.target_gallons if final_status == 'completed' else None,
+                                        error_message=job_state.error_message if final_status == 'failed' else None
+                                    )
+
                                 self.state_machines[job_type] = None
 
                 time.sleep(0.5)  # Check every 500ms
@@ -937,12 +951,21 @@ class JobManager:
                     'message': 'Fill job already running'
                 }
 
+            # Log job start to history
+            history_id = state.log_job_start(
+                job_type='fill',
+                tank_id=tank_id,
+                target_value=gallons,
+                parameters={'gallons': gallons}
+            )
+
             # Create job state
             job_state = JobState(
                 job_type=JobType.FILL.value,
                 status=JobStatus.RUNNING.value,
                 tank_id=tank_id,
-                target_gallons=gallons
+                target_gallons=gallons,
+                history_id=history_id
             )
 
             # Create state machine
@@ -951,7 +974,7 @@ class JobManager:
                 self.active_jobs[JobType.FILL.value] = job_state
                 self.state_machines[JobType.FILL.value] = state_machine
 
-                self.logger.info(f"Fill job started: Tank {tank_id}, {gallons} gallons")
+                self.logger.info(f"Fill job started: Tank {tank_id}, {gallons} gallons (history_id={history_id})")
 
                 return {
                     'success': True,
@@ -959,6 +982,8 @@ class JobManager:
                     'job': job_state.to_dict()
                 }
             except Exception as e:
+                # Log job failure
+                state.log_job_complete(history_id, status='failed', error_message=str(e))
                 self.logger.error(f"Failed to start fill job: {e}", exc_info=True)
                 return {
                     'success': False,
@@ -975,11 +1000,19 @@ class JobManager:
                     'message': 'Mix job already running'
                 }
 
+            # Log job start to history
+            history_id = state.log_job_start(
+                job_type='mix',
+                tank_id=tank_id,
+                parameters={'tank_id': tank_id}
+            )
+
             # Create job state
             job_state = JobState(
                 job_type=JobType.MIX.value,
                 status=JobStatus.RUNNING.value,
-                tank_id=tank_id
+                tank_id=tank_id,
+                history_id=history_id
             )
 
             # Create state machine
@@ -988,7 +1021,7 @@ class JobManager:
                 self.active_jobs[JobType.MIX.value] = job_state
                 self.state_machines[JobType.MIX.value] = state_machine
 
-                self.logger.info(f"Mix job started: Tank {tank_id}")
+                self.logger.info(f"Mix job started: Tank {tank_id} (history_id={history_id})")
 
                 return {
                     'success': True,
@@ -996,6 +1029,8 @@ class JobManager:
                     'job': job_state.to_dict()
                 }
             except Exception as e:
+                # Log job failure
+                state.log_job_complete(history_id, status='failed', error_message=str(e))
                 self.logger.error(f"Failed to start mix job: {e}", exc_info=True)
                 return {
                     'success': False,
@@ -1012,13 +1047,23 @@ class JobManager:
                     'message': 'Send job already running'
                 }
 
+            # Log job start to history
+            history_id = state.log_job_start(
+                job_type='send',
+                tank_id=tank_id,
+                room_id=room_id,
+                target_value=gallons,
+                parameters={'room_id': room_id, 'gallons': gallons}
+            )
+
             # Create job state
             job_state = JobState(
                 job_type=JobType.SEND.value,
                 status=JobStatus.RUNNING.value,
                 tank_id=tank_id,
                 room_id=room_id,
-                target_gallons=gallons
+                target_gallons=gallons,
+                history_id=history_id
             )
 
             # Create state machine
@@ -1027,7 +1072,7 @@ class JobManager:
                 self.active_jobs[JobType.SEND.value] = job_state
                 self.state_machines[JobType.SEND.value] = state_machine
 
-                self.logger.info(f"Send job started: Tank {tank_id} → Room {room_id}, {gallons} gallons")
+                self.logger.info(f"Send job started: Tank {tank_id} → Room {room_id}, {gallons} gallons (history_id={history_id})")
 
                 return {
                     'success': True,
@@ -1035,6 +1080,8 @@ class JobManager:
                     'job': job_state.to_dict()
                 }
             except Exception as e:
+                # Log job failure
+                state.log_job_complete(history_id, status='failed', error_message=str(e))
                 self.logger.error(f"Failed to start send job: {e}", exc_info=True)
                 return {
                     'success': False,
@@ -1045,6 +1092,7 @@ class JobManager:
         """Stop a running job"""
         with self.job_lock:
             state_machine = self.state_machines.get(job_type)
+            job_state = self.active_jobs.get(job_type)
 
             if not state_machine:
                 return {
@@ -1054,6 +1102,15 @@ class JobManager:
 
             try:
                 state_machine.stop()
+
+                # Log job completion as stopped
+                if job_state and job_state.history_id:
+                    state.log_job_complete(
+                        job_state.history_id,
+                        status='stopped',
+                        actual_value=job_state.progress_percent
+                    )
+
                 self.active_jobs[job_type] = None
                 self.state_machines[job_type] = None
 

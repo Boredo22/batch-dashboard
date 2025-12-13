@@ -51,9 +51,34 @@ class StateManager:
                     value TEXT NOT NULL,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
-                
-                CREATE INDEX IF NOT EXISTS idx_state_updated 
+
+                CREATE INDEX IF NOT EXISTS idx_state_updated
                 ON state(updated_at);
+
+                CREATE TABLE IF NOT EXISTS job_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    tank_id INTEGER,
+                    room_id TEXT,
+                    target_value REAL,
+                    actual_value REAL,
+                    parameters TEXT,
+                    error_message TEXT,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    duration_seconds REAL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_job_history_type
+                ON job_history(job_type);
+
+                CREATE INDEX IF NOT EXISTS idx_job_history_status
+                ON job_history(status);
+
+                CREATE INDEX IF NOT EXISTS idx_job_history_started
+                ON job_history(started_at DESC);
             ''')
     
     @contextmanager
@@ -486,6 +511,233 @@ class StateManager:
                 flows[flow_id]["calibration"] = value
 
         return flows
+
+    # =========================================================================
+    # JOB HISTORY TRACKING
+    # =========================================================================
+
+    def log_job_start(self, job_type: str, tank_id: int = None, room_id: str = None,
+                      target_value: float = None, parameters: Dict[str, Any] = None) -> int:
+        """
+        Log the start of a job. Returns the job_id for later updates.
+
+        Args:
+            job_type: Type of job ('fill', 'mix', 'send')
+            tank_id: Tank ID (optional)
+            room_id: Room ID for send jobs (optional)
+            target_value: Target gallons, ml, or seconds depending on job type
+            parameters: Additional job parameters as dict
+
+        Returns:
+            job_id: The ID of the created job record
+        """
+        with self._lock:
+            try:
+                with self._get_conn() as conn:
+                    cursor = conn.execute('''
+                        INSERT INTO job_history
+                        (job_type, status, tank_id, room_id, target_value, parameters, started_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        job_type,
+                        'running',
+                        tank_id,
+                        room_id,
+                        target_value,
+                        json.dumps(parameters) if parameters else None,
+                        datetime.now().isoformat()
+                    ))
+                    return cursor.lastrowid
+            except Exception as e:
+                print(f"[StateManager] Error logging job start: {e}")
+                return -1
+
+    def log_job_complete(self, job_id: int, status: str = 'completed',
+                        actual_value: float = None, error_message: str = None) -> bool:
+        """
+        Log the completion of a job.
+
+        Args:
+            job_id: The job ID returned from log_job_start
+            status: Final status ('completed', 'failed', 'stopped')
+            actual_value: Actual value achieved (gallons, ml, etc.)
+            error_message: Error message if failed
+
+        Returns:
+            True if successful
+        """
+        with self._lock:
+            try:
+                with self._get_conn() as conn:
+                    # Get start time to calculate duration
+                    row = conn.execute(
+                        "SELECT started_at FROM job_history WHERE id = ?", (job_id,)
+                    ).fetchone()
+
+                    if row:
+                        started_at = datetime.fromisoformat(row['started_at'])
+                        completed_at = datetime.now()
+                        duration = (completed_at - started_at).total_seconds()
+
+                        conn.execute('''
+                            UPDATE job_history
+                            SET status = ?, actual_value = ?, error_message = ?,
+                                completed_at = ?, duration_seconds = ?
+                            WHERE id = ?
+                        ''', (
+                            status,
+                            actual_value,
+                            error_message,
+                            completed_at.isoformat(),
+                            duration,
+                            job_id
+                        ))
+                        return True
+                return False
+            except Exception as e:
+                print(f"[StateManager] Error logging job complete: {e}")
+                return False
+
+    def get_job_history(self, limit: int = 50, job_type: str = None,
+                       status: str = None, tank_id: int = None) -> List[Dict[str, Any]]:
+        """
+        Get job history with optional filters.
+
+        Args:
+            limit: Maximum number of records to return
+            job_type: Filter by job type ('fill', 'mix', 'send')
+            status: Filter by status ('completed', 'failed', 'stopped', 'running')
+            tank_id: Filter by tank ID
+
+        Returns:
+            List of job records as dicts
+        """
+        try:
+            with self._get_conn() as conn:
+                query = "SELECT * FROM job_history WHERE 1=1"
+                params = []
+
+                if job_type:
+                    query += " AND job_type = ?"
+                    params.append(job_type)
+                if status:
+                    query += " AND status = ?"
+                    params.append(status)
+                if tank_id:
+                    query += " AND tank_id = ?"
+                    params.append(tank_id)
+
+                query += " ORDER BY started_at DESC LIMIT ?"
+                params.append(limit)
+
+                rows = conn.execute(query, params).fetchall()
+
+                result = []
+                for row in rows:
+                    job = dict(row)
+                    # Parse parameters JSON
+                    if job.get('parameters'):
+                        try:
+                            job['parameters'] = json.loads(job['parameters'])
+                        except json.JSONDecodeError:
+                            pass
+                    result.append(job)
+
+                return result
+
+        except Exception as e:
+            print(f"[StateManager] Error getting job history: {e}")
+            return []
+
+    def get_job_stats(self, days: int = 7) -> Dict[str, Any]:
+        """
+        Get job statistics for the specified number of days.
+
+        Args:
+            days: Number of days to include in stats
+
+        Returns:
+            Dict with job statistics
+        """
+        try:
+            with self._get_conn() as conn:
+                cutoff = datetime.now().isoformat()[:10]  # Get date part only
+
+                # Get counts by status
+                status_counts = {}
+                for status in ['completed', 'failed', 'stopped', 'running']:
+                    row = conn.execute('''
+                        SELECT COUNT(*) as count FROM job_history
+                        WHERE status = ? AND date(started_at) >= date(?, '-' || ? || ' days')
+                    ''', (status, cutoff, days)).fetchone()
+                    status_counts[status] = row['count'] if row else 0
+
+                # Get counts by type
+                type_counts = {}
+                for job_type in ['fill', 'mix', 'send']:
+                    row = conn.execute('''
+                        SELECT COUNT(*) as count FROM job_history
+                        WHERE job_type = ? AND date(started_at) >= date(?, '-' || ? || ' days')
+                    ''', (job_type, cutoff, days)).fetchone()
+                    type_counts[job_type] = row['count'] if row else 0
+
+                # Get average duration by type for completed jobs
+                avg_durations = {}
+                for job_type in ['fill', 'mix', 'send']:
+                    row = conn.execute('''
+                        SELECT AVG(duration_seconds) as avg_duration FROM job_history
+                        WHERE job_type = ? AND status = 'completed'
+                        AND date(started_at) >= date(?, '-' || ? || ' days')
+                    ''', (job_type, cutoff, days)).fetchone()
+                    avg_durations[job_type] = round(row['avg_duration'], 1) if row and row['avg_duration'] else 0
+
+                # Total jobs
+                row = conn.execute('''
+                    SELECT COUNT(*) as total FROM job_history
+                    WHERE date(started_at) >= date(?, '-' || ? || ' days')
+                ''', (cutoff, days)).fetchone()
+                total = row['total'] if row else 0
+
+                return {
+                    'period_days': days,
+                    'total_jobs': total,
+                    'by_status': status_counts,
+                    'by_type': type_counts,
+                    'avg_duration_seconds': avg_durations,
+                    'success_rate': round(
+                        (status_counts['completed'] / total * 100) if total > 0 else 0, 1
+                    )
+                }
+
+        except Exception as e:
+            print(f"[StateManager] Error getting job stats: {e}")
+            return {}
+
+    def clear_job_history(self, older_than_days: int = None) -> bool:
+        """
+        Clear job history. Optionally only clear records older than specified days.
+
+        Args:
+            older_than_days: If provided, only clear records older than this many days
+
+        Returns:
+            True if successful
+        """
+        with self._lock:
+            try:
+                with self._get_conn() as conn:
+                    if older_than_days:
+                        cutoff = datetime.now().isoformat()[:10]
+                        conn.execute('''
+                            DELETE FROM job_history
+                            WHERE date(started_at) < date(?, '-' || ? || ' days')
+                        ''', (cutoff, older_than_days))
+                    else:
+                        conn.execute("DELETE FROM job_history")
+                return True
+            except Exception as e:
+                print(f"[StateManager] Error clearing job history: {e}")
+                return False
 
 
 # =============================================================================

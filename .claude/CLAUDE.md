@@ -768,4 +768,172 @@ MOCK_SETTINGS = {
 
 ---
 
+## Active Development Patterns
+
+This section contains patterns for features being actively developed. Use these consistently across the codebase.
+
+### State Persistence Pattern
+
+All settings and persistent state should use `state_manager.py`:
+
+```python
+from state_manager import state
+
+# Simple key-value
+state.set("user_setting_theme", "dark")
+theme = state.get("user_setting_theme", default="dark")
+
+# Complex objects (auto-serialized to JSON)
+state.set("user_settings", {"theme": "dark", "polling_interval": 2})
+settings = state.get("user_settings", default={})
+
+# Bulk operations
+state.set_many({"relay_1": "on", "relay_2": "off"})
+
+# Get by prefix
+all_relays = state.get_prefix("relay_")
+```
+
+### Toast Notifications (Frontend)
+
+Use `svelte-sonner` for all user feedback. Import and use consistently:
+
+```svelte
+<script>
+    import { toast } from 'svelte-sonner';
+
+    async function handleRelayToggle(relayId, state) {
+        try {
+            const res = await fetch(`/api/relay/${relayId}/${state ? 'on' : 'off'}`, { method: 'POST' });
+            const data = await res.json();
+
+            if (data.success) {
+                toast.success(`Relay ${relayId} turned ${state ? 'on' : 'off'}`);
+            } else {
+                toast.error(`Failed: ${data.message || 'Unknown error'}`);
+            }
+        } catch (err) {
+            toast.error(`Network error: ${err.message}`);
+        }
+    }
+</script>
+```
+
+Toast types available:
+- `toast.success(message)` - Green, for successful operations
+- `toast.error(message)` - Red, for failures
+- `toast.warning(message)` - Yellow, for warnings
+- `toast.info(message)` - Blue, for informational messages
+- `toast.loading(message)` - With spinner, for async operations
+
+### API Response Pattern
+
+All API endpoints should return consistent JSON:
+
+```python
+# Success response
+return jsonify({
+    'success': True,
+    'message': 'Human-readable success message',
+    'data': { ... }  # Optional payload
+})
+
+# Error response
+return jsonify({
+    'success': False,
+    'error': 'Human-readable error message',
+    'error_code': 'SPECIFIC_ERROR_CODE'  # Optional
+}), 400  # or appropriate HTTP status
+```
+
+### Job Status Polling Pattern
+
+When polling for job status, use this pattern:
+
+```svelte
+<script>
+    let jobStatus = $state(null);
+    let pollInterval = $state(null);
+
+    function startPolling() {
+        pollInterval = setInterval(async () => {
+            const res = await fetch('/api/jobs/status');
+            jobStatus = await res.json();
+
+            // Stop polling when job completes
+            if (jobStatus?.active_fill_job?.status === 'completed') {
+                stopPolling();
+                toast.success('Fill job completed!');
+            }
+        }, 1000);
+    }
+
+    function stopPolling() {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+    }
+</script>
+```
+
+### Hardware Operation Safety Pattern
+
+Always wrap hardware operations with proper error handling:
+
+```python
+def safe_hardware_operation(operation_name: str, operation_func, *args, **kwargs):
+    """Wrapper for safe hardware operations with logging"""
+    try:
+        logger.info(f"Starting {operation_name}")
+        result = operation_func(*args, **kwargs)
+        logger.info(f"Completed {operation_name}: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Failed {operation_name}: {e}", exc_info=True)
+        # Attempt cleanup
+        try:
+            emergency_stop()
+        except:
+            pass
+        raise
+```
+
+## Slash Commands Reference
+
+Custom commands available in this project (use with `/command-name`):
+
+| Command | Description |
+|---------|-------------|
+| `/test` | Run backend tests with coverage |
+| `/check-hardware` | Diagnose I2C, GPIO, and serial connections |
+| `/dev` | Start full development environment |
+| `/build` | Build frontend for production |
+| `/emergency-stop` | Trigger emergency stop |
+| `/lint` | Run code quality checks |
+| `/status` | Get system status summary |
+
+## Agent Reference
+
+Specialized agents available for this project:
+
+| Agent | Use For |
+|-------|---------|
+| `backend-hardware-dev` | Python backend, hardware communication, Flask APIs |
+| `svelte5-ui-designer` | Frontend UI design, Svelte 5 components, styling |
+| `testing-agent` | Writing and running tests, mocking hardware |
+| `realtime-dev` | WebSocket implementation, replacing polling |
+
+## Improvement Roadmap
+
+See `RECOMMENDATIONS.md` for the complete list of recommended improvements, ordered from easiest to hardest. Current priorities:
+
+1. **Settings Persistence** - Use state_manager for user/dev settings
+2. **Toast Notifications** - Add svelte-sonner feedback to all operations
+3. **WebSocket Updates** - Replace polling with real-time push
+4. **Job History** - Track and display operation history
+5. **Unit Tests** - Comprehensive test coverage
+
+---
+
 **This system is production-ready and actively used in commercial agriculture operations. Maintain stability and reliability as top priorities in all development work.**

@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { toast } from 'svelte-sonner';
   import { TabsRoot as Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs/index.js";
   import { Card, CardContent, CardHeader, CardTitle } from "$lib/components/ui/card/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -10,14 +11,14 @@
   import { Alert, AlertDescription } from "$lib/components/ui/alert/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
-  import { 
-    User, 
-    Code, 
-    Plus, 
-    Trash2, 
+  import {
+    User,
+    Code,
+    Plus,
+    Trash2,
     Save,
     Settings as SettingsIcon,
-    AlertCircle 
+    AlertCircle
   } from "@lucide/svelte/icons";
 
   let userSettings = $state({
@@ -77,7 +78,7 @@
         fetch('/api/settings/user'),
         fetch('/api/settings/developer')
       ]);
-      
+
       if (userResponse.ok) {
         const userData = await userResponse.json();
         userSettings = { ...userSettings, ...userData };
@@ -89,6 +90,7 @@
     } catch (error) {
       console.error('Error loading settings:', error);
       saveMessage = 'Error loading settings. Using defaults.';
+      toast.error('Failed to load settings. Using defaults.');
     } finally {
       loading = false;
     }
@@ -112,12 +114,15 @@
 
       if (userResponse.ok && devResponse.ok) {
         saveMessage = 'Settings saved successfully!';
+        toast.success('Settings saved successfully!');
       } else {
         saveMessage = 'Error saving settings. Please try again.';
+        toast.error('Failed to save settings. Please try again.');
       }
     } catch (error) {
       console.error('Error saving settings:', error);
       saveMessage = 'Error saving settings. Please try again.';
+      toast.error(`Network error: ${error.message}`);
     } finally {
       saving = false;
       setTimeout(() => saveMessage = '', 3000);

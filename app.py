@@ -11,9 +11,13 @@ import sys
 
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_socketio import SocketIO, emit
 import logging
 import atexit
 import time
+import threading
 from datetime import datetime
 from typing import Dict, Any
 
@@ -74,6 +78,22 @@ app = Flask(__name__)
 CORS(app)
 app.secret_key = 'nutrient_mixing_system_2024'
 
+# Initialize SocketIO for real-time updates (replaces polling)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
+# Initialize rate limiter to prevent API abuse from frontend polling
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per minute", "20 per second"],
+    storage_uri="memory://",
+    strategy="fixed-window"
+)
+
+# Background thread for broadcasting status updates
+status_broadcast_thread = None
+status_broadcast_active = False
+
 # CRITICAL: Setup hardware safety FIRST
 safety_manager = setup_hardware_safety(app)
 if not safety_manager:
@@ -86,11 +106,137 @@ job_manager = None
 # Register cleanup on app shutdown
 def cleanup_on_shutdown():
     """Cleanup both hardware and job manager"""
+    global status_broadcast_active
+    status_broadcast_active = False
     if job_manager:
         job_manager.stop()
     cleanup_hardware()
 
 atexit.register(cleanup_on_shutdown)
+
+# =============================================================================
+# WEBSOCKET EVENTS - Real-time updates via Socket.IO
+# =============================================================================
+
+def broadcast_status_loop():
+    """Background thread that broadcasts hardware status to all connected clients"""
+    global status_broadcast_active
+    logger.info("Status broadcast thread started")
+
+    while status_broadcast_active:
+        try:
+            # Get current system status
+            status = get_system_status()
+            hardware = get_available_hardware()
+
+            # Get pump statuses
+            pumps_status = get_pump_status()
+            pumps_list = []
+            for pid in hardware['pumps']['ids']:
+                cached_pump_status = pumps_status.get(pid, {})
+                pump_data = {
+                    'id': pid,
+                    'name': hardware['pumps']['names'].get(pid, f'Pump {pid}'),
+                    'status': cached_pump_status.get('status', 'stopped'),
+                    'is_dispensing': cached_pump_status.get('is_dispensing', False),
+                    'voltage': cached_pump_status.get('voltage', 0.0),
+                    'connected': cached_pump_status.get('connected', False),
+                    'calibrated': cached_pump_status.get('calibrated', False),
+                    'current_volume': cached_pump_status.get('current_volume', 0.0),
+                    'target_volume': cached_pump_status.get('target_volume', 0.0)
+                }
+                pumps_list.append(pump_data)
+
+            # Get job status
+            job_status = {}
+            if job_manager:
+                job_status = job_manager.get_all_jobs_status()
+
+            # Build status payload
+            payload = {
+                'timestamp': datetime.now().isoformat(),
+                'system_ready': status.get('system_ready', False),
+                'relays': [
+                    {'id': rid, 'name': hardware['relays']['names'].get(rid, f'Relay {rid}'),
+                     'state': status['relays'].get(str(rid), False)}
+                    for rid in hardware['relays']['ids']
+                ],
+                'pumps': pumps_list,
+                'flow_meters': [
+                    {'id': fid, 'name': hardware['flow_meters']['names'].get(fid, f'Flow Meter {fid}'),
+                     'status': 'stopped', 'flow_rate': 0, 'total_gallons': 0}
+                    for fid in hardware['flow_meters']['ids']
+                ],
+                'ec_value': status.get('ec', 0),
+                'ph_value': status.get('ph', 0),
+                'ec_ph_monitoring': status.get('ec_ph_active', False),
+                'active_fill_job': job_status.get('active_fill_job'),
+                'active_mix_job': job_status.get('active_mix_job'),
+                'active_send_job': job_status.get('active_send_job')
+            }
+
+            # Broadcast to all connected clients
+            socketio.emit('status_update', payload)
+
+        except Exception as e:
+            logger.error(f"Error in status broadcast: {e}")
+
+        # Wait before next broadcast (1 second interval)
+        time.sleep(1.0)
+
+    logger.info("Status broadcast thread stopped")
+
+
+@socketio.on('connect')
+def handle_connect():
+    """Handle new WebSocket connection"""
+    logger.info(f"WebSocket client connected: {request.sid}")
+    emit('connected', {'message': 'Connected to Nutrient Mixing System', 'sid': request.sid})
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle WebSocket disconnection"""
+    logger.info(f"WebSocket client disconnected: {request.sid}")
+
+
+@socketio.on('subscribe_status')
+def handle_subscribe_status():
+    """Client subscribes to status updates"""
+    logger.info(f"Client {request.sid} subscribed to status updates")
+    emit('subscribed', {'channel': 'status_updates'})
+
+
+@socketio.on('request_status')
+def handle_request_status():
+    """Client requests immediate status update"""
+    try:
+        status = get_system_status()
+        hardware = get_available_hardware()
+
+        # Get job status
+        job_status = {}
+        if job_manager:
+            job_status = job_manager.get_all_jobs_status()
+
+        payload = {
+            'timestamp': datetime.now().isoformat(),
+            'system_ready': status.get('system_ready', False),
+            'relays': [
+                {'id': rid, 'state': status['relays'].get(str(rid), False)}
+                for rid in hardware['relays']['ids']
+            ],
+            'ec_value': status.get('ec', 0),
+            'ph_value': status.get('ph', 0),
+            'active_fill_job': job_status.get('active_fill_job'),
+            'active_mix_job': job_status.get('active_mix_job'),
+            'active_send_job': job_status.get('active_send_job')
+        }
+
+        emit('status_update', payload)
+    except Exception as e:
+        logger.error(f"Error handling status request: {e}")
+        emit('error', {'message': str(e)})
 
 # =============================================================================
 # STATIC FILE SERVING - Serve Svelte build files
@@ -219,10 +365,10 @@ def api_save_config():
 
 @app.route('/api/settings/user', methods=['GET'])
 def api_get_user_settings():
-    """Get user settings"""
+    """Get user settings - loads from SQLite state manager with config defaults"""
     try:
-        # Get current configuration from config module
-        user_settings = {
+        # Default settings from config module
+        default_settings = {
             'tanks': getattr(config, 'TANKS', {}),
             'pumps': {
                 'names': getattr(config, 'PUMP_NAMES', {}),
@@ -239,9 +385,20 @@ def api_get_user_settings():
                 'max_flow_gallons': getattr(config, 'MAX_FLOW_GALLONS', 100)
             }
         }
-        
-        return jsonify(user_settings)
-        
+
+        # Load persisted settings from state manager, merge with defaults
+        if state is not None:
+            persisted = state.get('settings_user', {})
+            if persisted:
+                # Deep merge persisted settings with defaults
+                for key, value in persisted.items():
+                    if isinstance(value, dict) and key in default_settings:
+                        default_settings[key].update(value)
+                    else:
+                        default_settings[key] = value
+
+        return jsonify(default_settings)
+
     except Exception as e:
         logger.error(f"Error loading user settings: {e}")
         return jsonify({
@@ -251,7 +408,7 @@ def api_get_user_settings():
 
 @app.route('/api/settings/user', methods=['POST'])
 def api_save_user_settings():
-    """Save user settings"""
+    """Save user settings to SQLite state manager"""
     try:
         data = request.get_json()
         if not data:
@@ -259,15 +416,28 @@ def api_save_user_settings():
                 'success': False,
                 'error': 'No user settings data provided'
             }), 400
-        
+
         logger.info(f"User settings update: {data}")
-        
-        # TODO: Implement actual saving to config file
-        return jsonify({
-            'success': True,
-            'message': 'User settings saved successfully'
-        })
-        
+
+        # Save to state manager for persistence
+        if state is not None:
+            success = state.set('settings_user', data)
+            if success:
+                return jsonify({
+                    'success': True,
+                    'message': 'User settings saved successfully'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to persist settings to database'
+                }), 500
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'State manager not available'
+            }), 500
+
     except Exception as e:
         logger.error(f"Error saving user settings: {e}")
         return jsonify({
@@ -277,9 +447,10 @@ def api_save_user_settings():
 
 @app.route('/api/settings/developer', methods=['GET'])
 def api_get_developer_settings():
-    """Get developer settings"""
+    """Get developer settings - loads from SQLite state manager with config defaults"""
     try:
-        dev_settings = {
+        # Default settings from config module
+        default_settings = {
             'gpio': {
                 'relay_pins': getattr(config, 'RELAY_GPIO_PINS', {}),
                 'flow_meter_pins': getattr(config, 'FLOW_METER_GPIO_PINS', {})
@@ -307,9 +478,20 @@ def api_get_developer_settings():
                 'log_level': getattr(config, 'LOG_LEVEL', 'INFO')
             }
         }
-        
-        return jsonify(dev_settings)
-        
+
+        # Load persisted settings from state manager, merge with defaults
+        if state is not None:
+            persisted = state.get('settings_developer', {})
+            if persisted:
+                # Deep merge persisted settings with defaults
+                for key, value in persisted.items():
+                    if isinstance(value, dict) and key in default_settings:
+                        default_settings[key].update(value)
+                    else:
+                        default_settings[key] = value
+
+        return jsonify(default_settings)
+
     except Exception as e:
         logger.error(f"Error loading developer settings: {e}")
         return jsonify({
@@ -319,7 +501,7 @@ def api_get_developer_settings():
 
 @app.route('/api/settings/developer', methods=['POST'])
 def api_save_developer_settings():
-    """Save developer settings"""
+    """Save developer settings to SQLite state manager"""
     try:
         data = request.get_json()
         if not data:
@@ -327,15 +509,28 @@ def api_save_developer_settings():
                 'success': False,
                 'error': 'No developer settings data provided'
             }), 400
-        
+
         logger.info(f"Developer settings update: {data}")
-        
-        # TODO: Implement actual saving to config file
-        return jsonify({
-            'success': True,
-            'message': 'Developer settings saved successfully'
-        })
-        
+
+        # Save to state manager for persistence
+        if state is not None:
+            success = state.set('settings_developer', data)
+            if success:
+                return jsonify({
+                    'success': True,
+                    'message': 'Developer settings saved successfully'
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to persist settings to database'
+                }), 500
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'State manager not available'
+            }), 500
+
     except Exception as e:
         logger.error(f"Error saving developer settings: {e}")
         return jsonify({
@@ -453,9 +648,55 @@ def api_save_nutrients():
 # API ENDPOINTS - Hardware Control (same patterns as simple_gui.py)
 # =============================================================================
 
+@app.route('/api/health')
+@limiter.exempt  # Health checks should not be rate limited
+def api_health():
+    """Health check endpoint for monitoring and load balancers"""
+    try:
+        status = get_system_status()
+        hardware = get_available_hardware()
+
+        # Check hardware connectivity
+        hardware_healthy = status.get('system_ready', False)
+
+        # Check job manager status
+        job_manager_healthy = job_manager is not None and job_manager.running
+
+        # Determine overall health
+        is_healthy = hardware_healthy
+
+        return jsonify({
+            'status': 'healthy' if is_healthy else 'degraded',
+            'timestamp': datetime.now().isoformat(),
+            'checks': {
+                'hardware': {
+                    'status': 'up' if hardware_healthy else 'down',
+                    'system_ready': status.get('system_ready', False),
+                    'pumps_available': len(hardware.get('pumps', {}).get('ids', [])),
+                    'relays_available': len(hardware.get('relays', {}).get('ids', []))
+                },
+                'job_manager': {
+                    'status': 'up' if job_manager_healthy else 'down',
+                    'running': job_manager_healthy
+                },
+                'database': {
+                    'status': 'up' if state is not None else 'down'
+                }
+            }
+        }), 200 if is_healthy else 503
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return jsonify({
+            'status': 'unhealthy',
+            'timestamp': datetime.now().isoformat(),
+            'error': str(e)
+        }), 503
+
+
 @app.route('/api/status')
 @app.route('/api/hardware/status')
 @app.route('/api/system/status')
+@limiter.limit("60 per minute")  # Allow frequent polling for status updates
 def api_status():
     """Get current system status"""
     try:
@@ -556,6 +797,7 @@ def api_state():
 # -----------------------------------------------------------------------------
 
 @app.route('/api/relay/<int:relay_id>/<state>', methods=['GET', 'POST'])
+@limiter.limit("30 per minute")  # Prevent rapid relay toggling
 def api_control_relay(relay_id, state):
     """Control individual relay"""
     try:
@@ -578,6 +820,7 @@ def api_control_relay(relay_id, state):
         }), 500
 
 @app.route('/api/relays/<int:relay_id>/control', methods=['POST'])
+@limiter.limit("30 per minute")  # Prevent rapid relay toggling
 def api_control_relay_json(relay_id):
     """Control individual relay (JSON format for HeadGrower)"""
     try:
@@ -645,11 +888,81 @@ def api_get_relay_states():
             'error': str(e)
         }), 500
 
+@app.route('/api/relay/combos', methods=['GET'])
+def api_get_relay_combos():
+    """Get available relay combo presets"""
+    try:
+        from config import RELAY_COMBOS, RELAY_NAMES
+
+        combos = []
+        for name, relay_ids in RELAY_COMBOS.items():
+            combo = {
+                'name': name,
+                'relays': relay_ids,
+                'relay_names': [RELAY_NAMES.get(rid, f'Relay {rid}') for rid in relay_ids]
+            }
+            combos.append(combo)
+
+        return jsonify({
+            'success': True,
+            'combos': combos
+        })
+    except Exception as e:
+        logger.error(f"Error getting relay combos: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/relay/combo/<combo_name>/<action>', methods=['POST'])
+@limiter.limit("30 per minute")
+def api_control_relay_combo(combo_name, action):
+    """Control a relay combo preset (turn all relays in combo on/off)"""
+    try:
+        from config import RELAY_COMBOS
+
+        # URL decode the combo name (spaces become %20 or +)
+        import urllib.parse
+        combo_name = urllib.parse.unquote(combo_name)
+
+        if combo_name not in RELAY_COMBOS:
+            return jsonify({
+                'success': False,
+                'error': f'Unknown combo: {combo_name}. Available: {list(RELAY_COMBOS.keys())}'
+            }), 400
+
+        relay_ids = RELAY_COMBOS[combo_name]
+        state = action.lower() == 'on'
+
+        results = []
+        all_success = True
+        for relay_id in relay_ids:
+            success = control_relay(relay_id, state)
+            results.append({'relay_id': relay_id, 'success': success})
+            if not success:
+                all_success = False
+
+        return jsonify({
+            'success': all_success,
+            'combo': combo_name,
+            'action': action,
+            'relays': relay_ids,
+            'results': results,
+            'message': f'{combo_name} turned {action.upper()}'
+        })
+    except Exception as e:
+        logger.error(f"Error controlling relay combo: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 # -----------------------------------------------------------------------------
 # PUMP CONTROL - Using exact same patterns as simple_gui.py
 # -----------------------------------------------------------------------------
 
 @app.route('/api/pump/<int:pump_id>/dispense', methods=['POST'])
+@limiter.limit("20 per minute")  # Limit pump commands to prevent hardware abuse
 def api_dispense_pump(pump_id):
     """Start pump dispensing"""
     try:
@@ -683,6 +996,7 @@ def api_dispense_pump(pump_id):
         }), 500
 
 @app.route('/api/pumps/<int:pump_id>/dispense', methods=['POST'])
+@limiter.limit("20 per minute")  # Limit pump commands to prevent hardware abuse
 def api_dispense_pump_plural(pump_id):
     """Start pump dispensing (plural endpoint for HeadGrower)"""
     try:
@@ -1794,10 +2108,87 @@ def api_get_all_jobs_status():
 
 
 # -----------------------------------------------------------------------------
+# JOB HISTORY ENDPOINTS
+# -----------------------------------------------------------------------------
+
+@app.route('/api/jobs/history', methods=['GET'])
+def api_get_job_history():
+    """Get job history with optional filters"""
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        job_type = request.args.get('type')
+        status = request.args.get('status')
+        tank_id = request.args.get('tank_id', type=int)
+
+        history = state.get_job_history(
+            limit=limit,
+            job_type=job_type,
+            status=status,
+            tank_id=tank_id
+        )
+
+        return jsonify({
+            'success': True,
+            'history': history,
+            'count': len(history)
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting job history: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/jobs/stats', methods=['GET'])
+def api_get_job_stats():
+    """Get job statistics"""
+    try:
+        days = request.args.get('days', 7, type=int)
+        stats = state.get_job_stats(days=days)
+
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting job stats: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/jobs/history/clear', methods=['POST'])
+def api_clear_job_history():
+    """Clear job history (optionally older than N days)"""
+    try:
+        data = request.get_json() or {}
+        older_than_days = data.get('older_than_days')
+
+        success = state.clear_job_history(older_than_days=older_than_days)
+
+        return jsonify({
+            'success': success,
+            'message': f'Job history cleared' + (f' (older than {older_than_days} days)' if older_than_days else '')
+        })
+
+    except Exception as e:
+        logger.error(f"Error clearing job history: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# -----------------------------------------------------------------------------
 # EMERGENCY CONTROLS - Same as simple_gui.py
 # -----------------------------------------------------------------------------
 
 @app.route('/api/emergency/stop', methods=['POST'])
+@limiter.exempt  # Emergency stop should NEVER be rate limited
 def api_emergency_stop():
     """Emergency stop all operations"""
     try:
@@ -1844,6 +2235,17 @@ def internal_error(error):
     else:
         return send_from_directory('static/dist', 'dashboard.html')
 
+@app.errorhandler(429)
+def ratelimit_error(error):
+    """Handle rate limit exceeded errors"""
+    logger.warning(f"Rate limit exceeded: {request.remote_addr} on {request.path}")
+    return jsonify({
+        'success': False,
+        'error': 'Rate limit exceeded. Please slow down your requests.',
+        'error_code': 429,
+        'retry_after': error.description
+    }), 429
+
 
 # =============================================================================
 # STARTUP AND MAIN
@@ -1869,7 +2271,7 @@ def init_hardware():
 
 def initialize_app():
     """Initialize the application with safety manager"""
-    global job_manager
+    global job_manager, status_broadcast_thread, status_broadcast_active
 
     logger.info("Starting Flask application...")
 
@@ -1894,20 +2296,27 @@ def initialize_app():
         logger.error(f"Job manager init failed: {e}")
         # Don't exit - jobs won't work but hardware control still will
 
+    # Start background status broadcast thread
+    status_broadcast_active = True
+    status_broadcast_thread = threading.Thread(target=broadcast_status_loop, daemon=True)
+    status_broadcast_thread.start()
+    logger.info("✓ WebSocket status broadcast thread started")
+
     logger.info("Flask application initialized")
 
 if __name__ == '__main__':
     initialize_app()
-    
-    # Run the Flask app with safe settings
+
+    # Run the Flask app with SocketIO support
     try:
-        print("Starting Flask application...")
-        app.run(
+        print("Starting Flask application with WebSocket support...")
+        socketio.run(
+            app,
             host='0.0.0.0',     # Allow external connections
             port=5000,          # Default Flask port
             debug=False,        # CRITICAL: Disable debug mode to stop auto-restart
             use_reloader=False, # CRITICAL: Disable auto-reload to prevent file watching
-            threaded=True       # Handle multiple requests
+            allow_unsafe_werkzeug=True  # Allow threading mode in production
         )
     except KeyboardInterrupt:
         print("Application interrupted by user")
@@ -1915,4 +2324,5 @@ if __name__ == '__main__':
         print(f"Application error: {e}")
         safety_manager.emergency_stop()
     finally:
+        status_broadcast_active = False
         print("Application shutdown complete")

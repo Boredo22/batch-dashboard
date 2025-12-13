@@ -1,4 +1,5 @@
 <script>
+  import { toast } from 'svelte-sonner';
   import PumpCalibration from './components/PumpCalibration.svelte';
   import Nutrients from './components/Nutrients.svelte';
   import NuteDispenseProgress from './components/NuteDispenseProgress.svelte';
@@ -41,14 +42,78 @@
   
   // UI state
   let activeSection = $state('dispense');
-  
+  let selectedTank = $state(1);
+  let showPreview = $state(false);
+
+  // Tank capacities in gallons (from config.py)
+  const tankCapacities = {
+    1: 100,  // Tank 1: 100 gallons
+    2: 100,  // Tank 2: 100 gallons
+    3: 35    // Tank 3: 35 gallons
+  };
+
+  // Pump volume limits (from config.py)
+  const PUMP_VOLUME_LIMITS = {
+    min: 0.5,
+    max: 2500
+  };
+
   // Computed values
   let totalVolume = $derived(Object.values(dispenseAmounts).reduce((sum, vol) => sum + vol, 0));
-  
+
   let dispensingSummary = $derived(Object.entries(dispenseAmounts)
     .filter(([id, amount]) => amount > 0)
     .map(([id, amount]) => `${amount}ml ${pumpNames[id]}`)
     .join(', '));
+
+  // Recipe Validation - check for uncalibrated pumps
+  let uncalibratedPumps = $derived(
+    Object.entries(dispenseAmounts)
+      .filter(([pumpId, amount]) => amount > 0)
+      .filter(([pumpId]) => {
+        const pump = pumps.find(p => p.id == pumpId);
+        return pump && !pump.calibrated;
+      })
+      .map(([pumpId]) => ({ id: parseInt(pumpId), name: pumpNames[pumpId] }))
+  );
+
+  // Validation - check for volumes outside limits
+  let volumeWarnings = $derived(
+    Object.entries(dispenseAmounts)
+      .filter(([pumpId, amount]) => amount > 0)
+      .filter(([pumpId, amount]) => amount < PUMP_VOLUME_LIMITS.min || amount > PUMP_VOLUME_LIMITS.max)
+      .map(([pumpId, amount]) => ({
+        id: parseInt(pumpId),
+        name: pumpNames[pumpId],
+        amount,
+        issue: amount < PUMP_VOLUME_LIMITS.min ? 'below minimum' : 'exceeds maximum'
+      }))
+  );
+
+  // Tank capacity check - convert ml to gallons for comparison
+  // Assumes total nutrients contribute to tank volume (rough estimate)
+  let totalNutrientGallons = $derived(totalVolume / 3785.41); // ml to gallons
+  let tankCapacity = $derived(tankCapacities[selectedTank] || 100);
+  let capacityPercentage = $derived(Math.min((totalNutrientGallons / tankCapacity) * 100, 100));
+  let capacityWarning = $derived(totalNutrientGallons > tankCapacity * 0.1); // Warn if nutrients > 10% of tank
+
+  // Check if recipe is valid to dispense
+  let validationErrors = $derived(() => {
+    const errors = [];
+    if (uncalibratedPumps.length > 0) {
+      errors.push(`${uncalibratedPumps.length} pump(s) need calibration`);
+    }
+    if (volumeWarnings.length > 0) {
+      errors.push(`${volumeWarnings.length} volume(s) outside limits`);
+    }
+    return errors;
+  });
+
+  let canDispense = $derived(
+    totalVolume > 0 &&
+    !isDispensing &&
+    volumeWarnings.length === 0
+  );
   
   let overallProgress = $derived(() => {
     if (!isDispensing || dispensingPumps.size === 0) return 0;
@@ -128,11 +193,14 @@
   // Manual dispensing functions
   async function startManualDispense() {
     if (isDispensing || totalVolume === 0) return;
-    
+
     isDispensing = true;
     totalMixTime = Date.now();
     dispensingPumps.clear();
-    
+
+    let startedCount = 0;
+    let failedCount = 0;
+
     // Start dispensing for all pumps with amounts > 0
     for (const [pumpId, amount] of Object.entries(dispenseAmounts)) {
       if (amount > 0) {
@@ -143,19 +211,30 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ amount: amount })
           });
-          
+
           if (!response.ok) {
             console.error(`Failed to start pump ${pumpId}`);
             dispensingPumps.delete(parseInt(pumpId));
+            failedCount++;
+          } else {
+            startedCount++;
           }
         } catch (error) {
           console.error(`Error starting pump ${pumpId}:`, error);
           dispensingPumps.delete(parseInt(pumpId));
+          failedCount++;
         }
       }
     }
+
+    if (startedCount > 0) {
+      toast.success(`Started dispensing from ${startedCount} pump(s)`);
+    }
+    if (failedCount > 0) {
+      toast.error(`Failed to start ${failedCount} pump(s)`);
+    }
   }
-  
+
   async function stopAllPumps() {
     for (const pumpId of dispensingPumps) {
       try {
@@ -166,15 +245,18 @@
     }
     isDispensing = false;
     dispensingPumps.clear();
+    toast.success('All pumps stopped');
   }
-  
+
   async function emergencyStop() {
     try {
       await fetch('/api/emergency/stop', { method: 'POST' });
       isDispensing = false;
       dispensingPumps.clear();
+      toast.warning('Emergency stop activated');
     } catch (error) {
       console.error('Emergency stop failed:', error);
+      toast.error(`Emergency stop failed: ${error.message}`);
     }
   }
   
@@ -182,21 +264,25 @@
   function loadRecipe(recipe) {
     // Convert recipe pumps to dispense amounts using pump name to ID mapping
     const newAmounts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0 };
-    
+
     for (const [nutrientName, amount] of Object.entries(recipe.pumps)) {
       const pumpId = nutrientsConfig.pump_name_to_id?.[nutrientName];
       if (pumpId && newAmounts.hasOwnProperty(pumpId)) {
         newAmounts[pumpId] = amount * 50; // Convert ml/gal to ml for 50 gallon mix
       }
     }
-    
+
     dispenseAmounts = newAmounts;
     selectedRecipe = recipe.name;
+    toast.success(`Loaded recipe: ${recipe.name}`);
   }
-  
+
   function saveNewRecipe() {
-    if (!newRecipeName.trim()) return;
-    
+    if (!newRecipeName.trim()) {
+      toast.warning('Please enter a recipe name');
+      return;
+    }
+
     // Convert current dispense amounts to recipe format
     const recipePumps = {};
     for (const [pumpId, amount] of Object.entries(dispenseAmounts)) {
@@ -205,22 +291,28 @@
         recipePumps[nutrientName] = amount / 50; // Convert back to ml/gal
       }
     }
-    
+
     const newRecipe = {
       name: newRecipeName,
       description: 'Custom recipe',
       pumps: recipePumps,
       type: 'custom'
     };
-    
+
     recipes = [...recipes, newRecipe];
+    toast.success(`Recipe "${newRecipeName}" saved`);
     newRecipeName = '';
     isAddingRecipe = false;
   }
-  
+
   function deleteRecipe(index) {
-    if (recipes[index].type !== 'custom') return; // Don't delete system recipes
+    if (recipes[index].type !== 'custom') {
+      toast.warning('Cannot delete system recipes');
+      return;
+    }
+    const recipeName = recipes[index].name;
     recipes = recipes.filter((_, i) => i !== index);
+    toast.success(`Recipe "${recipeName}" deleted`);
   }
   
   // Lifecycle
@@ -319,21 +411,73 @@
   <!-- Manual Dispense Section -->
   {#if activeSection === 'dispense'}
     <div class="section">
+      <!-- Tank Selection -->
+      <div class="tank-selector">
+        <span class="tank-label">Target Tank:</span>
+        <div class="tank-buttons">
+          {#each [1, 2, 3] as tankId}
+            <button
+              class="tank-btn {selectedTank === tankId ? 'selected' : ''}"
+              onclick={() => selectedTank = tankId}
+            >
+              Tank {tankId}
+              <span class="tank-capacity">({tankCapacities[tankId]}gal)</span>
+            </button>
+          {/each}
+        </div>
+      </div>
+
       <!-- Mix Summary -->
       <div class="mix-summary">
         <div class="summary-header">
           <h3><i class="fas fa-flask"></i> Current Mix</h3>
           <div class="total-volume">
             Total: <span class="volume-value">{totalVolume.toLocaleString()}ml</span>
+            <span class="volume-gallons">({totalNutrientGallons.toFixed(2)} gal)</span>
           </div>
         </div>
-        
+
         {#if dispensingSummary}
           <div class="dispense-summary">{dispensingSummary}</div>
         {:else}
           <div class="no-mix">No nutrients selected for dispensing</div>
         {/if}
-        
+
+        <!-- Validation Warnings -->
+        {#if uncalibratedPumps.length > 0 || volumeWarnings.length > 0 || capacityWarning}
+          <div class="validation-warnings">
+            {#if uncalibratedPumps.length > 0}
+              <div class="warning-item warning-calibration">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>
+                  <strong>Uncalibrated pumps:</strong>
+                  {uncalibratedPumps.map(p => p.name).join(', ')}
+                </span>
+              </div>
+            {/if}
+            {#if volumeWarnings.length > 0}
+              <div class="warning-item warning-volume">
+                <i class="fas fa-exclamation-circle"></i>
+                <span>
+                  <strong>Volume issues:</strong>
+                  {#each volumeWarnings as warning}
+                    {warning.name} ({warning.amount}ml {warning.issue})
+                  {/each}
+                </span>
+              </div>
+            {/if}
+            {#if capacityWarning}
+              <div class="warning-item warning-capacity">
+                <i class="fas fa-info-circle"></i>
+                <span>
+                  <strong>High nutrient ratio:</strong>
+                  Nutrients are {capacityPercentage.toFixed(1)}% of Tank {selectedTank} capacity
+                </span>
+              </div>
+            {/if}
+          </div>
+        {/if}
+
         <!-- Overall Progress -->
         {#if isDispensing}
           <div class="overall-progress">
@@ -409,25 +553,26 @@
       
       <!-- Control Buttons -->
       <div class="dispense-controls">
-        <button 
-          class="control-btn start-btn" 
+        <button
+          class="control-btn start-btn"
           onclick={startManualDispense}
-          disabled={isDispensing || totalVolume === 0}
+          disabled={!canDispense}
+          title={!canDispense && volumeWarnings.length > 0 ? 'Fix volume issues before dispensing' : ''}
         >
           <i class="fas fa-play"></i>
           Start Dispensing
         </button>
-        
-        <button 
-          class="control-btn stop-btn" 
+
+        <button
+          class="control-btn stop-btn"
           onclick={stopAllPumps}
           disabled={!isDispensing}
         >
           <i class="fas fa-stop"></i>
           Stop All
         </button>
-        
-        <button 
+
+        <button
           class="control-btn clear-btn"
           onclick={() => dispenseAmounts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0 }}
           disabled={isDispensing}
@@ -436,6 +581,14 @@
           Clear All
         </button>
       </div>
+
+      <!-- Validation Summary -->
+      {#if validationErrors().length > 0 && totalVolume > 0}
+        <div class="validation-summary">
+          <i class="fas fa-info-circle"></i>
+          <span>{validationErrors().join(' • ')}</span>
+        </div>
+      {/if}
     </div>
   {/if}
   
@@ -1262,5 +1415,138 @@
     .recipe-name-input {
       width: 100%;
     }
+
+    .tank-selector {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .tank-buttons {
+      flex-wrap: wrap;
+    }
+
+    .tank-btn {
+      flex: 1;
+      min-width: calc(33% - 0.5rem);
+    }
+  }
+
+  /* Tank Selector Styles */
+  .tank-selector {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 0.75rem;
+  }
+
+  .tank-label {
+    color: #94a3b8;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  .tank-buttons {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .tank-btn {
+    background: #0f172a;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .tank-btn:hover {
+    border-color: #475569;
+    background: #1e293b;
+  }
+
+  .tank-btn.selected {
+    background: #06b6d4;
+    color: white;
+    border-color: #06b6d4;
+  }
+
+  .tank-capacity {
+    font-size: 0.7rem;
+    opacity: 0.8;
+  }
+
+  .volume-gallons {
+    color: #64748b;
+    font-size: 0.85rem;
+    margin-left: 0.5rem;
+  }
+
+  /* Validation Warning Styles */
+  .validation-warnings {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #334155;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .warning-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.85rem;
+  }
+
+  .warning-item i {
+    margin-top: 2px;
+  }
+
+  .warning-calibration {
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    color: #f59e0b;
+  }
+
+  .warning-volume {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+  }
+
+  .warning-capacity {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #3b82f6;
+  }
+
+  .validation-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: rgba(100, 116, 139, 0.1);
+    border: 1px solid #334155;
+    border-radius: 0.5rem;
+    color: #94a3b8;
+    font-size: 0.85rem;
+    margin-top: 1rem;
+  }
+
+  .validation-summary i {
+    color: #64748b;
   }
 </style>

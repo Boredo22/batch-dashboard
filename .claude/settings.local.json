@@ -34,7 +34,9 @@
       "Bash(chmod:*)",
       "Bash(tasklist:*)",
       "Bash(findstr:*)",
-      "Bash(del \"c:\\Users\\bored\\batch-dashboard\\hardware\\rpi_unoComm.py\")"
+      "Bash(del \"c:\\Users\\bored\\batch-dashboard\\hardware\\rpi_unoComm.py\")",
+      "Bash(pip install:*)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []

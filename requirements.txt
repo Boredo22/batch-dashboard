@@ -3,5 +3,7 @@ smbus2
 pyserial
 flask
 flask-cors
+flask-limiter
+flask-socketio
 svelte
 vite
