@@ -211,11 +211,6 @@
     gap: var(--space-md);
   }
 
-  .icon {
-    width: 1rem;
-    height: 1rem;
-    color: var(--accent-steel);
-  }
 
   .header-actions {
     display: flex;
@@ -251,10 +246,6 @@
     font-weight: 500;
   }
 
-  .btn-icon {
-    width: 0.75rem;
-    height: 0.75rem;
-  }
 
   /* Combo Presets Section */
   .combos-section {

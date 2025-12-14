@@ -172,11 +172,6 @@
     gap: var(--space-md);
   }
 
-  .icon {
-    width: 1rem;
-    height: 1rem;
-    color: var(--accent-steel);
-  }
 
   .control-group {
     display: flex;
@@ -364,10 +359,6 @@
     cursor: not-allowed;
   }
 
-  .btn-icon {
-    width: 0.875rem;
-    height: 0.875rem;
-  }
 
   .flex {
     display: flex;

@@ -173,8 +173,16 @@
   }
 </script>
 
-<div class="wizard-overlay" onclick={() => onClose?.()}>
-  <div class="wizard-container" onclick={(e) => e.stopPropagation()}>
+<div
+  class="wizard-overlay"
+  onclick={() => onClose?.()}
+  onkeydown={(e) => e.key === 'Escape' && onClose?.()}
+  role="dialog"
+  aria-modal="true"
+  aria-label="Pump calibration wizard"
+  tabindex="-1"
+>
+  <div class="wizard-container" onclick={(e) => e.stopPropagation()} role="document">
     <!-- Header -->
     <div class="wizard-header">
       <div class="header-title">
@@ -443,11 +451,6 @@
     font-weight: 600;
   }
 
-  .header-icon {
-    width: 1.25rem;
-    height: 1.25rem;
-    color: #64748b;
-  }
 
   .close-btn {
     width: 2rem;
@@ -535,11 +538,6 @@
     font-size: 0.875rem;
   }
 
-  .alert-icon {
-    width: 1rem;
-    height: 1rem;
-    flex-shrink: 0;
-  }
 
   .step-content {
     display: flex;
@@ -668,14 +666,6 @@
     color: #059669;
   }
 
-  .status-icon {
-    width: 1.25rem;
-    height: 1.25rem;
-  }
-
-  .status-icon.success {
-    color: #059669;
-  }
 
   .spinner {
     width: 1.25rem;
@@ -745,10 +735,6 @@
     font-size: 1rem;
   }
 
-  .btn-icon {
-    width: 1rem;
-    height: 1rem;
-  }
 
   .measurement-display {
     background: #0f172a;
@@ -811,12 +797,6 @@
     padding: 1.5rem;
   }
 
-  .success-icon {
-    width: 3rem;
-    height: 3rem;
-    color: #059669;
-    margin-bottom: 1rem;
-  }
 
   .success-title {
     color: #f1f5f9;

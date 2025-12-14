@@ -302,11 +302,6 @@
     gap: var(--space-md);
   }
 
-  .icon {
-    width: 1rem;
-    height: 1rem;
-    color: var(--accent-steel);
-  }
 
   .control-group {
     display: flex;
@@ -494,10 +489,6 @@
     cursor: not-allowed;
   }
 
-  .btn-icon {
-    width: 0.875rem;
-    height: 0.875rem;
-  }
 
   .flex {
     display: flex;
@@ -534,11 +525,6 @@
     gap: 0.375rem;
   }
 
-  .metric-icon {
-    width: 0.875rem;
-    height: 0.875rem;
-    color: var(--accent-steel);
-  }
 
   .metric-label {
     font-size: var(--text-xs);

@@ -217,8 +217,16 @@
 
   <!-- Keyboard Shortcuts Help Modal -->
   {#if showShortcutsHelp}
-    <div class="shortcuts-overlay" onclick={() => showShortcutsHelp = false} role="dialog" aria-modal="true">
-      <div class="shortcuts-modal" onclick={(e) => e.stopPropagation()}>
+    <div
+      class="shortcuts-overlay"
+      onclick={() => showShortcutsHelp = false}
+      onkeydown={(e) => e.key === 'Escape' && (showShortcutsHelp = false)}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Keyboard shortcuts"
+      tabindex="-1"
+    >
+      <div class="shortcuts-modal" onclick={(e) => e.stopPropagation()} role="document">
         <div class="shortcuts-header">
           <h3>Keyboard Shortcuts</h3>
           <button class="close-btn" onclick={() => showShortcutsHelp = false} aria-label="Close">

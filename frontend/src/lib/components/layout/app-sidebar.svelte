@@ -180,11 +180,6 @@
       0 6px 16px rgba(0, 0, 0, 0.4);
   }
 
-  .header-icon {
-    width: 1.25rem;
-    height: 1.25rem;
-    color: white;
-  }
 
   .header-content {
     display: flex;
@@ -450,23 +445,6 @@
     overflow: hidden;
   }
 
-  .status-badge {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.5rem;
-    font-size: 0.875rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    width: fit-content;
-  }
-
-  :global([data-state="collapsed"]) .status-badge {
-    padding: 0.5rem;
-    width: auto;
-  }
 
   .status-text {
     white-space: nowrap;
@@ -562,11 +540,6 @@
     .icon-wrapper {
       width: 2rem;
       height: 2rem;
-    }
-
-    .icon {
-      width: 1rem;
-      height: 1rem;
     }
 
     .title {
