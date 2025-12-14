@@ -36,7 +36,8 @@
       "Bash(findstr:*)",
       "Bash(del \"c:\\Users\\bored\\batch-dashboard\\hardware\\rpi_unoComm.py\")",
       "Bash(pip install:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(npm ls:*)"
     ],
     "deny": [],
     "ask": []

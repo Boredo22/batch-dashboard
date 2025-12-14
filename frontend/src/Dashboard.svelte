@@ -141,12 +141,12 @@
   function handleConnectionChange(status) {
     logger.info('WebSocket', 'Connection status changed', { status });
     if (status === 'connected') {
-      systemStatus = 'Connected (WebSocket)';
+      systemStatus = 'Connected';
       errorMessage = '';
     } else if (status === 'reconnecting') {
-      systemStatus = 'Reconnecting...';
+      systemStatus = 'Reconnecting';
     } else if (status === 'error') {
-      systemStatus = 'Connection Error';
+      systemStatus = 'Error';
     } else {
       systemStatus = 'Disconnected';
     }
@@ -582,7 +582,7 @@
         <div class="status-group">
           <div class="status-label">SYSTEM STATUS</div>
           <div class="flex items-center gap-2">
-            <div class="status-dot {systemStatus === 'Connected' ? 'bg-green-500' : 'bg-red-500'}"></div>
+            <div class="status-dot {systemStatus.toLowerCase().startsWith('connected') ? 'bg-green-500' : systemStatus.toLowerCase() === 'reconnecting' ? 'bg-yellow-500' : 'bg-red-500'}"></div>
             <span class="text-sm font-medium text-slate-200">{systemStatus}</span>
           </div>
         </div>
