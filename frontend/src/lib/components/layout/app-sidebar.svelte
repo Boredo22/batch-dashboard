@@ -525,6 +525,19 @@
     animation: pulse-dot 1s ease-in-out infinite;
   }
 
+  :global(.status-badge.status-reconnecting) {
+    background: linear-gradient(135deg, rgba(234, 179, 8, 0.15), rgba(202, 138, 4, 0.1)) !important;
+    border: 1px solid rgba(234, 179, 8, 0.3) !important;
+    color: #fbbf24 !important;
+    box-shadow: 0 0 20px rgba(234, 179, 8, 0.2) !important;
+  }
+
+  :global(.status-badge.status-reconnecting .status-dot) {
+    background: #eab308;
+    box-shadow: 0 0 12px rgba(234, 179, 8, 0.6);
+    animation: pulse-dot 1s ease-in-out infinite;
+  }
+
   @keyframes pulse-dot {
     0%, 100% {
       opacity: 1;

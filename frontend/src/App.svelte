@@ -31,11 +31,15 @@
       const response = await fetch('/api/system/status');
       if (response.ok) {
         const data = await response.json();
-        systemStatus = data.status || 'connected';
+        // The API returns success: true/false, not a status string
+        // Use success to determine connection status
+        systemStatus = data.success ? 'connected' : 'error';
+      } else {
+        systemStatus = 'error';
       }
     } catch (error) {
       console.error('Error fetching system status:', error);
-      systemStatus = 'error';
+      systemStatus = 'disconnected';
     }
   }
 
