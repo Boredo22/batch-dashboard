@@ -1,6 +1,6 @@
 <script>
   import { onMount } from "svelte";
-  import { Zap, Layers, ChevronDown, ChevronUp } from "@lucide/svelte/icons";
+  import { Layers, ChevronDown, ChevronUp } from "@lucide/svelte/icons";
 
   let { relays = [], onRelayControl, onComboControl } = $props();
 
@@ -43,7 +43,12 @@
   }
 
   function handleRelayControl(relayId, action) {
-    onRelayControl?.(relayId, action);
+    console.log('handleRelayControl called:', { relayId, action, hasCallback: !!onRelayControl });
+    if (onRelayControl) {
+      onRelayControl(relayId, action);
+    } else {
+      console.error('onRelayControl callback is not defined!');
+    }
   }
 
   // Check if a combo is currently active (all its relays are on)
@@ -59,37 +64,29 @@
   });
 </script>
 
-<div class="card">
-  <div class="card-header">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <Zap class="icon" />
-        <span class="card-title">Relay Control</span>
-      </div>
-      <div class="header-actions">
-        <button
-          onclick={() => showCombos = !showCombos}
-          class="btn-secondary btn-sm"
-          title="Show/hide relay presets"
-        >
-          <Layers class="btn-icon" />
-          Presets
-          {#if showCombos}
-            <ChevronUp class="btn-icon" />
-          {:else}
-            <ChevronDown class="btn-icon" />
-          {/if}
-        </button>
-        <button
-          onclick={() => handleRelayControl(0, 'off')}
-          class="btn-secondary btn-sm btn-danger-hover"
-        >
-          All OFF
-        </button>
-      </div>
-    </div>
+<div class="relay-card-content">
+  <div class="header-actions">
+    <button
+      onclick={() => showCombos = !showCombos}
+      class="btn-secondary btn-sm"
+      title="Show/hide relay presets"
+    >
+      <Layers class="btn-icon" />
+      Presets
+      {#if showCombos}
+        <ChevronUp class="btn-icon" />
+      {:else}
+        <ChevronDown class="btn-icon" />
+      {/if}
+    </button>
+    <button
+      onclick={() => handleRelayControl(0, 'off')}
+      class="btn-secondary btn-sm btn-danger-hover"
+    >
+      All OFF
+    </button>
   </div>
-  <div class="card-content">
+  <div class="card-content-inner">
     <!-- Combo Presets Section (collapsible) -->
     {#if showCombos && combos.length > 0}
       <div class="combos-section">
@@ -155,6 +152,7 @@
   </div>
 </div>
 
+
 <style>
   :root {
     --bg-primary: #0f172a;
@@ -187,25 +185,13 @@
     --text-base: 0.9375rem;
   }
 
-  .card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-subtle);
-    border-radius: 0.375rem;
+  .relay-card-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
   }
 
-  .card-header {
-    padding: var(--space-md) var(--space-md) var(--space-sm);
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .card-title {
-    color: var(--text-primary);
-    font-size: var(--text-base);
-    font-weight: 500;
-  }
-
-  .card-content {
-    padding: var(--space-md);
+  .card-content-inner {
     display: flex;
     flex-direction: column;
     gap: var(--space-md);
