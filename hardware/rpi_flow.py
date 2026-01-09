@@ -121,9 +121,10 @@ class FlowMeterController:
             meter = self.flow_meters[meter_id]
             current_time = time.time()
 
-            # Simple debouncing: ignore pulses within 0.6ms of each other
-            # This prevents bounce from mechanical switches or electrical noise
-            if current_time - meter['last_pulse_time'] < 0.0006:
+            # Debouncing: ignore pulses within 50ms of each other
+            # This prevents false triggers from relay EMI and mechanical bounce
+            # 50ms allows up to 20 pulses/second which is plenty for flow meters
+            if current_time - meter['last_pulse_time'] < 0.050:
                 return
 
             meter['pulse_count'] += 1
@@ -141,16 +142,13 @@ class FlowMeterController:
 
             meter['last_pulse_time'] = current_time
 
-            # Log pulses for debugging - every 10th pulse to reduce spam
-            if meter['pulse_count'] % 10 == 0 or meter['pulse_count'] < 10:
-                meter_name = get_flow_meter_name(meter_id)
-                if meter['status'] == 1:
-                    # Active flow - show progress with flow rate
+            # Only log when actively monitoring flow (reduces noise from EMI)
+            if meter['status'] == 1:
+                # Log every 10th pulse during active flow
+                if meter['pulse_count'] % 10 == 0 or meter['pulse_count'] < 10:
+                    meter_name = get_flow_meter_name(meter_id)
                     logger.info(f"{meter_name}: {meter['pulse_count']} pulses, "
                                f"{meter['flow_rate']:.2f} GPM")
-                else:
-                    # Not in active flow - just show pulse count
-                    logger.info(f"{meter_name}: pulse detected (total: {meter['pulse_count']})")
         else:
             logger.error(f"Pulse received for unknown meter ID: {meter_id}")
     

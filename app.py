@@ -800,12 +800,19 @@ def api_state():
 @limiter.limit("120 per minute")  # Allow reasonable relay toggling (2 per second)
 def api_control_relay(relay_id, state):
     """Control individual relay"""
+    import time as _time
+    start_time = _time.time()
+    logger.info(f"[RELAY API] Request received: relay={relay_id}, state={state}")
+
     try:
         # Convert state string to boolean
         relay_state = state.lower() in ['on', 'true', '1']
-        
+
+        logger.info(f"[RELAY API] Calling control_relay...")
         success = control_relay(relay_id, relay_state)
-        
+        elapsed = _time.time() - start_time
+        logger.info(f"[RELAY API] control_relay returned in {elapsed:.3f}s, success={success}")
+
         return jsonify({
             'success': success,
             'relay_id': relay_id,
@@ -813,7 +820,8 @@ def api_control_relay(relay_id, state):
             'message': f"Relay {relay_id} {'turned on' if relay_state else 'turned off'}" if success else "Command failed"
         })
     except Exception as e:
-        logger.error(f"Error controlling relay {relay_id}: {e}")
+        elapsed = _time.time() - start_time
+        logger.error(f"[RELAY API] Error after {elapsed:.3f}s controlling relay {relay_id}: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
