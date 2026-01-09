@@ -187,9 +187,10 @@ class RelayController:
             # Update state tracking
             self.relay_states[relay_id] = is_on
 
-            # Persist state to database
+            # Persist state to database (async to not block relay operation)
             if state is not None:
-                state.set_relay(relay_id, is_on)
+                import threading
+                threading.Thread(target=state.set_relay, args=(relay_id, is_on), daemon=True).start()
 
             state_str = "ON" if is_on else "OFF"
             relay_name = get_relay_name(relay_id)
