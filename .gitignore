@@ -12,3 +12,9 @@ __pycache__/main.cpython-313.pyc
 
 # State manager database
 hardware_state.db
+__pycache__/config.cpython-311.pyc
+__pycache__/main.cpython-311.pyc
+hardware/__pycache__/hardware_comms.cpython-311.pyc
+hardware/__pycache__/rpi_flow.cpython-311.pyc
+hardware/__pycache__/rpi_pumps.cpython-311.pyc
+hardware/__pycache__/rpi_relays.cpython-311.pyc
