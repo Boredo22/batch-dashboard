@@ -142,6 +142,7 @@ class RelayController:
             init_state_from_hardware(self.relay_states)
 
             self._gpio_initialized = True
+            self._initialization_attempts = 0  # Reset counter on success
             return True
 
         except Exception as e:
@@ -199,6 +200,7 @@ class RelayController:
             logger.error(f"Error setting relay {relay_id}: {e}")
             # If GPIO operation fails, mark as uninitialized to force retry
             self._gpio_initialized = False
+            logger.warning(f"GPIO marked uninitialized, will retry (attempts: {self._initialization_attempts}/{self._max_init_attempts})")
             return False
     
     def set_all_relays(self, state):
