@@ -797,7 +797,7 @@ def api_state():
 # -----------------------------------------------------------------------------
 
 @app.route('/api/relay/<int:relay_id>/<state>', methods=['GET', 'POST'])
-@limiter.limit("30 per minute")  # Prevent rapid relay toggling
+@limiter.limit("120 per minute")  # Allow reasonable relay toggling (2 per second)
 def api_control_relay(relay_id, state):
     """Control individual relay"""
     try:

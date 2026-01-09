@@ -178,6 +178,14 @@
         phValue = data.ph_value || 0;
         ecPhMonitoring = data.ec_ph_monitoring || false;
 
+        // Update relay states from backend
+        if (data.relays && data.relays.length > 0) {
+          relays = relays.map(relay => {
+            const apiRelay = data.relays.find(r => r.id === relay.id);
+            return apiRelay ? { ...relay, status: apiRelay.state ? 'on' : 'off' } : relay;
+          });
+        }
+
         if (data.pumps) {
           pumps = pumps.map(pump => {
             const statusInfo = data.pumps[pump.id];
@@ -217,18 +225,34 @@
     }
   }
 
+  // Track pending relay requests to prevent double-clicks
+  let pendingRelayRequests = new Set();
+
   async function controlRelay(relayId, action) {
     if (relayId === 0 && action === 'off') {
       await allRelaysOff();
       return;
     }
 
+    // Debounce: ignore if this relay already has a pending request
+    if (pendingRelayRequests.has(relayId)) {
+      logger.debug('Hardware', `Relay ${relayId} request already pending, ignoring`);
+      return;
+    }
+
+    pendingRelayRequests.add(relayId);
     logger.debug('Hardware', `Controlling relay ${relayId}`, { relayId, action });
+
+    // Create abort controller with 5 second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
     try {
       const response = await fetch(`/api/relay/${relayId}/${action}`, {
-        method: 'POST'
+        method: 'POST',
+        signal: controller.signal
       });
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const result = await response.json();
@@ -251,10 +275,18 @@
         logger.error('Hardware', `Relay control failed`, { relayId, action, error });
       }
     } catch (error) {
+      clearTimeout(timeoutId);
       console.error('Error controlling relay:', error);
-      addLog(`Error controlling relay: ${error.message}`);
-      toast.error(`Network error: ${error.message}`);
+      if (error.name === 'AbortError') {
+        addLog(`Relay ${relayId} command timed out after 5 seconds`);
+        toast.error(`Request timed out - backend may be blocked`);
+      } else {
+        addLog(`Error controlling relay: ${error.message}`);
+        toast.error(`Network error: ${error.message}`);
+      }
       logger.error('API', `Network error controlling relay`, { relayId, action, error: error.message });
+    } finally {
+      pendingRelayRequests.delete(relayId);
     }
   }
 
