@@ -2,7 +2,8 @@
   import { onMount, onDestroy } from 'svelte';
   import { toast } from 'svelte-sonner';
   import { logger } from '$lib/utils';
-  import { initWebSocket, disconnectWebSocket, onStatusUpdate, onConnectionChange, isConnected } from '$lib/websocket';
+  // WebSocket disabled - using HTTP polling instead
+  // import { initWebSocket, disconnectWebSocket, onStatusUpdate, onConnectionChange, isConnected } from '$lib/websocket';
   import { Card, CardContent, CardHeader } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
   import { Button } from '$lib/components/ui/button';
@@ -77,14 +78,9 @@
   let activePumpCount = $derived(pumps.filter(p => p.status === 'dispensing').length);
 
   let statusInterval;
-  let unsubscribeStatus;
-  let unsubscribeConnection;
-  let useWebSocket = $state(true); // Toggle between WebSocket and polling
 
-  // WebSocket status handler
-  function handleWebSocketStatus(data) {
-    logger.debug('WebSocket', 'Received status update', data);
-
+  // Status update handler (used by HTTP polling)
+  function handleStatusUpdate(data) {
     // Update relays
     if (data.relays && data.relays.length > 0) {
       relays = data.relays.map(relay => ({
@@ -135,21 +131,6 @@
     ecValue = data.ec_value || 0;
     phValue = data.ph_value || 0;
     ecPhMonitoring = data.ec_ph_monitoring || false;
-  }
-
-  // Connection status handler
-  function handleConnectionChange(status) {
-    logger.info('WebSocket', 'Connection status changed', { status });
-    if (status === 'connected') {
-      systemStatus = 'Connected';
-      errorMessage = '';
-    } else if (status === 'reconnecting') {
-      systemStatus = 'Reconnecting';
-    } else if (status === 'error') {
-      systemStatus = 'Error';
-    } else {
-      systemStatus = 'Disconnected';
-    }
   }
 
   // API functions
@@ -526,42 +507,22 @@
   onMount(async () => {
     addLog('Hardware testing page started');
 
-    // Try WebSocket first, fall back to polling if unavailable
-    if (useWebSocket) {
-      try {
-        initWebSocket();
-        unsubscribeStatus = onStatusUpdate(handleWebSocketStatus);
-        unsubscribeConnection = onConnectionChange(handleConnectionChange);
-        addLog('WebSocket connection initialized');
-        logger.info('System', 'WebSocket mode enabled');
-      } catch (e) {
-        logger.error('WebSocket', 'Failed to initialize, falling back to polling', { error: e.message });
-        useWebSocket = false;
-      }
-    }
-
-    // Initial data fetch (for both modes)
+    // Initial data fetch
     await fetchHardwareData();
 
-    // Polling fallback if WebSocket fails or is disabled
-    if (!useWebSocket) {
+    // Use HTTP polling for status updates
+    await fetchSystemStatus();
+    statusInterval = setInterval(async () => {
       await fetchSystemStatus();
-      statusInterval = setInterval(async () => {
-        await fetchSystemStatus();
-      }, 2000);
-      addLog('Using HTTP polling mode');
-    }
+    }, 2000);
+    addLog('Using HTTP polling mode');
+    systemStatus = 'Connected';
 
     if (pumps.length > 0) selectedPump = pumps[0].id;
     if (flowMeters.length > 0) selectedFlowMeter = flowMeters[0].id;
   });
 
   onDestroy(() => {
-    // Cleanup WebSocket subscriptions
-    if (unsubscribeStatus) unsubscribeStatus();
-    if (unsubscribeConnection) unsubscribeConnection();
-    disconnectWebSocket();
-
     // Cleanup polling interval
     if (statusInterval) {
       clearInterval(statusInterval);

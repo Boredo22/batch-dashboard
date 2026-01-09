@@ -84,8 +84,11 @@ class StateManager:
     @contextmanager
     def _get_conn(self):
         """Get a database connection with proper cleanup."""
-        conn = sqlite3.connect(self.db_path, timeout=10.0)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
+        # Enable WAL mode for better concurrent access
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         try:
             yield conn
             conn.commit()
@@ -126,34 +129,35 @@ class StateManager:
     def get(self, key: str, default: Any = None) -> Any:
         """
         Get a state value.
-        
+
         Args:
             key: State key
             default: Value to return if key doesn't exist
-            
+
         Returns:
             The stored value, or default if not found
         """
-        try:
-            with self._get_conn() as conn:
-                row = conn.execute(
-                    "SELECT value FROM state WHERE key = ?", (key,)
-                ).fetchone()
-                
-                if row is None:
-                    return default
-                
-                value = row['value']
-                
-                # Try to parse as JSON, fall back to string
-                try:
-                    return json.loads(value)
-                except (json.JSONDecodeError, TypeError):
-                    return value
-                    
-        except Exception as e:
-            print(f"[StateManager] Error getting {key}: {e}")
-            return default
+        with self._lock:
+            try:
+                with self._get_conn() as conn:
+                    row = conn.execute(
+                        "SELECT value FROM state WHERE key = ?", (key,)
+                    ).fetchone()
+
+                    if row is None:
+                        return default
+
+                    value = row['value']
+
+                    # Try to parse as JSON, fall back to string
+                    try:
+                        return json.loads(value)
+                    except (json.JSONDecodeError, TypeError):
+                        return value
+
+            except Exception as e:
+                print(f"[StateManager] Error getting {key}: {e}")
+                return default
     
     def delete(self, key: str) -> bool:
         """Delete a state key."""
@@ -199,34 +203,35 @@ class StateManager:
     def get_prefix(self, prefix: str) -> Dict[str, Any]:
         """
         Get all state keys starting with a prefix.
-        
+
         Args:
             prefix: Key prefix (e.g., "relay_" gets relay_1, relay_2, etc.)
-            
+
         Returns:
             Dict of matching key-value pairs
         """
-        try:
-            with self._get_conn() as conn:
-                rows = conn.execute(
-                    "SELECT key, value FROM state WHERE key LIKE ?",
-                    (f"{prefix}%",)
-                ).fetchall()
-                
-                result = {}
-                for row in rows:
-                    value = row['value']
-                    try:
-                        value = json.loads(value)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
-                    result[row['key']] = value
-                
-                return result
-                
-        except Exception as e:
-            print(f"[StateManager] Error in get_prefix: {e}")
-            return {}
+        with self._lock:
+            try:
+                with self._get_conn() as conn:
+                    rows = conn.execute(
+                        "SELECT key, value FROM state WHERE key LIKE ?",
+                        (f"{prefix}%",)
+                    ).fetchall()
+
+                    result = {}
+                    for row in rows:
+                        value = row['value']
+                        try:
+                            value = json.loads(value)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                        result[row['key']] = value
+
+                    return result
+
+            except Exception as e:
+                print(f"[StateManager] Error in get_prefix: {e}")
+                return {}
     
     def get_all(self) -> Dict[str, Any]:
         """Get all stored state."""
@@ -612,42 +617,43 @@ class StateManager:
         Returns:
             List of job records as dicts
         """
-        try:
-            with self._get_conn() as conn:
-                query = "SELECT * FROM job_history WHERE 1=1"
-                params = []
+        with self._lock:
+            try:
+                with self._get_conn() as conn:
+                    query = "SELECT * FROM job_history WHERE 1=1"
+                    params = []
 
-                if job_type:
-                    query += " AND job_type = ?"
-                    params.append(job_type)
-                if status:
-                    query += " AND status = ?"
-                    params.append(status)
-                if tank_id:
-                    query += " AND tank_id = ?"
-                    params.append(tank_id)
+                    if job_type:
+                        query += " AND job_type = ?"
+                        params.append(job_type)
+                    if status:
+                        query += " AND status = ?"
+                        params.append(status)
+                    if tank_id:
+                        query += " AND tank_id = ?"
+                        params.append(tank_id)
 
-                query += " ORDER BY started_at DESC LIMIT ?"
-                params.append(limit)
+                    query += " ORDER BY started_at DESC LIMIT ?"
+                    params.append(limit)
 
-                rows = conn.execute(query, params).fetchall()
+                    rows = conn.execute(query, params).fetchall()
 
-                result = []
-                for row in rows:
-                    job = dict(row)
-                    # Parse parameters JSON
-                    if job.get('parameters'):
-                        try:
-                            job['parameters'] = json.loads(job['parameters'])
-                        except json.JSONDecodeError:
-                            pass
-                    result.append(job)
+                    result = []
+                    for row in rows:
+                        job = dict(row)
+                        # Parse parameters JSON
+                        if job.get('parameters'):
+                            try:
+                                job['parameters'] = json.loads(job['parameters'])
+                            except json.JSONDecodeError:
+                                pass
+                        result.append(job)
 
-                return result
+                    return result
 
-        except Exception as e:
-            print(f"[StateManager] Error getting job history: {e}")
-            return []
+            except Exception as e:
+                print(f"[StateManager] Error getting job history: {e}")
+                return []
 
     def get_job_stats(self, days: int = 7) -> Dict[str, Any]:
         """
@@ -659,59 +665,60 @@ class StateManager:
         Returns:
             Dict with job statistics
         """
-        try:
-            with self._get_conn() as conn:
-                cutoff = datetime.now().isoformat()[:10]  # Get date part only
+        with self._lock:
+            try:
+                with self._get_conn() as conn:
+                    cutoff = datetime.now().isoformat()[:10]  # Get date part only
 
-                # Get counts by status
-                status_counts = {}
-                for status in ['completed', 'failed', 'stopped', 'running']:
+                    # Get counts by status
+                    status_counts = {}
+                    for status in ['completed', 'failed', 'stopped', 'running']:
+                        row = conn.execute('''
+                            SELECT COUNT(*) as count FROM job_history
+                            WHERE status = ? AND date(started_at) >= date(?, '-' || ? || ' days')
+                        ''', (status, cutoff, days)).fetchone()
+                        status_counts[status] = row['count'] if row else 0
+
+                    # Get counts by type
+                    type_counts = {}
+                    for job_type in ['fill', 'mix', 'send']:
+                        row = conn.execute('''
+                            SELECT COUNT(*) as count FROM job_history
+                            WHERE job_type = ? AND date(started_at) >= date(?, '-' || ? || ' days')
+                        ''', (job_type, cutoff, days)).fetchone()
+                        type_counts[job_type] = row['count'] if row else 0
+
+                    # Get average duration by type for completed jobs
+                    avg_durations = {}
+                    for job_type in ['fill', 'mix', 'send']:
+                        row = conn.execute('''
+                            SELECT AVG(duration_seconds) as avg_duration FROM job_history
+                            WHERE job_type = ? AND status = 'completed'
+                            AND date(started_at) >= date(?, '-' || ? || ' days')
+                        ''', (job_type, cutoff, days)).fetchone()
+                        avg_durations[job_type] = round(row['avg_duration'], 1) if row and row['avg_duration'] else 0
+
+                    # Total jobs
                     row = conn.execute('''
-                        SELECT COUNT(*) as count FROM job_history
-                        WHERE status = ? AND date(started_at) >= date(?, '-' || ? || ' days')
-                    ''', (status, cutoff, days)).fetchone()
-                    status_counts[status] = row['count'] if row else 0
+                        SELECT COUNT(*) as total FROM job_history
+                        WHERE date(started_at) >= date(?, '-' || ? || ' days')
+                    ''', (cutoff, days)).fetchone()
+                    total = row['total'] if row else 0
 
-                # Get counts by type
-                type_counts = {}
-                for job_type in ['fill', 'mix', 'send']:
-                    row = conn.execute('''
-                        SELECT COUNT(*) as count FROM job_history
-                        WHERE job_type = ? AND date(started_at) >= date(?, '-' || ? || ' days')
-                    ''', (job_type, cutoff, days)).fetchone()
-                    type_counts[job_type] = row['count'] if row else 0
+                    return {
+                        'period_days': days,
+                        'total_jobs': total,
+                        'by_status': status_counts,
+                        'by_type': type_counts,
+                        'avg_duration_seconds': avg_durations,
+                        'success_rate': round(
+                            (status_counts['completed'] / total * 100) if total > 0 else 0, 1
+                        )
+                    }
 
-                # Get average duration by type for completed jobs
-                avg_durations = {}
-                for job_type in ['fill', 'mix', 'send']:
-                    row = conn.execute('''
-                        SELECT AVG(duration_seconds) as avg_duration FROM job_history
-                        WHERE job_type = ? AND status = 'completed'
-                        AND date(started_at) >= date(?, '-' || ? || ' days')
-                    ''', (job_type, cutoff, days)).fetchone()
-                    avg_durations[job_type] = round(row['avg_duration'], 1) if row and row['avg_duration'] else 0
-
-                # Total jobs
-                row = conn.execute('''
-                    SELECT COUNT(*) as total FROM job_history
-                    WHERE date(started_at) >= date(?, '-' || ? || ' days')
-                ''', (cutoff, days)).fetchone()
-                total = row['total'] if row else 0
-
-                return {
-                    'period_days': days,
-                    'total_jobs': total,
-                    'by_status': status_counts,
-                    'by_type': type_counts,
-                    'avg_duration_seconds': avg_durations,
-                    'success_rate': round(
-                        (status_counts['completed'] / total * 100) if total > 0 else 0, 1
-                    )
-                }
-
-        except Exception as e:
-            print(f"[StateManager] Error getting job stats: {e}")
-            return {}
+            except Exception as e:
+                print(f"[StateManager] Error getting job stats: {e}")
+                return {}
 
     def clear_job_history(self, older_than_days: int = None) -> bool:
         """
