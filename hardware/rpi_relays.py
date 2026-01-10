@@ -7,11 +7,13 @@ Works independently without hardware manager - compatible with simple_gui.py pat
 
 import logging
 import sys
+import concurrent.futures
 from pathlib import Path
 from config import (
     RELAY_GPIO_PINS,
     RELAY_NAMES,
     RELAY_ACTIVE_HIGH,
+    GPIO_OPERATION_TIMEOUT,
     get_relay_name,
     get_available_relays,
     validate_relay_id
@@ -62,7 +64,38 @@ class RelayController:
 
         # Don't setup GPIO immediately - use lazy initialization
         logger.debug("RelayController created with lazy GPIO initialization")
-    
+
+        # Thread pool for timeout-protected GPIO operations
+        self._gpio_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpio")
+
+    def _gpio_with_timeout(self, operation, *args, timeout_seconds=None):
+        """Execute GPIO operation with timeout protection.
+
+        Prevents indefinite blocking if GPIO is locked or unresponsive.
+        On timeout, marks GPIO as uninitialized to force reinit on next call.
+
+        Args:
+            operation: The GPIO function to call
+            *args: Arguments to pass to the operation
+            timeout_seconds: Timeout in seconds (defaults to GPIO_OPERATION_TIMEOUT)
+
+        Returns:
+            Result of the operation
+
+        Raises:
+            TimeoutError: If operation exceeds timeout
+        """
+        if timeout_seconds is None:
+            timeout_seconds = GPIO_OPERATION_TIMEOUT
+
+        future = self._gpio_executor.submit(operation, *args)
+        try:
+            return future.result(timeout=timeout_seconds)
+        except concurrent.futures.TimeoutError:
+            logger.error(f"GPIO operation timed out after {timeout_seconds}s - marking GPIO uninitialized")
+            self._gpio_initialized = False
+            raise TimeoutError(f"GPIO operation exceeded {timeout_seconds}s timeout")
+
     def _cleanup_gpio_handle(self):
         """Clean up any existing GPIO handle before retry"""
         if self.h is not None:
@@ -157,11 +190,14 @@ class RelayController:
             return False
     
     def set_relay(self, relay_id, is_on):
-        """Set individual relay state
+        """Set individual relay state with timeout protection.
 
         Args:
             relay_id (int): Relay number
             is_on (bool): True = ON, False = OFF
+
+        Returns:
+            bool: True if successful, False otherwise
         """
         if not validate_relay_id(relay_id):
             available = get_available_relays()
@@ -182,20 +218,30 @@ class RelayController:
             else:
                 gpio_state = 0 if is_on else 1  # LOW = ON, HIGH = OFF
 
-            lgpio.gpio_write(self.h, pin, gpio_state)
+            # Use timeout-protected GPIO write to prevent indefinite blocking
+            self._gpio_with_timeout(lgpio.gpio_write, self.h, pin, gpio_state)
 
             # Update state tracking
             self.relay_states[relay_id] = is_on
 
-            # Persist state to database (async to not block relay operation)
+            # Persist state to database synchronously (SQLite WAL mode is fast ~5ms)
+            # This ensures state is persisted before we return success
             if state is not None:
-                import threading
-                threading.Thread(target=state.set_relay, args=(relay_id, is_on), daemon=True).start()
+                try:
+                    state.set_relay(relay_id, is_on)
+                except Exception as e:
+                    # Log but don't fail - GPIO operation already succeeded
+                    logger.warning(f"State persistence failed for relay {relay_id}: {e}")
 
             state_str = "ON" if is_on else "OFF"
             relay_name = get_relay_name(relay_id)
             logger.info(f"Relay {relay_id} ({relay_name}) set to {state_str}")
             return True
+
+        except TimeoutError as e:
+            logger.error(f"Timeout setting relay {relay_id}: {e}")
+            # GPIO already marked uninitialized by _gpio_with_timeout
+            return False
 
         except Exception as e:
             logger.error(f"Error setting relay {relay_id}: {e}")
@@ -268,21 +314,25 @@ class RelayController:
         try:
             # Turn off all relays before cleanup
             self.emergency_stop()
-            
+
             # Release GPIO pins
             for pin in self.relay_pins.values():
                 try:
                     lgpio.gpio_free(self.h, pin)
                 except:
                     pass
-            
+
             # Close the GPIO chip
             if self.h is not None:
                 lgpio.gpiochip_close(self.h)
                 self.h = None
-            
+
+            # Shutdown the GPIO executor thread pool
+            if hasattr(self, '_gpio_executor'):
+                self._gpio_executor.shutdown(wait=False)
+
             logger.info("GPIO cleanup completed")
-            
+
         except Exception as e:
             logger.error(f"Error during GPIO cleanup: {e}")
     

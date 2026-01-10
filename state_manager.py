@@ -83,12 +83,17 @@ class StateManager:
     
     @contextmanager
     def _get_conn(self):
-        """Get a database connection with proper cleanup."""
-        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        """Get a database connection with proper cleanup.
+
+        Uses reduced timeouts to prevent long blocking on DB contention.
+        SQLite WAL mode provides fast enough writes (~5ms) that long
+        timeouts are unnecessary.
+        """
+        conn = sqlite3.connect(self.db_path, timeout=5.0)  # Reduced from 30s
         conn.row_factory = sqlite3.Row
         # Enable WAL mode for better concurrent access
         conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA busy_timeout=5000")  # Reduced from 30000ms
         try:
             yield conn
             conn.commit()

@@ -1,6 +1,11 @@
 /**
  * WebSocket connection manager for real-time hardware status updates
  * Uses Socket.IO client to connect to Flask-SocketIO backend
+ *
+ * Features:
+ * - Infinite reconnection with exponential backoff
+ * - Automatic polling fallback when WebSocket is unavailable
+ * - Connection health monitoring
  */
 import { io } from 'socket.io-client';
 
@@ -9,6 +14,11 @@ let socket = null;
 let connectionStatus = 'disconnected';
 let statusListeners = [];
 let connectionListeners = [];
+
+// Polling fallback state
+let pollingInterval = null;
+let pollingFetchInProgress = false;
+const POLLING_INTERVAL_MS = 2000;
 
 /**
  * Get the WebSocket server URL based on environment
@@ -30,7 +40,7 @@ function getSocketUrl() {
 }
 
 /**
- * Initialize WebSocket connection
+ * Initialize WebSocket connection with infinite reconnection
  * @returns {Socket} Socket.IO client instance
  */
 export function initWebSocket() {
@@ -45,9 +55,10 @@ export function initWebSocket() {
   socket = io(url, {
     transports: ['websocket', 'polling'],
     reconnection: true,
-    reconnectionAttempts: 10,
+    reconnectionAttempts: Infinity,  // Never give up reconnecting
     reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
+    reconnectionDelayMax: 30000,     // Cap at 30 seconds between attempts
+    randomizationFactor: 0.5,        // Add jitter to prevent thundering herd
     timeout: 20000
   });
 
@@ -57,6 +68,9 @@ export function initWebSocket() {
     connectionStatus = 'connected';
     notifyConnectionListeners(connectionStatus);
 
+    // Stop polling fallback when WebSocket connects
+    stopPollingFallback();
+
     // Subscribe to status updates
     socket.emit('subscribe_status');
   });
@@ -65,12 +79,18 @@ export function initWebSocket() {
     console.log('[WebSocket] Disconnected:', reason);
     connectionStatus = 'disconnected';
     notifyConnectionListeners(connectionStatus);
+
+    // Start polling fallback when WebSocket disconnects
+    startPollingFallback();
   });
 
   socket.on('connect_error', (error) => {
     console.error('[WebSocket] Connection error:', error.message);
     connectionStatus = 'error';
     notifyConnectionListeners(connectionStatus);
+
+    // Ensure polling fallback is running on connection errors
+    startPollingFallback();
   });
 
   socket.on('reconnecting', (attemptNumber) => {
@@ -83,7 +103,26 @@ export function initWebSocket() {
     console.log('[WebSocket] Reconnected after', attemptNumber, 'attempts');
     connectionStatus = 'connected';
     notifyConnectionListeners(connectionStatus);
+
+    // Stop polling fallback on successful reconnection
+    stopPollingFallback();
+
     socket.emit('subscribe_status');
+  });
+
+  // Handle case where reconnection gives up (shouldn't happen with Infinity, but safety)
+  socket.on('reconnect_failed', () => {
+    console.warn('[WebSocket] Reconnection failed, attempting manual reconnect in 5s...');
+    connectionStatus = 'error';
+    notifyConnectionListeners(connectionStatus);
+
+    // Manual reconnect attempt after delay
+    setTimeout(() => {
+      if (!socket.connected) {
+        console.log('[WebSocket] Manual reconnection attempt...');
+        socket.connect();
+      }
+    }, 5000);
   });
 
   // Server events
@@ -107,9 +146,67 @@ export function initWebSocket() {
 }
 
 /**
- * Disconnect WebSocket
+ * Start HTTP polling fallback when WebSocket is unavailable
+ */
+function startPollingFallback() {
+  if (pollingInterval) {
+    return; // Already polling
+  }
+
+  console.log('[WebSocket] Starting HTTP polling fallback');
+
+  pollingInterval = setInterval(async () => {
+    // Prevent overlapping requests
+    if (pollingFetchInProgress) {
+      return;
+    }
+
+    pollingFetchInProgress = true;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch('/api/system/status', {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = await response.json();
+        notifyStatusListeners(data);
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.warn('[WebSocket] Polling request timed out');
+      } else {
+        console.error('[WebSocket] Polling error:', error.message);
+      }
+    } finally {
+      pollingFetchInProgress = false;
+    }
+  }, POLLING_INTERVAL_MS);
+}
+
+/**
+ * Stop HTTP polling fallback
+ */
+function stopPollingFallback() {
+  if (pollingInterval) {
+    console.log('[WebSocket] Stopping HTTP polling fallback');
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+    pollingFetchInProgress = false;
+  }
+}
+
+/**
+ * Disconnect WebSocket and clean up all resources
  */
 export function disconnectWebSocket() {
+  // Stop polling fallback
+  stopPollingFallback();
+
   if (socket) {
     console.log('[WebSocket] Disconnecting...');
     socket.disconnect();

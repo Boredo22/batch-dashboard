@@ -178,6 +178,11 @@ FLOW_UPDATE_INTERVAL = 0.5        # Flow meter updates
 COMMAND_TIMEOUT = 1.0             # Command queue timeout
 SERIAL_READ_TIMEOUT = 0.05        # Serial port read timeout
 
+# Hardware operation timeouts (prevents indefinite blocking)
+GPIO_OPERATION_TIMEOUT = 2.0      # Max time for any GPIO operation (seconds)
+I2C_OPERATION_TIMEOUT = 5.0       # Max time for any I2C operation (seconds)
+COMMAND_DEDUP_WINDOW = 0.5        # Deduplication window for duplicate commands (seconds)
+
 # Mock testing intervals (for development)
 MOCK_FLOW_PULSE_INTERVAL = 0.02   # 20ms for mock flow pulses
 MOCK_PULSES_PER_INTERVAL = 2      # Pulses to add per interval

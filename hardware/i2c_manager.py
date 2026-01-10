@@ -2,17 +2,21 @@
 """
 Shared I2C Bus Manager
 Single bus instance for all I2C devices (pumps at 11-18, pH at 0x63, EC at 0x64)
+Includes timeout protection to prevent indefinite blocking on I2C operations.
 """
 
 import threading
+import concurrent.futures
 import smbus2
 import logging
 import time
 
+from config import I2C_OPERATION_TIMEOUT
+
 logger = logging.getLogger(__name__)
 
 class I2CManager:
-    """Thread-safe singleton for I2C bus access"""
+    """Thread-safe singleton for I2C bus access with timeout protection"""
     _instance = None
     _lock = threading.Lock()
     _bus_lock = threading.Lock()
@@ -24,6 +28,9 @@ class I2CManager:
                     cls._instance = super().__new__(cls)
                     cls._instance._bus = None
                     cls._instance._bus_number = bus_number
+                    cls._instance._executor = concurrent.futures.ThreadPoolExecutor(
+                        max_workers=1, thread_name_prefix="i2c"
+                    )
                     cls._instance._initialize_bus()
         return cls._instance
 
@@ -41,14 +48,11 @@ class I2CManager:
         """Get the bus instance"""
         return self._bus
 
-    def send_command(self, address, command, delay=0.3):
+    def _send_command_internal(self, address, command, delay):
         """
-        Send command to EZO device with proper locking
+        Internal method to send command - called within timeout wrapper.
         Returns: (success, response_code, data_string)
         """
-        if self._bus is None:
-            return False, 0, "Bus not initialized"
-
         with self._bus_lock:
             try:
                 # Use raw I2C messages (required for EZO devices)
@@ -75,12 +79,44 @@ class I2CManager:
                 logger.error(f"I2C error at address {address}: {e}")
                 return False, 0, str(e)
 
+    def send_command(self, address, command, delay=0.3, timeout=None):
+        """
+        Send command to EZO device with timeout protection.
+
+        Args:
+            address: I2C address of the device
+            command: Command string to send
+            delay: Delay in seconds after sending command (default 0.3s for EZO devices)
+            timeout: Timeout in seconds (defaults to I2C_OPERATION_TIMEOUT)
+
+        Returns: (success, response_code, data_string)
+        """
+        if self._bus is None:
+            return False, 0, "Bus not initialized"
+
+        if timeout is None:
+            timeout = I2C_OPERATION_TIMEOUT
+
+        # Submit the I2C operation to the executor with timeout
+        future = self._executor.submit(self._send_command_internal, address, command, delay)
+
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            logger.error(f"I2C operation timed out after {timeout}s for address {address} command '{command}'")
+            # Return a timeout error - the bus may be stuck
+            return False, 0, f"I2C timeout after {timeout}s"
+
     def close(self):
-        """Close the I2C bus"""
+        """Close the I2C bus and shutdown executor"""
         with self._bus_lock:
             if self._bus:
                 self._bus.close()
                 self._bus = None
+
+        # Shutdown the executor
+        if hasattr(self, '_executor'):
+            self._executor.shutdown(wait=False)
 
 
 def get_i2c_manager():

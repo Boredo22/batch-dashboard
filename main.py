@@ -24,6 +24,7 @@ from config import (
     STATUS_UPDATE_INTERVAL,
     PUMP_CHECK_INTERVAL,
     COMMAND_TIMEOUT,
+    COMMAND_DEDUP_WINDOW,
     USE_MOCK_HARDWARE,
     MOCK_SETTINGS,
     MESSAGE_FORMATS,
@@ -53,7 +54,12 @@ class FeedControlSystem:
         self.running = False
         self.command_queue = queue.Queue()
         self.worker_thread = None
+        self.watchdog_thread = None
         self.message_callback = None
+
+        # Command deduplication to prevent duplicate commands within a short window
+        self._recent_commands = {}
+        self._recent_commands_lock = threading.Lock()
 
         # Initialize controllers - all on Pi now
         logger.info("Initializing Pi-native feed control system...")
@@ -110,37 +116,45 @@ class FeedControlSystem:
         """Start the feed control system"""
         if self.running:
             return
-        
+
         self.running = True
-        
+
         # Start worker thread
-        self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True, name="worker")
         self.worker_thread.start()
-        
+
+        # Start watchdog thread to monitor worker health
+        self.watchdog_thread = threading.Thread(target=self._watchdog_loop, daemon=True, name="watchdog")
+        self.watchdog_thread.start()
+
         # EC/pH sensors are always available via I2C (no need to start monitoring explicitly)
         # Sensors can be read on-demand when needed
-        
+
         # Print system info
         self._print_system_info()
-        
+
         logger.info("Feed control system started")
     
     def stop(self):
         """Stop the feed control system"""
         if not self.running:
             return
-        
+
         logger.info("Stopping feed control system...")
-        
+
         self.running = False
-        
+
         # Stop worker thread
         if self.worker_thread and self.worker_thread.is_alive():
             self.worker_thread.join(timeout=5)
-        
+
+        # Stop watchdog thread
+        if self.watchdog_thread and self.watchdog_thread.is_alive():
+            self.watchdog_thread.join(timeout=2)
+
         # Emergency stop all devices
         self.emergency_stop()
-        
+
         # Close all controllers
         if self.pump_controller:
             self.pump_controller.close()
@@ -150,8 +164,54 @@ class FeedControlSystem:
             self.flow_controller.cleanup()
         if self.sensor_controller:
             self.sensor_controller.close()
-        
+
         logger.info("Feed control system stopped")
+
+    def _watchdog_loop(self):
+        """Monitor worker thread health and restart if it dies.
+
+        This watchdog ensures the system remains operational even if
+        the worker thread crashes due to an unhandled exception or
+        hardware timeout.
+        """
+        while self.running:
+            try:
+                # Check worker thread health every 5 seconds
+                time.sleep(5)
+
+                if not self.running:
+                    break
+
+                if self.worker_thread and not self.worker_thread.is_alive():
+                    logger.error("Worker thread died! Restarting...")
+
+                    # Restart the worker thread
+                    self.worker_thread = threading.Thread(
+                        target=self._worker_loop, daemon=True, name="worker"
+                    )
+                    self.worker_thread.start()
+                    logger.info("Worker thread restarted successfully")
+
+                # Clean up old deduplication entries
+                self._cleanup_old_commands()
+
+            except Exception as e:
+                logger.error(f"Error in watchdog loop: {e}")
+                time.sleep(1)
+
+    def _cleanup_old_commands(self):
+        """Remove old entries from the command deduplication cache."""
+        current_time = time.time()
+        cutoff_time = current_time - (COMMAND_DEDUP_WINDOW * 2)
+
+        with self._recent_commands_lock:
+            # Remove entries older than 2x the dedup window
+            old_keys = [
+                key for key, timestamp in self._recent_commands.items()
+                if timestamp < cutoff_time
+            ]
+            for key in old_keys:
+                del self._recent_commands[key]
     
     def _worker_loop(self):
         """Main worker loop"""
@@ -419,7 +479,27 @@ class FeedControlSystem:
         self.send_message("=" * 60)
     
     def send_command(self, command):
-        """Queue a command for processing"""
+        """Queue a command for processing with deduplication.
+
+        Duplicate commands within COMMAND_DEDUP_WINDOW are silently
+        succeeded to prevent rapid-fire duplicate commands from
+        overwhelming the system.
+        """
+        # Normalize command for deduplication
+        cmd_key = command.strip()
+        current_time = time.time()
+
+        # Check for duplicate within deduplication window
+        with self._recent_commands_lock:
+            if cmd_key in self._recent_commands:
+                last_time = self._recent_commands[cmd_key]
+                if current_time - last_time < COMMAND_DEDUP_WINDOW:
+                    logger.debug(f"Deduplicated command (within {COMMAND_DEDUP_WINDOW}s): {cmd_key[:50]}...")
+                    return True  # Silently succeed - duplicate
+
+            # Track this command
+            self._recent_commands[cmd_key] = current_time
+
         try:
             self.command_queue.put(command, timeout=COMMAND_TIMEOUT)
             return True

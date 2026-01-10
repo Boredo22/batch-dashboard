@@ -799,7 +799,7 @@ def api_state():
 @app.route('/api/relay/<int:relay_id>/<state>', methods=['GET', 'POST'])
 @limiter.limit("120 per minute")  # Allow reasonable relay toggling (2 per second)
 def api_control_relay(relay_id, state):
-    """Control individual relay"""
+    """Control individual relay and return confirmed state"""
     import time as _time
     start_time = _time.time()
     logger.info(f"[RELAY API] Request received: relay={relay_id}, state={state}")
@@ -813,10 +813,22 @@ def api_control_relay(relay_id, state):
         elapsed = _time.time() - start_time
         logger.info(f"[RELAY API] control_relay returned in {elapsed:.3f}s, success={success}")
 
+        # Get confirmed state from hardware after operation
+        confirmed_state = None
+        if success:
+            try:
+                status = get_system_status()
+                relay_states = status.get('relays', {})
+                confirmed_state = relay_states.get(relay_id, relay_states.get(str(relay_id)))
+            except Exception as e:
+                logger.warning(f"[RELAY API] Could not get confirmed state: {e}")
+
         return jsonify({
             'success': success,
             'relay_id': relay_id,
             'state': 'ON' if relay_state else 'OFF',
+            'confirmed_state': confirmed_state,
+            'timestamp': datetime.now().isoformat(),
             'message': f"Relay {relay_id} {'turned on' if relay_state else 'turned off'}" if success else "Command failed"
         })
     except Exception as e:
@@ -830,17 +842,29 @@ def api_control_relay(relay_id, state):
 @app.route('/api/relays/<int:relay_id>/control', methods=['POST'])
 @limiter.limit("30 per minute")  # Prevent rapid relay toggling
 def api_control_relay_json(relay_id):
-    """Control individual relay (JSON format for HeadGrower)"""
+    """Control individual relay (JSON format for HeadGrower) with confirmed state"""
     try:
         data = request.get_json() or {}
         relay_state = data.get('state', False)
-        
+
         success = control_relay(relay_id, relay_state)
-        
+
+        # Get confirmed state from hardware after operation
+        confirmed_state = None
+        if success:
+            try:
+                status = get_system_status()
+                relay_states = status.get('relays', {})
+                confirmed_state = relay_states.get(relay_id, relay_states.get(str(relay_id)))
+            except Exception as e:
+                logger.warning(f"Could not get confirmed state: {e}")
+
         return jsonify({
             'success': success,
             'relay_id': relay_id,
             'state': 'ON' if relay_state else 'OFF',
+            'confirmed_state': confirmed_state,
+            'timestamp': datetime.now().isoformat(),
             'message': f"Relay {relay_id} {'turned on' if relay_state else 'turned off'}" if success else "Command failed"
         })
     except Exception as e:

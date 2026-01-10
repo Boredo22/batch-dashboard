@@ -170,8 +170,23 @@
   }
 
   async function fetchSystemStatus() {
+    // Prevent overlapping requests from piling up
+    if (statusFetchInProgress) {
+      return;
+    }
+
+    statusFetchInProgress = true;
+
+    // Create abort controller with 5 second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     try {
-      const response = await fetch('/api/system/status');
+      const response = await fetch('/api/system/status', {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
       if (response.ok) {
         const data = await response.json();
         ecValue = data.ec_value || 0;
@@ -221,12 +236,22 @@
         }
       }
     } catch (error) {
-      console.error('Error fetching system status:', error);
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        console.warn('Status fetch timed out - backend may be blocked');
+      } else {
+        console.error('Error fetching system status:', error);
+      }
+    } finally {
+      statusFetchInProgress = false;
     }
   }
 
   // Track pending relay requests to prevent double-clicks
   let pendingRelayRequests = new Set();
+
+  // Track if a status fetch is in progress to prevent piling up requests
+  let statusFetchInProgress = false;
 
   async function controlRelay(relayId, action) {
     if (relayId === 0 && action === 'off') {
@@ -264,8 +289,13 @@
         toast.success(`Relay ${relayId} turned ${action.toUpperCase()}`);
         logger.info('Hardware', `Relay ${relayId} ${action}`, { relayId, action, result });
 
+        // Use confirmed state from API if available, otherwise use requested action
+        const confirmedStatus = result.confirmed_state !== null && result.confirmed_state !== undefined
+          ? (result.confirmed_state ? 'on' : 'off')
+          : action;
+
         relays = relays.map(relay =>
-          relay.id === relayId ? { ...relay, status: action } : relay
+          relay.id === relayId ? { ...relay, status: confirmedStatus } : relay
         );
       } else {
         const error = await response.json();
