@@ -66,7 +66,16 @@ class RelayController:
         logger.debug("RelayController created with lazy GPIO initialization")
 
         # Thread pool for timeout-protected GPIO operations
-        self._gpio_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="gpio")
+        # Use multiple workers so a stuck operation doesn't block everything
+        self._gpio_executor = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="gpio")
+        self._pending_gpio_futures = []  # Track pending futures for cleanup
+
+    def _cleanup_stale_futures(self):
+        """Clean up completed or cancelled futures from tracking list."""
+        self._pending_gpio_futures = [
+            f for f in self._pending_gpio_futures
+            if not f.done()
+        ]
 
     def _gpio_with_timeout(self, operation, *args, timeout_seconds=None):
         """Execute GPIO operation with timeout protection.
@@ -88,12 +97,19 @@ class RelayController:
         if timeout_seconds is None:
             timeout_seconds = GPIO_OPERATION_TIMEOUT
 
+        # Clean up old completed futures
+        self._cleanup_stale_futures()
+
         future = self._gpio_executor.submit(operation, *args)
+        self._pending_gpio_futures.append(future)
+
         try:
             return future.result(timeout=timeout_seconds)
         except concurrent.futures.TimeoutError:
             logger.error(f"GPIO operation timed out after {timeout_seconds}s - marking GPIO uninitialized")
             self._gpio_initialized = False
+            # Try to cancel the future (won't work if already running, but good practice)
+            future.cancel()
             raise TimeoutError(f"GPIO operation exceeded {timeout_seconds}s timeout")
 
     def _cleanup_gpio_handle(self):

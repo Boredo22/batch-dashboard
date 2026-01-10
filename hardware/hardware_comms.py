@@ -67,12 +67,16 @@ class HardwareComms:
     
     def control_relay(self, relay_id: int, state: bool) -> bool:
         """
-        Control relay using exact same validation and command as simple_gui.py
-        
+        Control relay directly via relay controller (bypasses command queue for speed).
+
+        This uses direct access to the relay controller instead of going through
+        the command queue, which provides faster response times and avoids
+        potential queue blocking issues.
+
         Args:
             relay_id: Relay ID (0 = all relays)
             state: True = ON, False = OFF
-        
+
         Returns:
             bool: Success status
         """
@@ -80,26 +84,32 @@ class HardwareComms:
         if not sys:
             logger.error("System not available for relay control")
             return False
-        
+
+        if not sys.relay_controller:
+            logger.error("Relay controller not available")
+            return False
+
         # Same validation as simple_gui.py
         if relay_id != 0 and relay_id not in get_available_relays():
             logger.error(f"Invalid relay ID: {relay_id}")
             return False
-        
-        # Exact same command format as simple_gui.py
-        state_str = "ON" if state else "OFF"
-        command = f"Start;Relay;{relay_id};{state_str};end"
-        
+
         try:
-            success = sys.send_command(command)
-            
+            # Direct relay control - bypasses command queue for faster response
+            if relay_id == 0:
+                # All relays
+                success = sys.relay_controller.set_all_relays(state)
+            else:
+                # Single relay
+                success = sys.relay_controller.set_relay(relay_id, state)
+
             if success:
                 relay_name = get_relay_name(relay_id) if relay_id != 0 else "All Relays"
                 action = "turned on" if state else "turned off"
                 logger.info(f"{relay_name} {action}")
             else:
                 logger.error(f"Failed to control relay {relay_id}")
-            
+
             return success
         except Exception as e:
             logger.error(f"Exception controlling relay {relay_id}: {e}")

@@ -28,9 +28,11 @@ class I2CManager:
                     cls._instance = super().__new__(cls)
                     cls._instance._bus = None
                     cls._instance._bus_number = bus_number
+                    # Use multiple workers so a stuck operation doesn't block everything
                     cls._instance._executor = concurrent.futures.ThreadPoolExecutor(
-                        max_workers=1, thread_name_prefix="i2c"
+                        max_workers=4, thread_name_prefix="i2c"
                     )
+                    cls._instance._pending_futures = []
                     cls._instance._initialize_bus()
         return cls._instance
 
@@ -79,6 +81,13 @@ class I2CManager:
                 logger.error(f"I2C error at address {address}: {e}")
                 return False, 0, str(e)
 
+    def _cleanup_stale_futures(self):
+        """Clean up completed futures from tracking list."""
+        self._pending_futures = [
+            f for f in self._pending_futures
+            if not f.done()
+        ]
+
     def send_command(self, address, command, delay=0.3, timeout=None):
         """
         Send command to EZO device with timeout protection.
@@ -97,13 +106,19 @@ class I2CManager:
         if timeout is None:
             timeout = I2C_OPERATION_TIMEOUT
 
+        # Clean up old completed futures
+        self._cleanup_stale_futures()
+
         # Submit the I2C operation to the executor with timeout
         future = self._executor.submit(self._send_command_internal, address, command, delay)
+        self._pending_futures.append(future)
 
         try:
             return future.result(timeout=timeout)
         except concurrent.futures.TimeoutError:
             logger.error(f"I2C operation timed out after {timeout}s for address {address} command '{command}'")
+            # Try to cancel (won't work if running, but good practice)
+            future.cancel()
             # Return a timeout error - the bus may be stuck
             return False, 0, f"I2C timeout after {timeout}s"
 
