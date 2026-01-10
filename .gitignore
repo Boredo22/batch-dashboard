@@ -18,3 +18,8 @@ hardware/__pycache__/hardware_comms.cpython-311.pyc
 hardware/__pycache__/rpi_flow.cpython-311.pyc
 hardware/__pycache__/rpi_pumps.cpython-311.pyc
 hardware/__pycache__/rpi_relays.cpython-311.pyc
+/hardware/__pycache__/hardware_comms.cpython-311.pyc
+/hardware/__pycache__/rpi_flow.cpython-311.pyc
+/hardware/__pycache__/rpi_pumps.cpython-311.pyc
+/hardware/__pycache__/rpi_relays.cpython-311.pyc
+
