@@ -1,23 +1,20 @@
 /**
- * WebSocket connection manager for real-time hardware status updates
- * Uses Socket.IO client to connect to Flask-SocketIO backend
+ * HTTP Polling manager for hardware status updates
+ * Simplified version - no WebSocket, just REST API polling
  */
-import { io } from 'socket.io-client';
 
 // Reactive state for connection status
-let socket = null;
 let connectionStatus = 'disconnected';
 let statusListeners = [];
 let connectionListeners = [];
+let pollingInterval = null;
+let isPolling = false;
 
 /**
- * Get the WebSocket server URL based on environment
+ * Get the API base URL
  */
-function getSocketUrl() {
-  // In development, Vite proxies to localhost:5000
-  // In production, connect to same host
+function getApiUrl() {
   if (typeof window !== 'undefined') {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.hostname;
     // In dev mode (Vite), connect directly to Flask backend
     if (window.location.port === '5173') {
@@ -30,117 +27,101 @@ function getSocketUrl() {
 }
 
 /**
- * Initialize WebSocket connection
- * @returns {Socket} Socket.IO client instance
+ * Fetch status from the API
  */
-export function initWebSocket() {
-  if (socket && socket.connected) {
-    console.log('[WebSocket] Already connected');
-    return socket;
+async function fetchStatus() {
+  try {
+    const url = `${getApiUrl()}/api/status`;
+    const response = await fetch(url);
+
+    if (response.ok) {
+      const data = await response.json();
+
+      if (connectionStatus !== 'connected') {
+        connectionStatus = 'connected';
+        notifyConnectionListeners(connectionStatus);
+      }
+
+      notifyStatusListeners(data);
+      return data;
+    } else {
+      throw new Error(`HTTP ${response.status}`);
+    }
+  } catch (error) {
+    console.error('[Polling] Error fetching status:', error.message);
+
+    if (connectionStatus !== 'error') {
+      connectionStatus = 'error';
+      notifyConnectionListeners(connectionStatus);
+    }
+
+    return null;
   }
-
-  const url = getSocketUrl();
-  console.log('[WebSocket] Connecting to:', url);
-
-  socket = io(url, {
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionAttempts: 10,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    timeout: 20000
-  });
-
-  // Connection events
-  socket.on('connect', () => {
-    console.log('[WebSocket] Connected, sid:', socket.id);
-    connectionStatus = 'connected';
-    notifyConnectionListeners(connectionStatus);
-
-    // Subscribe to status updates
-    socket.emit('subscribe_status');
-  });
-
-  socket.on('disconnect', (reason) => {
-    console.log('[WebSocket] Disconnected:', reason);
-    connectionStatus = 'disconnected';
-    notifyConnectionListeners(connectionStatus);
-  });
-
-  socket.on('connect_error', (error) => {
-    console.error('[WebSocket] Connection error:', error.message);
-    connectionStatus = 'error';
-    notifyConnectionListeners(connectionStatus);
-  });
-
-  socket.on('reconnecting', (attemptNumber) => {
-    console.log('[WebSocket] Reconnecting, attempt:', attemptNumber);
-    connectionStatus = 'reconnecting';
-    notifyConnectionListeners(connectionStatus);
-  });
-
-  socket.on('reconnect', (attemptNumber) => {
-    console.log('[WebSocket] Reconnected after', attemptNumber, 'attempts');
-    connectionStatus = 'connected';
-    notifyConnectionListeners(connectionStatus);
-    socket.emit('subscribe_status');
-  });
-
-  // Server events
-  socket.on('connected', (data) => {
-    console.log('[WebSocket] Server confirmed connection:', data.message);
-  });
-
-  socket.on('subscribed', (data) => {
-    console.log('[WebSocket] Subscribed to:', data.channel);
-  });
-
-  socket.on('status_update', (data) => {
-    notifyStatusListeners(data);
-  });
-
-  socket.on('error', (data) => {
-    console.error('[WebSocket] Server error:', data.message);
-  });
-
-  return socket;
 }
 
 /**
- * Disconnect WebSocket
+ * Initialize polling (replaces WebSocket)
+ * @param {number} intervalMs - Polling interval in milliseconds (default 2000)
+ * @returns {Object} Polling controller
+ */
+export function initWebSocket(intervalMs = 2000) {
+  if (isPolling) {
+    console.log('[Polling] Already polling');
+    return;
+  }
+
+  console.log('[Polling] Starting HTTP polling mode (no WebSocket)');
+  isPolling = true;
+  connectionStatus = 'connecting';
+  notifyConnectionListeners(connectionStatus);
+
+  // Initial fetch
+  fetchStatus();
+
+  // Start polling interval
+  pollingInterval = setInterval(fetchStatus, intervalMs);
+
+  return {
+    stop: () => disconnectWebSocket()
+  };
+}
+
+/**
+ * Stop polling
  */
 export function disconnectWebSocket() {
-  if (socket) {
-    console.log('[WebSocket] Disconnecting...');
-    socket.disconnect();
-    socket = null;
-    connectionStatus = 'disconnected';
-    notifyConnectionListeners(connectionStatus);
+  if (pollingInterval) {
+    console.log('[Polling] Stopping...');
+    clearInterval(pollingInterval);
+    pollingInterval = null;
   }
+  isPolling = false;
+  connectionStatus = 'disconnected';
+  notifyConnectionListeners(connectionStatus);
 }
 
 /**
  * Get current connection status
- * @returns {string} 'connected', 'disconnected', 'reconnecting', or 'error'
+ * @returns {string} 'connected', 'disconnected', 'connecting', or 'error'
  */
 export function getConnectionStatus() {
   return connectionStatus;
 }
 
 /**
- * Check if WebSocket is connected
+ * Check if polling is active and connected
  * @returns {boolean}
  */
 export function isConnected() {
-  return socket && socket.connected;
+  return isPolling && connectionStatus === 'connected';
 }
 
 /**
- * Request immediate status update from server
+ * Request immediate status update
  */
 export function requestStatusUpdate() {
-  if (socket && socket.connected) {
-    socket.emit('request_status');
+  if (isPolling) {
+    fetchStatus();
   }
 }
 
@@ -184,7 +165,7 @@ function notifyStatusListeners(data) {
     try {
       callback(data);
     } catch (e) {
-      console.error('[WebSocket] Error in status listener:', e);
+      console.error('[Polling] Error in status listener:', e);
     }
   });
 }
@@ -198,15 +179,15 @@ function notifyConnectionListeners(status) {
     try {
       callback(status);
     } catch (e) {
-      console.error('[WebSocket] Error in connection listener:', e);
+      console.error('[Polling] Error in connection listener:', e);
     }
   });
 }
 
 /**
- * Get the socket instance (for advanced usage)
- * @returns {Socket|null}
+ * Get the socket instance - returns null (no WebSocket)
+ * @returns {null}
  */
 export function getSocket() {
-  return socket;
+  return null;
 }
