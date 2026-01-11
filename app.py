@@ -13,7 +13,6 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask_socketio import SocketIO, emit
 import logging
 import atexit
 import time
@@ -78,9 +77,6 @@ app = Flask(__name__)
 CORS(app)
 app.secret_key = 'nutrient_mixing_system_2024'
 
-# Initialize SocketIO for real-time updates (replaces polling)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
-
 # Initialize rate limiter to prevent API abuse from frontend polling
 limiter = Limiter(
     get_remote_address,
@@ -89,10 +85,6 @@ limiter = Limiter(
     storage_uri="memory://",
     strategy="fixed-window"
 )
-
-# Background thread for broadcasting status updates
-status_broadcast_thread = None
-status_broadcast_active = False
 
 # CRITICAL: Setup hardware safety FIRST
 safety_manager = setup_hardware_safety(app)
@@ -106,137 +98,11 @@ job_manager = None
 # Register cleanup on app shutdown
 def cleanup_on_shutdown():
     """Cleanup both hardware and job manager"""
-    global status_broadcast_active
-    status_broadcast_active = False
     if job_manager:
         job_manager.stop()
     cleanup_hardware()
 
 atexit.register(cleanup_on_shutdown)
-
-# =============================================================================
-# WEBSOCKET EVENTS - Real-time updates via Socket.IO
-# =============================================================================
-
-def broadcast_status_loop():
-    """Background thread that broadcasts hardware status to all connected clients"""
-    global status_broadcast_active
-    logger.info("Status broadcast thread started")
-
-    while status_broadcast_active:
-        try:
-            # Get current system status
-            status = get_system_status()
-            hardware = get_available_hardware()
-
-            # Get pump statuses
-            pumps_status = get_pump_status()
-            pumps_list = []
-            for pid in hardware['pumps']['ids']:
-                cached_pump_status = pumps_status.get(pid, {})
-                pump_data = {
-                    'id': pid,
-                    'name': hardware['pumps']['names'].get(pid, f'Pump {pid}'),
-                    'status': cached_pump_status.get('status', 'stopped'),
-                    'is_dispensing': cached_pump_status.get('is_dispensing', False),
-                    'voltage': cached_pump_status.get('voltage', 0.0),
-                    'connected': cached_pump_status.get('connected', False),
-                    'calibrated': cached_pump_status.get('calibrated', False),
-                    'current_volume': cached_pump_status.get('current_volume', 0.0),
-                    'target_volume': cached_pump_status.get('target_volume', 0.0)
-                }
-                pumps_list.append(pump_data)
-
-            # Get job status
-            job_status = {}
-            if job_manager:
-                job_status = job_manager.get_all_jobs_status()
-
-            # Build status payload
-            payload = {
-                'timestamp': datetime.now().isoformat(),
-                'system_ready': status.get('system_ready', False),
-                'relays': [
-                    {'id': rid, 'name': hardware['relays']['names'].get(rid, f'Relay {rid}'),
-                     'state': status['relays'].get(str(rid), False)}
-                    for rid in hardware['relays']['ids']
-                ],
-                'pumps': pumps_list,
-                'flow_meters': [
-                    {'id': fid, 'name': hardware['flow_meters']['names'].get(fid, f'Flow Meter {fid}'),
-                     'status': 'stopped', 'flow_rate': 0, 'total_gallons': 0}
-                    for fid in hardware['flow_meters']['ids']
-                ],
-                'ec_value': status.get('ec', 0),
-                'ph_value': status.get('ph', 0),
-                'ec_ph_monitoring': status.get('ec_ph_active', False),
-                'active_fill_job': job_status.get('active_fill_job'),
-                'active_mix_job': job_status.get('active_mix_job'),
-                'active_send_job': job_status.get('active_send_job')
-            }
-
-            # Broadcast to all connected clients
-            socketio.emit('status_update', payload)
-
-        except Exception as e:
-            logger.error(f"Error in status broadcast: {e}")
-
-        # Wait before next broadcast (1 second interval)
-        time.sleep(1.0)
-
-    logger.info("Status broadcast thread stopped")
-
-
-@socketio.on('connect')
-def handle_connect():
-    """Handle new WebSocket connection"""
-    logger.info(f"WebSocket client connected: {request.sid}")
-    emit('connected', {'message': 'Connected to Nutrient Mixing System', 'sid': request.sid})
-
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    """Handle WebSocket disconnection"""
-    logger.info(f"WebSocket client disconnected: {request.sid}")
-
-
-@socketio.on('subscribe_status')
-def handle_subscribe_status():
-    """Client subscribes to status updates"""
-    logger.info(f"Client {request.sid} subscribed to status updates")
-    emit('subscribed', {'channel': 'status_updates'})
-
-
-@socketio.on('request_status')
-def handle_request_status():
-    """Client requests immediate status update"""
-    try:
-        status = get_system_status()
-        hardware = get_available_hardware()
-
-        # Get job status
-        job_status = {}
-        if job_manager:
-            job_status = job_manager.get_all_jobs_status()
-
-        payload = {
-            'timestamp': datetime.now().isoformat(),
-            'system_ready': status.get('system_ready', False),
-            'relays': [
-                {'id': rid, 'state': status['relays'].get(str(rid), False)}
-                for rid in hardware['relays']['ids']
-            ],
-            'ec_value': status.get('ec', 0),
-            'ph_value': status.get('ph', 0),
-            'active_fill_job': job_status.get('active_fill_job'),
-            'active_mix_job': job_status.get('active_mix_job'),
-            'active_send_job': job_status.get('active_send_job')
-        }
-
-        emit('status_update', payload)
-    except Exception as e:
-        logger.error(f"Error handling status request: {e}")
-        emit('error', {'message': str(e)})
 
 # =============================================================================
 # STATIC FILE SERVING - Serve Svelte build files
@@ -2271,14 +2137,14 @@ def init_hardware():
 
 def initialize_app():
     """Initialize the application with safety manager"""
-    global job_manager, status_broadcast_thread, status_broadcast_active
+    global job_manager
 
     logger.info("Starting Flask application...")
 
     # Initialize hardware with safety wrapper
     try:
         hardware = safety_manager.safe_hardware_init(init_hardware)
-        logger.info("✓ Hardware initialization completed safely")
+        logger.info("Hardware initialization completed safely")
     except Exception as e:
         logger.error(f"Hardware init failed: {e}")
         sys.exit(1)
@@ -2289,34 +2155,27 @@ def initialize_app():
         if hardware_comms:
             job_manager = JobManager(hardware_comms)
             job_manager.start()
-            logger.info("✓ Job manager initialized and started")
+            logger.info("Job manager initialized and started")
         else:
-            logger.warning("⚠ Hardware comms not available, job manager not initialized")
+            logger.warning("Hardware comms not available, job manager not initialized")
     except Exception as e:
         logger.error(f"Job manager init failed: {e}")
         # Don't exit - jobs won't work but hardware control still will
 
-    # Start background status broadcast thread
-    status_broadcast_active = True
-    status_broadcast_thread = threading.Thread(target=broadcast_status_loop, daemon=True)
-    status_broadcast_thread.start()
-    logger.info("✓ WebSocket status broadcast thread started")
-
-    logger.info("Flask application initialized")
+    logger.info("Flask application initialized (HTTP polling mode)")
 
 if __name__ == '__main__':
     initialize_app()
 
-    # Run the Flask app with SocketIO support
+    # Run plain Flask app (no WebSocket, just HTTP polling)
     try:
-        print("Starting Flask application with WebSocket support...")
-        socketio.run(
-            app,
+        print("Starting Flask application (HTTP polling mode)...")
+        print("Frontend should poll /api/status for updates")
+        app.run(
             host='0.0.0.0',     # Allow external connections
             port=5000,          # Default Flask port
-            debug=False,        # CRITICAL: Disable debug mode to stop auto-restart
-            use_reloader=False, # CRITICAL: Disable auto-reload to prevent file watching
-            allow_unsafe_werkzeug=True  # Allow threading mode in production
+            debug=False,        # Disable debug mode
+            threaded=True       # Handle multiple requests
         )
     except KeyboardInterrupt:
         print("Application interrupted by user")
@@ -2324,5 +2183,4 @@ if __name__ == '__main__':
         print(f"Application error: {e}")
         safety_manager.emergency_stop()
     finally:
-        status_broadcast_active = False
         print("Application shutdown complete")
