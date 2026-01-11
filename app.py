@@ -92,6 +92,8 @@ class DummyLimiter:
         def decorator(f):
             return f
         return decorator
+    def exempt(self, f):
+        return f
 
 limiter = DummyLimiter()
 
