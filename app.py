@@ -562,7 +562,7 @@ def api_health():
 @app.route('/api/status')
 @app.route('/api/hardware/status')
 @app.route('/api/system/status')
-@limiter.limit("60 per minute")  # Allow frequent polling for status updates
+@limiter.limit("120 per minute")  # Allow frequent polling (2 req/sec for status updates)
 def api_status():
     """Get current system status"""
     try:
@@ -663,7 +663,7 @@ def api_state():
 # -----------------------------------------------------------------------------
 
 @app.route('/api/relay/<int:relay_id>/<state>', methods=['GET', 'POST'])
-@limiter.limit("30 per minute")  # Prevent rapid relay toggling
+@limiter.limit("60 per minute")  # Allow reasonable relay toggling
 def api_control_relay(relay_id, state):
     """Control individual relay"""
     try:
@@ -686,7 +686,7 @@ def api_control_relay(relay_id, state):
         }), 500
 
 @app.route('/api/relays/<int:relay_id>/control', methods=['POST'])
-@limiter.limit("30 per minute")  # Prevent rapid relay toggling
+@limiter.limit("60 per minute")  # Allow reasonable relay toggling
 def api_control_relay_json(relay_id):
     """Control individual relay (JSON format for HeadGrower)"""
     try:

@@ -10,22 +10,13 @@ let connectionListeners = [];
 let pollingInterval = null;
 let isPolling = false;
 
-// Configure your Pi's IP here for development
-const PI_ADDRESS = '192.168.1.243';
-
 /**
- * Get the API base URL
+ * Get the API base URL - exported for use by other modules
+ * Uses Vite proxy in dev mode, same origin in production
  */
-function getApiUrl() {
-  if (typeof window !== 'undefined') {
-    // In dev mode (Vite on port 5173), connect to Pi
-    if (window.location.port === '5173') {
-      return `http://${PI_ADDRESS}:5000`;
-    }
-    // In production (served from Pi), same origin
-    return `${window.location.protocol}//${window.location.hostname}:5000`;
-  }
-  return `http://${PI_ADDRESS}:5000`;
+export function getApiUrl() {
+  // Always use relative paths - Vite proxy handles dev mode
+  return '';
 }
 
 /**

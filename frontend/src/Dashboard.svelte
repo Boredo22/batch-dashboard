@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { toast } from 'svelte-sonner';
   import { logger } from '$lib/utils';
-  import { initWebSocket, disconnectWebSocket, onStatusUpdate, onConnectionChange, isConnected } from '$lib/websocket';
+  import { initWebSocket, disconnectWebSocket, onStatusUpdate, onConnectionChange, isConnected, getApiUrl } from '$lib/websocket';
   import { Card, CardContent, CardHeader } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
   import { Button } from '$lib/components/ui/button';
@@ -155,7 +155,7 @@
   // API functions
   async function fetchHardwareData() {
     try {
-      const response = await fetch('/api/hardware/status');
+      const response = await fetch(`${getApiUrl()}/api/hardware/status`);
       if (response.ok) {
         const data = await response.json();
         if (data.relays && data.relays.length > 0) {
@@ -190,7 +190,7 @@
 
   async function fetchSystemStatus() {
     try {
-      const response = await fetch('/api/system/status');
+      const response = await fetch(`${getApiUrl()}/api/system/status`);
       if (response.ok) {
         const data = await response.json();
         ecValue = data.ec_value || 0;
@@ -245,7 +245,7 @@
     logger.debug('Hardware', `Controlling relay ${relayId}`, { relayId, action });
 
     try {
-      const response = await fetch(`/api/relay/${relayId}/${action}`, {
+      const response = await fetch(`${getApiUrl()}/api/relay/${relayId}/${action}`, {
         method: 'POST'
       });
 
@@ -279,7 +279,7 @@
 
   async function allRelaysOff() {
     try {
-      const response = await fetch('/api/relay/all/off', {
+      const response = await fetch(`${getApiUrl()}/api/relay/all/off`, {
         method: 'POST'
       });
 
@@ -328,7 +328,7 @@
     }
 
     try {
-      const response = await fetch(`/api/pump/${pumpId}/dispense`, {
+      const response = await fetch(`${getApiUrl()}/api/pump/${pumpId}/dispense`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: amount })
@@ -365,7 +365,7 @@
     }
 
     try {
-      const response = await fetch(`/api/pump/${pumpId}/stop`, {
+      const response = await fetch(`${getApiUrl()}/api/pump/${pumpId}/stop`, {
         method: 'POST'
       });
 
@@ -398,7 +398,7 @@
     }
 
     try {
-      const response = await fetch(`/api/flow/${flowMeterId}/start`, {
+      const response = await fetch(`${getApiUrl()}/api/flow/${flowMeterId}/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gallons: gallons })
@@ -433,7 +433,7 @@
     }
 
     try {
-      const response = await fetch(`/api/flow/${flowMeterId}/stop`, {
+      const response = await fetch(`${getApiUrl()}/api/flow/${flowMeterId}/stop`, {
         method: 'POST'
       });
 
@@ -460,7 +460,7 @@
 
   async function startEcPhMonitoring() {
     try {
-      const response = await fetch('/api/ecph/start', { method: 'POST' });
+      const response = await fetch(`${getApiUrl()}/api/ecph/start`, { method: 'POST' });
 
       if (response.ok) {
         const result = await response.json();
@@ -486,7 +486,7 @@
 
   async function stopEcPhMonitoring() {
     try {
-      const response = await fetch('/api/ecph/stop', { method: 'POST' });
+      const response = await fetch(`${getApiUrl()}/api/ecph/stop`, { method: 'POST' });
 
       if (response.ok) {
         const result = await response.json();

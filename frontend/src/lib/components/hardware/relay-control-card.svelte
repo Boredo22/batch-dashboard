@@ -1,6 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import { Zap, Layers, ChevronDown, ChevronUp } from "@lucide/svelte/icons";
+  import { getApiUrl } from "$lib/websocket";
 
   let { relays = [], onRelayControl, onComboControl } = $props();
 
@@ -14,7 +15,7 @@
 
   async function fetchCombos() {
     try {
-      const response = await fetch('/api/relay/combos');
+      const response = await fetch(`${getApiUrl()}/api/relay/combos`);
       if (response.ok) {
         const data = await response.json();
         combos = data.combos || [];
@@ -28,7 +29,7 @@
     loadingCombo = comboName;
     try {
       const encodedName = encodeURIComponent(comboName);
-      const response = await fetch(`/api/relay/combo/${encodedName}/${action}`, {
+      const response = await fetch(`${getApiUrl()}/api/relay/combo/${encodedName}/${action}`, {
         method: 'POST'
       });
       if (response.ok) {
