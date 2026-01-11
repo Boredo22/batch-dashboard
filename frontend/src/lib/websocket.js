@@ -10,20 +10,22 @@ let connectionListeners = [];
 let pollingInterval = null;
 let isPolling = false;
 
+// Configure your Pi's IP here for development
+const PI_ADDRESS = '192.168.1.243';
+
 /**
  * Get the API base URL
  */
 function getApiUrl() {
   if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    // In dev mode (Vite), connect directly to Flask backend
+    // In dev mode (Vite on port 5173), connect to Pi
     if (window.location.port === '5173') {
-      return 'http://localhost:5000';
+      return `http://${PI_ADDRESS}:5000`;
     }
-    // In production, same origin
-    return `${window.location.protocol}//${host}:5000`;
+    // In production (served from Pi), same origin
+    return `${window.location.protocol}//${window.location.hostname}:5000`;
   }
-  return 'http://localhost:5000';
+  return `http://${PI_ADDRESS}:5000`;
 }
 
 /**
