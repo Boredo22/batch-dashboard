@@ -119,24 +119,66 @@ atexit.register(cleanup_on_shutdown)
 # =============================================================================
 
 def broadcast_status_loop():
-    """Background thread that broadcasts hardware status to all connected clients"""
+    """Background thread that broadcasts hardware status to all connected clients.
+
+    Uses a longer interval and caches hardware info to minimize resource contention
+    with relay control requests.
+    """
     global status_broadcast_active
+    import concurrent.futures
+
     logger.info("Status broadcast thread started")
+
+    # Cache hardware info - it rarely changes
+    cached_hardware = None
+    hardware_cache_time = 0
+    HARDWARE_CACHE_TTL = 60  # Refresh hardware info every 60 seconds
+
+    # Use a separate executor for status gathering to avoid blocking
+    status_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="status")
 
     while status_broadcast_active:
         try:
-            # Get current system status
-            status = get_system_status()
-            hardware = get_available_hardware()
+            current_time = time.time()
 
-            # Get pump statuses
-            pumps_status = get_pump_status()
+            # Refresh hardware cache if needed
+            if cached_hardware is None or (current_time - hardware_cache_time) > HARDWARE_CACHE_TTL:
+                try:
+                    cached_hardware = get_available_hardware()
+                    hardware_cache_time = current_time
+                except Exception as e:
+                    logger.warning(f"Failed to refresh hardware cache: {e}")
+
+            # Skip if no hardware info available
+            if not cached_hardware:
+                time.sleep(2.0)
+                continue
+
+            # Get status with timeout to prevent blocking
+            try:
+                future = status_executor.submit(get_system_status)
+                status = future.result(timeout=3.0)  # 3 second timeout
+            except concurrent.futures.TimeoutError:
+                logger.warning("Status gathering timed out, skipping broadcast")
+                time.sleep(2.0)
+                continue
+            except Exception as e:
+                logger.warning(f"Status gathering failed: {e}")
+                time.sleep(2.0)
+                continue
+
+            # Get pump statuses (uses cached data, should be fast)
+            try:
+                pumps_status = get_pump_status()
+            except Exception:
+                pumps_status = {}
+
             pumps_list = []
-            for pid in hardware['pumps']['ids']:
+            for pid in cached_hardware['pumps']['ids']:
                 cached_pump_status = pumps_status.get(pid, {})
                 pump_data = {
                     'id': pid,
-                    'name': hardware['pumps']['names'].get(pid, f'Pump {pid}'),
+                    'name': cached_hardware['pumps']['names'].get(pid, f'Pump {pid}'),
                     'status': cached_pump_status.get('status', 'stopped'),
                     'is_dispensing': cached_pump_status.get('is_dispensing', False),
                     'voltage': cached_pump_status.get('voltage', 0.0),
@@ -150,22 +192,25 @@ def broadcast_status_loop():
             # Get job status
             job_status = {}
             if job_manager:
-                job_status = job_manager.get_all_jobs_status()
+                try:
+                    job_status = job_manager.get_all_jobs_status()
+                except Exception:
+                    pass
 
             # Build status payload
             payload = {
                 'timestamp': datetime.now().isoformat(),
                 'system_ready': status.get('system_ready', False),
                 'relays': [
-                    {'id': rid, 'name': hardware['relays']['names'].get(rid, f'Relay {rid}'),
+                    {'id': rid, 'name': cached_hardware['relays']['names'].get(rid, f'Relay {rid}'),
                      'state': status['relays'].get(str(rid), False)}
-                    for rid in hardware['relays']['ids']
+                    for rid in cached_hardware['relays']['ids']
                 ],
                 'pumps': pumps_list,
                 'flow_meters': [
-                    {'id': fid, 'name': hardware['flow_meters']['names'].get(fid, f'Flow Meter {fid}'),
+                    {'id': fid, 'name': cached_hardware['flow_meters']['names'].get(fid, f'Flow Meter {fid}'),
                      'status': 'stopped', 'flow_rate': 0, 'total_gallons': 0}
-                    for fid in hardware['flow_meters']['ids']
+                    for fid in cached_hardware['flow_meters']['ids']
                 ],
                 'ec_value': status.get('ec', 0),
                 'ph_value': status.get('ph', 0),
@@ -175,15 +220,17 @@ def broadcast_status_loop():
                 'active_send_job': job_status.get('active_send_job')
             }
 
-            # Broadcast to all connected clients
+            # Broadcast to all connected clients (non-blocking)
             socketio.emit('status_update', payload)
 
         except Exception as e:
             logger.error(f"Error in status broadcast: {e}")
 
-        # Wait before next broadcast (1 second interval)
-        time.sleep(1.0)
+        # Wait before next broadcast (2 second interval to reduce contention)
+        time.sleep(2.0)
 
+    # Cleanup
+    status_executor.shutdown(wait=False)
     logger.info("Status broadcast thread stopped")
 
 
