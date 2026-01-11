@@ -77,14 +77,23 @@ app = Flask(__name__)
 CORS(app)
 app.secret_key = 'nutrient_mixing_system_2024'
 
-# Initialize rate limiter to prevent API abuse from frontend polling
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["200 per minute", "20 per second"],
-    storage_uri="memory://",
-    strategy="fixed-window"
-)
+# Rate limiter DISABLED for debugging - re-enable after fixing freeze issue
+# limiter = Limiter(
+#     get_remote_address,
+#     app=app,
+#     default_limits=["200 per minute", "20 per second"],
+#     storage_uri="memory://",
+#     strategy="fixed-window"
+# )
+
+# Dummy limiter that does nothing
+class DummyLimiter:
+    def limit(self, *args, **kwargs):
+        def decorator(f):
+            return f
+        return decorator
+
+limiter = DummyLimiter()
 
 # CRITICAL: Setup hardware safety FIRST
 safety_manager = setup_hardware_safety(app)

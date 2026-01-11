@@ -44,6 +44,7 @@
   }
 
   function handleRelayControl(relayId, action) {
+    console.log('[RelayCard] Button clicked:', relayId, action);
     onRelayControl?.(relayId, action);
   }
 
