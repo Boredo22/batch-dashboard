@@ -2,19 +2,27 @@
   import PumpCalibration from './components/PumpCalibration.svelte';
   import Nutrients from './components/Nutrients.svelte';
   import NuteDispenseProgress from './components/NuteDispenseProgress.svelte';
-  
+  import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
+
+  // Get reactive system status from SSE store
+  const sseStatus = getSystemStatus();
+
   // Pump configuration from config.py
   const pumpNames = {
     1: "Veg A", 2: "Veg B", 3: "Bloom A", 4: "Bloom B",
     5: "Cake", 6: "PK Synergy", 7: "Runclean", 8: "pH Down"
   };
-  
+
   // State management
   let systemStatus = $state({});
   let pumps = $state([]);
-  let statusInterval = $state(null);
-  let isConnected = $state(false);
   let lastUpdate = $state(new Date());
+
+  // Derive connection status from SSE
+  let isConnected = $derived(sseStatus.isConnected);
+
+  // SSE unsubscribe function
+  let unsubscribe = null;
   
   // Manual dispense state
   let dispenseAmounts = $state({
@@ -64,37 +72,28 @@
     return totalTargetVolume > 0 ? Math.min((totalCurrentVolume / totalTargetVolume) * 100, 100) : 0;
   });
   
-  // Status fetching
-  async function fetchSystemStatus() {
-    try {
-      const response = await fetch('/api/status');
-      if (response.ok) {
-        const data = await response.json();
-        systemStatus = data;
-        
-        // API already returns pumps in the correct array format
-        pumps = data.pumps || [];
-        
-        // Ensure all pumps have required fields
-        pumps = pumps.map(pump => ({
-          ...pump,
-          is_dispensing: pump.is_dispensing || pump.status === 'running',
-          current_volume: pump.current_volume || 0,
-          target_volume: pump.target_volume || 0,
-          voltage: pump.voltage || 0,
-          calibrated: pump.calibrated || false
-        }));
-        
-        isConnected = true;
-        lastUpdate = new Date();
-      } else {
-        isConnected = false;
-      }
-    } catch (error) {
-      console.error('Failed to fetch status:', error);
-      isConnected = false;
-    }
-  }
+  // React to SSE status updates
+  $effect(() => {
+    const data = sseStatus.data;
+    if (!data || !data.success) return;
+
+    systemStatus = data;
+
+    // API already returns pumps in the correct array format
+    let newPumps = data.pumps || [];
+
+    // Ensure all pumps have required fields
+    pumps = newPumps.map(pump => ({
+      ...pump,
+      is_dispensing: pump.is_dispensing || pump.status === 'running',
+      current_volume: pump.current_volume || 0,
+      target_volume: pump.target_volume || 0,
+      voltage: pump.voltage || 0,
+      calibrated: pump.calibrated || false
+    }));
+
+    lastUpdate = new Date();
+  });
   
   // Load nutrients configuration
   async function loadNutrientsConfig() {
@@ -226,12 +225,11 @@
   // Lifecycle
   async function initializeComponent() {
     await loadNutrientsConfig();
-    await fetchSystemStatus();
-    
-    // Set up status polling
-    statusInterval = setInterval(fetchSystemStatus, 2000);
+
+    // Subscribe to SSE updates
+    unsubscribe = subscribe();
   }
-  
+
   // Check if dispensing is complete
   $effect(() => {
     if (isDispensing && dispensingPumps.size > 0) {
@@ -243,7 +241,7 @@
           break;
         }
       }
-      
+
       if (allComplete) {
         isDispensing = false;
         dispensingPumps.clear();
@@ -251,15 +249,15 @@
       }
     }
   });
-  
+
   // Initialize on mount
   $effect(() => {
     initializeComponent();
-    
+
     // Cleanup on unmount
     return () => {
-      if (statusInterval) {
-        clearInterval(statusInterval);
+      if (unsubscribe) {
+        unsubscribe();
       }
     };
   });

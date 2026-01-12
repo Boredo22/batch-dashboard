@@ -6,28 +6,20 @@
   import Settings from './Settings.svelte';
   import HeadGrower from './HeadGrower.svelte';
   import Nutrients from './Nutrients.svelte';
+  import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
 
   let currentPage = $state('headgrower');
-  let systemStatus = $state('disconnected');
 
-  async function fetchSystemStatus() {
-    try {
-      const response = await fetch('/api/system/status');
-      if (response.ok) {
-        const data = await response.json();
-        systemStatus = data.status || 'connected';
-      }
-    } catch (error) {
-      console.error('Error fetching system status:', error);
-      systemStatus = 'error';
-    }
-  }
+  // Get reactive system status from SSE store
+  const status = getSystemStatus();
+
+  // Derive connection status for the layout
+  let systemStatus = $derived(status.isConnected ? 'connected' : status.connectionStatus);
 
   onMount(() => {
-    fetchSystemStatus();
-    // Poll system status every 5 seconds
-    const interval = setInterval(fetchSystemStatus, 5000);
-    return () => clearInterval(interval);
+    // Subscribe to SSE updates - returns unsubscribe function for cleanup
+    const unsubscribe = subscribe();
+    return unsubscribe;
   });
 
   function getPageConfig() {

@@ -5,11 +5,17 @@
   import FlowMeterCard from '$lib/components/hardware/flow-meter-card.svelte';
   import ECPHMonitorCard from '$lib/components/hardware/ecph-monitor-card.svelte';
   import SystemLogCard from '$lib/components/hardware/system-log-card.svelte';
+  import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
+
+  // Get reactive system status from SSE store
+  const sseStatus = getSystemStatus();
 
   // State variables using Svelte 5 runes
   let logs = $state([]);
-  let systemStatus = $state('Disconnected');
   let errorMessage = $state('');
+
+  // Derive system status from SSE connection
+  let systemStatus = $derived(sseStatus.isConnected ? 'Connected' : 'Disconnected');
 
   // Hardware data with defaults to show all hardware
   let relays = $state([
@@ -54,98 +60,76 @@
   // Progress tracking for log messages
   let lastProgressReported = $state(new Map()); // pump_id -> last_percentage
 
-  let statusInterval;
+  // SSE unsubscribe function
+  let unsubscribe = null;
 
-  // API functions
-  async function fetchHardwareData() {
-    try {
-      const response = await fetch('/api/hardware/status');
-      if (response.ok) {
-        const data = await response.json();
-        // Merge API data with defaults, keeping defaults if API doesn't provide
-        if (data.relays && data.relays.length > 0) {
-          // Update relays data, converting state to status for consistency
-          relays = data.relays.map(relay => ({
-            ...relay,
-            status: relay.state ? 'on' : 'off'
-          }));
-          console.log('Loaded relays:', relays);
-        }
-        if (data.pumps && data.pumps.length > 0) {
-          pumps = data.pumps.map(pump => ({
-            ...pump,
-            status: pump.status === 'running' ? 'dispensing' : 'idle'
-          }));
-        }
-        if (data.flow_meters && data.flow_meters.length > 0) {
-          flowMeters = data.flow_meters.map(flowMeter => ({
-            ...flowMeter,
-            status: flowMeter.status === 'running' ? 'flowing' : 'idle'
-          }));
-        }
-        systemStatus = 'Connected';
-        errorMessage = '';
-      } else {
-        throw new Error('Failed to fetch hardware data');
-      }
-    } catch (error) {
-      console.error('Error fetching hardware data:', error);
-      systemStatus = 'Disconnected';
-      errorMessage = error.message;
-      // Keep default hardware data visible even when API fails
+  // React to SSE status updates using $effect
+  $effect(() => {
+    const data = sseStatus.data;
+    if (!data || !data.success) return;
+
+    // Update error message from SSE
+    errorMessage = sseStatus.lastError;
+
+    // Update EC/pH values
+    ecValue = data.ec_value || 0;
+    phValue = data.ph_value || 0;
+    ecPhMonitoring = data.ec_ph_monitoring || false;
+
+    // Update relays from SSE data
+    if (data.relays && data.relays.length > 0) {
+      relays = data.relays.map(relay => ({
+        ...relay,
+        status: relay.state ? 'on' : 'off'
+      }));
     }
-  }
 
-  async function fetchSystemStatus() {
-    try {
-      const response = await fetch('/api/system/status');
-      if (response.ok) {
-        const data = await response.json();
-        ecValue = data.ec_value || 0;
-        phValue = data.ph_value || 0;
-        ecPhMonitoring = data.ec_ph_monitoring || false;
+    // Update flow meters from SSE data
+    if (data.flow_meters && data.flow_meters.length > 0) {
+      flowMeters = data.flow_meters.map(flowMeter => ({
+        ...flowMeter,
+        status: flowMeter.status === 'running' ? 'flowing' : 'idle'
+      }));
+    }
 
-        // Update pump progress information from detailed status
-        if (data.pumps) {
-          pumps = pumps.map(pump => {
-            const statusInfo = data.pumps[pump.id];
-            if (statusInfo) {
-              // Add progress log message for dispensing pumps (every 10% progress)
-              if (statusInfo.is_dispensing && statusInfo.current_volume > 0 && statusInfo.target_volume > 0) {
-                const currentPercent = Math.floor((statusInfo.current_volume / statusInfo.target_volume) * 100 / 10) * 10; // Round to nearest 10%
-                const lastPercent = lastProgressReported.get(pump.id) || -10;
+    // Update pumps with progress tracking
+    if (data.pumps && data.pumps.length > 0) {
+      pumps = pumps.map(pump => {
+        const statusInfo = data.pumps.find(p => p.id === pump.id);
+        if (statusInfo) {
+          // Add progress log message for dispensing pumps (every 10% progress)
+          if (statusInfo.is_dispensing && statusInfo.current_volume > 0 && statusInfo.target_volume > 0) {
+            const currentPercent = Math.floor((statusInfo.current_volume / statusInfo.target_volume) * 100 / 10) * 10;
+            const lastPercent = lastProgressReported.get(pump.id) || -10;
 
-                if (currentPercent > lastPercent && currentPercent >= 10) {
-                  const progressMsg = `Pump ${pump.id} (${pump.name}): ${statusInfo.current_volume.toFixed(1)}ml / ${statusInfo.target_volume.toFixed(1)}ml (${currentPercent}% complete)`;
-                  addLog(progressMsg);
-                  lastProgressReported.set(pump.id, currentPercent);
-                }
-              }
-
-              // Check if pump just finished dispensing
-              if (!statusInfo.is_dispensing && pump.is_dispensing) {
-                const completionMsg = `Pump ${pump.id} (${pump.name}) completed dispensing: ${statusInfo.current_volume?.toFixed(1) || 0}ml dispensed`;
-                addLog(completionMsg);
-                lastProgressReported.delete(pump.id); // Clean up tracking
-              }
-
-              return {
-                ...pump,
-                status: statusInfo.is_dispensing ? 'dispensing' : 'idle',
-                voltage: statusInfo.voltage || 0,
-                is_dispensing: statusInfo.is_dispensing || false,
-                current_volume: statusInfo.current_volume || 0,
-                target_volume: statusInfo.target_volume || 0
-              };
+            if (currentPercent > lastPercent && currentPercent >= 10) {
+              const progressMsg = `Pump ${pump.id} (${statusInfo.name}): ${statusInfo.current_volume.toFixed(1)}ml / ${statusInfo.target_volume.toFixed(1)}ml (${currentPercent}% complete)`;
+              addLog(progressMsg);
+              lastProgressReported.set(pump.id, currentPercent);
             }
-            return pump;
-          });
+          }
+
+          // Check if pump just finished dispensing
+          if (!statusInfo.is_dispensing && pump.is_dispensing) {
+            const completionMsg = `Pump ${pump.id} (${statusInfo.name}) completed dispensing: ${statusInfo.current_volume?.toFixed(1) || 0}ml dispensed`;
+            addLog(completionMsg);
+            lastProgressReported.delete(pump.id);
+          }
+
+          return {
+            ...pump,
+            name: statusInfo.name || pump.name,
+            status: statusInfo.is_dispensing ? 'dispensing' : 'idle',
+            voltage: statusInfo.voltage || 0,
+            is_dispensing: statusInfo.is_dispensing || false,
+            current_volume: statusInfo.current_volume || 0,
+            target_volume: statusInfo.target_volume || 0
+          };
         }
-      }
-    } catch (error) {
-      console.error('Error fetching system status:', error);
+        return pump;
+      });
     }
-  }
+  });
 
   async function controlRelay(relayId, action) {
     // Handle ALL OFF special case
@@ -389,21 +373,21 @@
 
   onMount(async () => {
     addLog('System starting...');
-    await fetchHardwareData();
-    await fetchSystemStatus();
 
-    // Set up polling for system status
-    statusInterval = setInterval(async () => {
-      await fetchSystemStatus();
-    }, 2000);
+    // Subscribe to SSE updates
+    unsubscribe = subscribe();
 
-    if (pumps.length > 0) selectedPump = pumps[0].id;
-    if (flowMeters.length > 0) selectedFlowMeter = flowMeters[0].id;
+    // Set default selections after a short delay to allow SSE data to arrive
+    setTimeout(() => {
+      if (pumps.length > 0 && !selectedPump) selectedPump = pumps[0].id;
+      if (flowMeters.length > 0 && !selectedFlowMeter) selectedFlowMeter = flowMeters[0].id;
+    }, 500);
   });
 
   onDestroy(() => {
-    if (statusInterval) {
-      clearInterval(statusInterval);
+    // Unsubscribe from SSE when component unmounts
+    if (unsubscribe) {
+      unsubscribe();
     }
   });
 </script>

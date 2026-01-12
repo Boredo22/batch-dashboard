@@ -6,6 +6,10 @@
   import { Progress } from '$lib/components/ui/progress';
   import { Alert, AlertDescription } from '$lib/components/ui/alert';
   import { Separator } from '$lib/components/ui/separator';
+  import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
+
+  // Get reactive system status from SSE store
+  const sseStatus = getSystemStatus();
 
   // State using Svelte 5 runes
   let relays = $state([
@@ -40,10 +44,13 @@
 
   let dosingAmount = $state(50);
   let logs = $state([]);
-  let systemStatus = $state('Connected');
   let isProcessing = $state(false);
 
-  let statusInterval;
+  // Derive system status from SSE connection
+  let systemStatus = $derived(sseStatus.isConnected ? 'Connected' : 'Disconnected');
+
+  // SSE unsubscribe function
+  let unsubscribe = null;
 
   // Tank configuration
   const TANK_CONFIG = {
@@ -119,46 +126,51 @@
     }
   }
 
-  // API Functions
-  async function fetchSystemStatus() {
-    try {
-      const response = await fetch('/api/hardware/status');
-      if (response.ok) {
-        const data = await response.json();
-        
-        if (data.relays) {
-          relays = relays.map(relay => {
-            const apiRelay = data.relays.find(r => r.id === relay.id);
-            return apiRelay ? { ...relay, status: apiRelay.state ? 'on' : 'off' } : relay;
-          });
-        }
+  // React to SSE status updates using $effect
+  $effect(() => {
+    const data = sseStatus.data;
+    if (!data || !data.success) return;
 
-        if (data.pumps) {
-          pumps = pumps.map(pump => {
-            const apiPump = data.pumps.find(p => p.id === pump.id);
-            if (apiPump) {
-              return {
-                ...pump,
-                status: apiPump.is_dispensing ? 'dispensing' : 'idle',
-                progress: apiPump.current_volume && apiPump.target_volume 
-                  ? Math.round((apiPump.current_volume / apiPump.target_volume) * 100) 
-                  : 0,
-                target_volume: apiPump.target_volume || 0
-              };
-            }
-            return pump;
-          });
-        }
-
-        systemStatus = 'Connected';
-      } else {
-        systemStatus = 'Error';
-      }
-    } catch (error) {
-      console.error('Error fetching system status:', error);
-      systemStatus = 'Disconnected';
+    // Update relays from SSE data
+    if (data.relays) {
+      relays = relays.map(relay => {
+        const apiRelay = data.relays.find(r => r.id === relay.id);
+        return apiRelay ? { ...relay, status: apiRelay.state ? 'on' : 'off' } : relay;
+      });
     }
-  }
+
+    // Update pumps from SSE data
+    if (data.pumps && data.pumps.length > 0) {
+      // If pumps haven't been initialized from config yet, initialize from SSE data
+      if (pumps.length === 0) {
+        pumps = data.pumps.map(pump => ({
+          id: pump.id,
+          name: pump.name || `Pump ${pump.id}`,
+          status: pump.is_dispensing ? 'dispensing' : 'idle',
+          progress: pump.current_volume && pump.target_volume
+            ? Math.round((pump.current_volume / pump.target_volume) * 100)
+            : 0,
+          target_volume: pump.target_volume || 0
+        }));
+      } else {
+        pumps = pumps.map(pump => {
+          const apiPump = data.pumps.find(p => p.id === pump.id);
+          if (apiPump) {
+            return {
+              ...pump,
+              name: apiPump.name || pump.name,
+              status: apiPump.is_dispensing ? 'dispensing' : 'idle',
+              progress: apiPump.current_volume && apiPump.target_volume
+                ? Math.round((apiPump.current_volume / apiPump.target_volume) * 100)
+                : 0,
+              target_volume: apiPump.target_volume || 0
+            };
+          }
+          return pump;
+        });
+      }
+    }
+  });
 
   // Tank Operations
   async function fillTank(tankId) {
@@ -425,13 +437,19 @@
   // Lifecycle
   onMount(async () => {
     addLog('Growers dashboard started');
+
+    // Subscribe to SSE updates
+    unsubscribe = subscribe();
+
+    // Fetch pump config (this is a one-time setup, not polling)
     await fetchPumpConfig();
-    await fetchSystemStatus();
-    statusInterval = setInterval(fetchSystemStatus, 2000);
   });
 
   onDestroy(() => {
-    if (statusInterval) clearInterval(statusInterval);
+    // Unsubscribe from SSE when component unmounts
+    if (unsubscribe) {
+      unsubscribe();
+    }
   });
 </script>
 

@@ -30,7 +30,19 @@ export default defineConfig({
       '/api': {
         target: 'http://192.168.1.243:5000',
         changeOrigin: true,
-        secure: false
+        secure: false,
+        // Configure for SSE (Server-Sent Events) support
+        configure: (proxy, options) => {
+          // Disable buffering for SSE streams
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            if (req.url.includes('/stream')) {
+              // Disable buffering for SSE
+              proxyRes.headers['X-Accel-Buffering'] = 'no';
+              proxyRes.headers['Cache-Control'] = 'no-cache';
+              proxyRes.headers['Connection'] = 'keep-alive';
+            }
+          });
+        }
       }
     }
   }

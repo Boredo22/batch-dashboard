@@ -9,12 +9,14 @@ Uses hardware_comms.py for reliable hardware control like simple_gui.py
 from hardware_safety import setup_hardware_safety
 import sys
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 import logging
 import atexit
 from datetime import datetime, time
 from typing import Dict, Any
+import json
+import threading
 
 # Import our reliable hardware communications module
 from hardware.hardware_comms import (
@@ -442,72 +444,130 @@ def api_save_nutrients():
 # API ENDPOINTS - Hardware Control (same patterns as simple_gui.py)
 # =============================================================================
 
+def build_status_data():
+    """Build the status data structure (shared between REST and SSE endpoints)"""
+    status = get_system_status()
+    raw_hardware = get_available_hardware()
+
+    # Transform hardware data to match expected structure
+    hardware = {
+        'pumps': raw_hardware['pumps'],
+        'relays': raw_hardware['relays'],
+        'flow_meters': raw_hardware['flow_meters'],
+        'limits': {
+            'pump_min_ml': raw_hardware['pumps']['volume_limits']['min_ml'],
+            'pump_max_ml': raw_hardware['pumps']['volume_limits']['max_ml'],
+            'flow_max_gallons': raw_hardware['flow_meters']['max_gallons']
+        },
+        'mock_settings': raw_hardware.get('mock_settings', {})
+    }
+
+    # Get pump status using cached calibration data
+    pumps_status = get_pump_status()  # Get all pump statuses with cached calibration
+    pumps_list = []
+
+    for pid in hardware['pumps']['ids']:
+        pump_info = status.get('pumps', {}).get(pid, {})
+        cached_pump_status = pumps_status.get(pid, {})
+
+        pump_data = {
+            'id': pid,
+            'name': hardware['pumps']['names'].get(pid, f'Pump {pid}'),
+            'status': cached_pump_status.get('status', 'stopped'),
+            'is_dispensing': cached_pump_status.get('is_dispensing', False),
+            'voltage': cached_pump_status.get('voltage', 0.0),
+            'connected': cached_pump_status.get('connected', False),
+            'calibrated': cached_pump_status.get('calibrated', False),  # Use cached calibration
+            'current_volume': cached_pump_status.get('current_volume', 0.0),
+            'target_volume': cached_pump_status.get('target_volume', 0.0),
+            'last_error': pump_info.get('last_error', '')
+        }
+        pumps_list.append(pump_data)
+
+    return {
+        'success': True,
+        'status': status,
+        'hardware': hardware,
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        # Add data in the format expected by Dashboard.svelte
+        'relays': [{'id': rid, 'name': hardware['relays']['names'].get(rid, f'Relay {rid}'), 'state': status['relays'].get(str(rid), False)}
+                  for rid in hardware['relays']['ids']],
+        'pumps': pumps_list,
+        'flow_meters': [{'id': fid, 'name': hardware['flow_meters']['names'].get(fid, f'Flow Meter {fid}'),
+                       'status': 'stopped', 'flow_rate': 0, 'total_gallons': 0}
+                      for fid in hardware['flow_meters']['ids']],
+        'ec_value': status.get('ec', 0),
+        'ph_value': status.get('ph', 0),
+        'ec_ph_monitoring': status.get('ec_ph_active', False)
+    }
+
+
 @app.route('/api/status')
 @app.route('/api/hardware/status')
 @app.route('/api/system/status')
 def api_status():
     """Get current system status"""
     try:
-        status = get_system_status()
-        raw_hardware = get_available_hardware()
-        
-        # Transform hardware data to match expected structure
-        hardware = {
-            'pumps': raw_hardware['pumps'],
-            'relays': raw_hardware['relays'],
-            'flow_meters': raw_hardware['flow_meters'],
-            'limits': {
-                'pump_min_ml': raw_hardware['pumps']['volume_limits']['min_ml'],
-                'pump_max_ml': raw_hardware['pumps']['volume_limits']['max_ml'],
-                'flow_max_gallons': raw_hardware['flow_meters']['max_gallons']
-            },
-            'mock_settings': raw_hardware.get('mock_settings', {})
-        }
-        
-        # Get pump status using cached calibration data
-        pumps_status = get_pump_status()  # Get all pump statuses with cached calibration
-        pumps_list = []
-        
-        for pid in hardware['pumps']['ids']:
-            pump_info = status.get('pumps', {}).get(pid, {})
-            cached_pump_status = pumps_status.get(pid, {})
-            
-            pump_data = {
-                'id': pid,
-                'name': hardware['pumps']['names'].get(pid, f'Pump {pid}'),
-                'status': cached_pump_status.get('status', 'stopped'),
-                'is_dispensing': cached_pump_status.get('is_dispensing', False),
-                'voltage': cached_pump_status.get('voltage', 0.0),
-                'connected': cached_pump_status.get('connected', False),
-                'calibrated': cached_pump_status.get('calibrated', False),  # Use cached calibration
-                'current_volume': cached_pump_status.get('current_volume', 0.0),
-                'target_volume': cached_pump_status.get('target_volume', 0.0),
-                'last_error': pump_info.get('last_error', '')
-            }
-            pumps_list.append(pump_data)
-
-        return jsonify({
-            'success': True,
-            'status': status,
-            'hardware': hardware,
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            # Add data in the format expected by Dashboard.svelte
-            'relays': [{'id': rid, 'name': hardware['relays']['names'].get(rid, f'Relay {rid}'), 'state': status['relays'].get(str(rid), False)}
-                      for rid in hardware['relays']['ids']],
-            'pumps': pumps_list,
-            'flow_meters': [{'id': fid, 'name': hardware['flow_meters']['names'].get(fid, f'Flow Meter {fid}'),
-                           'status': 'stopped', 'flow_rate': 0, 'total_gallons': 0}
-                          for fid in hardware['flow_meters']['ids']],
-            'ec_value': status.get('ec', 0),
-            'ph_value': status.get('ph', 0),
-            'ec_ph_monitoring': status.get('ec_ph_active', False)
-        })
+        return jsonify(build_status_data())
     except Exception as e:
         logger.error(f"Error getting status: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
+
+
+# =============================================================================
+# SERVER-SENT EVENTS (SSE) - Real-time status streaming
+# =============================================================================
+
+@app.route('/api/system/status/stream')
+def api_status_stream():
+    """
+    SSE endpoint for real-time system status updates.
+    Pushes status updates every 2 seconds to connected clients.
+    """
+    def generate():
+        """Generator function that yields SSE events"""
+        while True:
+            try:
+                # Build status data
+                data = build_status_data()
+
+                # Format as SSE event
+                # SSE format: "data: <json>\n\n"
+                yield f"data: {json.dumps(data)}\n\n"
+
+                # Wait before sending next update (2 seconds matches current polling interval)
+                import time as time_module
+                time_module.sleep(2)
+
+            except GeneratorExit:
+                # Client disconnected
+                logger.info("SSE client disconnected")
+                break
+            except Exception as e:
+                # Send error event and continue
+                logger.error(f"SSE error: {e}")
+                error_data = {
+                    'success': False,
+                    'error': str(e),
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+                yield f"data: {json.dumps(error_data)}\n\n"
+                import time as time_module
+                time_module.sleep(5)  # Wait longer on error before retry
+
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',  # Disable nginx buffering if present
+            'Access-Control-Allow-Origin': '*'  # Allow CORS for SSE
+        }
+    )
 
 # -----------------------------------------------------------------------------
 # RELAY CONTROL - Using exact same patterns as simple_gui.py

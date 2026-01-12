@@ -4,41 +4,41 @@
   import SendJobTesting from './components/SendJobTesting.svelte';
   import MixJobTesting from './components/MixJobTesting.svelte';
   import SystemLog from './components/SystemLog.svelte';
+  import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
+
+  // Get reactive system status from SSE store
+  const sseStatus = getSystemStatus();
 
   // State variables using Svelte 5 runes
   let logs = $state([]);
-  let systemStatus = $state('Disconnected');
   let errorMessage = $state('');
-  
+
+  // Derive system status from SSE connection
+  let systemStatus = $derived(sseStatus.isConnected ? 'Connected' : 'Disconnected');
+
   // Job states
   let activeFillJob = $state(null);
   let activeSendJob = $state(null);
   let activeMixJob = $state(null);
-  
-  let statusInterval;
 
-  // API functions
-  async function fetchSystemStatus() {
-    try {
-      const response = await fetch('/api/system/status');
-      if (response.ok) {
-        const data = await response.json();
-        systemStatus = 'Connected';
-        errorMessage = '';
-        
-        // Update active job states from backend
-        activeFillJob = data.active_fill_job || null;
-        activeSendJob = data.active_send_job || null;
-        activeMixJob = data.active_mix_job || null;
-      } else {
-        throw new Error('Failed to fetch system status');
-      }
-    } catch (error) {
-      console.error('Error fetching system status:', error);
-      systemStatus = 'Disconnected';
-      errorMessage = error.message;
+  // SSE unsubscribe function
+  let unsubscribe = null;
+
+  // React to SSE status updates
+  $effect(() => {
+    const data = sseStatus.data;
+    if (!data || !data.success) {
+      errorMessage = sseStatus.lastError;
+      return;
     }
-  }
+
+    errorMessage = '';
+
+    // Update active job states from backend
+    activeFillJob = data.active_fill_job || null;
+    activeSendJob = data.active_send_job || null;
+    activeMixJob = data.active_mix_job || null;
+  });
 
   // Job control functions
   async function startFillJob(tankId, gallons) {
@@ -142,17 +142,15 @@
 
   onMount(async () => {
     addLog('Stage 2 Testing initialized...');
-    await fetchSystemStatus();
-    
-    // Set up polling for system status
-    statusInterval = setInterval(async () => {
-      await fetchSystemStatus();
-    }, 2000);
+
+    // Subscribe to SSE updates
+    unsubscribe = subscribe();
   });
 
   onDestroy(() => {
-    if (statusInterval) {
-      clearInterval(statusInterval);
+    // Unsubscribe from SSE when component unmounts
+    if (unsubscribe) {
+      unsubscribe();
     }
   });
 </script>
