@@ -4,6 +4,7 @@
 
 	let {
 		class: className,
+		children,
 		...restProps
 	} = $props();
 
