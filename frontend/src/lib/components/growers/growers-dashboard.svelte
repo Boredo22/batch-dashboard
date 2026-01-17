@@ -126,10 +126,17 @@
     }
   }
 
+  // Track last processed timestamp to avoid reprocessing same data
+  let lastProcessedTimestamp = '';
+
   // React to SSE status updates using $effect
   $effect(() => {
     const data = sseStatus.data;
     if (!data || !data.success) return;
+
+    // Skip if we've already processed this update (prevents infinite loops)
+    if (data.timestamp === lastProcessedTimestamp) return;
+    lastProcessedTimestamp = data.timestamp;
 
     // Update relays from SSE data
     if (data.relays) {

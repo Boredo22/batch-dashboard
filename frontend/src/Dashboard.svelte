@@ -63,10 +63,17 @@
   // SSE unsubscribe function
   let unsubscribe = null;
 
+  // Track last processed timestamp to avoid reprocessing same data
+  let lastProcessedTimestamp = '';
+
   // React to SSE status updates using $effect
   $effect(() => {
     const data = sseStatus.data;
     if (!data || !data.success) return;
+
+    // Skip if we've already processed this update (prevents infinite loops)
+    if (data.timestamp === lastProcessedTimestamp) return;
+    lastProcessedTimestamp = data.timestamp;
 
     // Update error message from SSE
     errorMessage = sseStatus.lastError;
@@ -94,39 +101,38 @@
 
     // Update pumps with progress tracking
     if (data.pumps && data.pumps.length > 0) {
-      pumps = pumps.map(pump => {
-        const statusInfo = data.pumps.find(p => p.id === pump.id);
-        if (statusInfo) {
-          // Add progress log message for dispensing pumps (every 10% progress)
-          if (statusInfo.is_dispensing && statusInfo.current_volume > 0 && statusInfo.target_volume > 0) {
-            const currentPercent = Math.floor((statusInfo.current_volume / statusInfo.target_volume) * 100 / 10) * 10;
-            const lastPercent = lastProgressReported.get(pump.id) || -10;
+      const currentPumps = pumps;
+      pumps = data.pumps.map(statusInfo => {
+        const existingPump = currentPumps.find(p => p.id === statusInfo.id);
 
-            if (currentPercent > lastPercent && currentPercent >= 10) {
-              const progressMsg = `Pump ${pump.id} (${statusInfo.name}): ${statusInfo.current_volume.toFixed(1)}ml / ${statusInfo.target_volume.toFixed(1)}ml (${currentPercent}% complete)`;
-              addLog(progressMsg);
-              lastProgressReported.set(pump.id, currentPercent);
-            }
+        // Add progress log message for dispensing pumps (every 10% progress)
+        if (statusInfo.is_dispensing && statusInfo.current_volume > 0 && statusInfo.target_volume > 0) {
+          const currentPercent = Math.floor((statusInfo.current_volume / statusInfo.target_volume) * 100 / 10) * 10;
+          const lastPercent = lastProgressReported.get(statusInfo.id) || -10;
+
+          if (currentPercent > lastPercent && currentPercent >= 10) {
+            const progressMsg = `Pump ${statusInfo.id} (${statusInfo.name}): ${statusInfo.current_volume.toFixed(1)}ml / ${statusInfo.target_volume.toFixed(1)}ml (${currentPercent}% complete)`;
+            addLog(progressMsg);
+            lastProgressReported.set(statusInfo.id, currentPercent);
           }
-
-          // Check if pump just finished dispensing
-          if (!statusInfo.is_dispensing && pump.is_dispensing) {
-            const completionMsg = `Pump ${pump.id} (${statusInfo.name}) completed dispensing: ${statusInfo.current_volume?.toFixed(1) || 0}ml dispensed`;
-            addLog(completionMsg);
-            lastProgressReported.delete(pump.id);
-          }
-
-          return {
-            ...pump,
-            name: statusInfo.name || pump.name,
-            status: statusInfo.is_dispensing ? 'dispensing' : 'idle',
-            voltage: statusInfo.voltage || 0,
-            is_dispensing: statusInfo.is_dispensing || false,
-            current_volume: statusInfo.current_volume || 0,
-            target_volume: statusInfo.target_volume || 0
-          };
         }
-        return pump;
+
+        // Check if pump just finished dispensing
+        if (existingPump && !statusInfo.is_dispensing && existingPump.is_dispensing) {
+          const completionMsg = `Pump ${statusInfo.id} (${statusInfo.name}) completed dispensing: ${statusInfo.current_volume?.toFixed(1) || 0}ml dispensed`;
+          addLog(completionMsg);
+          lastProgressReported.delete(statusInfo.id);
+        }
+
+        return {
+          id: statusInfo.id,
+          name: statusInfo.name || `Pump ${statusInfo.id}`,
+          status: statusInfo.is_dispensing ? 'dispensing' : 'idle',
+          voltage: statusInfo.voltage || 0,
+          is_dispensing: statusInfo.is_dispensing || false,
+          current_volume: statusInfo.current_volume || 0,
+          target_volume: statusInfo.target_volume || 0
+        };
       });
     }
   });

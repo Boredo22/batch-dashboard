@@ -72,10 +72,17 @@
     return totalTargetVolume > 0 ? Math.min((totalCurrentVolume / totalTargetVolume) * 100, 100) : 0;
   });
   
+  // Track last processed timestamp to avoid reprocessing same data
+  let lastProcessedTimestamp = '';
+
   // React to SSE status updates
   $effect(() => {
     const data = sseStatus.data;
     if (!data || !data.success) return;
+
+    // Skip if we've already processed this update (prevents infinite loops)
+    if (data.timestamp === lastProcessedTimestamp) return;
+    lastProcessedTimestamp = data.timestamp;
 
     systemStatus = data;
 
