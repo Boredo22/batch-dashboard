@@ -1121,6 +1121,10 @@ def get_sensor_calibration_status() -> dict:
     """Get sensor calibration status - convenience function"""
     return get_hardware_comms().get_sensor_calibration_status()
 
+def get_flow_status(flow_id: int) -> Optional[Dict[str, Any]]:
+    """Get flow status - convenience function"""
+    return get_hardware_comms().get_flow_status(flow_id)
+
 def get_flow_controller():
     """Get flow controller instance - convenience function"""
     return get_hardware_comms().get_flow_controller()

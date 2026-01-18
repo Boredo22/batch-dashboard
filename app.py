@@ -26,7 +26,8 @@ from hardware.hardware_comms import (
     calibrate_pump, clear_pump_calibration, check_pump_calibration_status,
     pause_pump, get_pump_voltage, get_current_dispensed_volume,
     get_pump_status, refresh_pump_calibrations,
-    read_ec_ph_sensors, calibrate_ph, calibrate_ec, get_sensor_calibration_status
+    read_ec_ph_sensors, calibrate_ph, calibrate_ec, get_sensor_calibration_status,
+    get_flow_status
 )
 
 # Import configuration constants and all settings
