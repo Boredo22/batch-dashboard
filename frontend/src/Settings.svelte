@@ -1,30 +1,66 @@
 <script>
   import { onMount } from 'svelte';
   import { TabsRoot as Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs/index.js";
-  import { Card, CardContent, CardHeader, CardTitle } from "$lib/components/ui/card/index.js";
+  import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
   import { Switch } from "$lib/components/ui/switch/index.js";
-  import { Textarea } from "$lib/components/ui/textarea/index.js";
   import { Alert, AlertDescription } from "$lib/components/ui/alert/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
-  import { 
-    User, 
-    Code, 
-    Plus, 
-    Trash2, 
-    Save,
+  import {
     Settings as SettingsIcon,
-    AlertCircle 
+    Droplets,
+    Beaker,
+    Cpu,
+    Info,
+    Plus,
+    Trash2,
+    Save,
+    AlertCircle,
+    CheckCircle,
+    XCircle,
+    RefreshCw,
+    FlaskConical,
+    Gauge,
+    Waves,
+    Zap
   } from "@lucide/svelte/icons";
 
+  // ==================== STATE ====================
+
+  // Loading and UI state
+  let loading = $state(true);
+  let saving = $state(false);
+  let saveMessage = $state('');
+  let loadError = $state('');
+  let activeTab = $state('system');
+
+  // System status
+  let systemStatus = $state({
+    connected: false,
+    relays: [],
+    pumps: [],
+    flowMeters: [],
+    ecph: { ec: 0, ph: 0, monitoring: false }
+  });
+  let statusLoading = $state(false);
+
+  // User Settings
   let userSettings = $state({
     tanks: {},
+    rooms: {},
     pumps: {
       names: {},
       addresses: {}
+    },
+    flowMeters: {
+      calibration: {}
+    },
+    ecphDefaults: {
+      ec: { min: 1.0, max: 2.0 },
+      ph: { min: 5.5, max: 6.5 }
     },
     timing: {
       status_update_interval: 2.0,
@@ -37,7 +73,8 @@
       max_flow_gallons: 100
     }
   });
-  
+
+  // Developer Settings
   let devSettings = $state({
     gpio: {
       relay_pins: {},
@@ -67,28 +104,65 @@
     }
   });
 
-  let loading = $state(true);
-  let saving = $state(false);
-  let saveMessage = $state('');
+  // Nutrients Configuration
+  let nutrientsConfig = $state({
+    available_nutrients: [],
+    veg_formula: {},
+    bloom_formula: {},
+    pump_name_to_id: {}
+  });
+
+  // New recipe being created
+  let newRecipeName = $state('');
+  let newRecipeNutrients = $state({});
+  let showNewRecipeForm = $state(false);
+
+  // ==================== API FUNCTIONS ====================
 
   async function loadSettings() {
+    loading = true;
+    loadError = '';
     try {
-      const [userResponse, devResponse] = await Promise.all([
+      const [userResponse, devResponse, nutrientsResponse] = await Promise.all([
         fetch('/api/settings/user'),
-        fetch('/api/settings/developer')
+        fetch('/api/settings/developer'),
+        fetch('/api/nutrients')
       ]);
-      
+
       if (userResponse.ok) {
         const userData = await userResponse.json();
         userSettings = { ...userSettings, ...userData };
+        // Initialize rooms if not present
+        if (!userSettings.rooms || Object.keys(userSettings.rooms).length === 0) {
+          userSettings.rooms = {
+            1: { name: "Grow Room 1", relay: 10 }
+          };
+        }
+        // Initialize flow meter calibration
+        if (!userSettings.flowMeters) {
+          userSettings.flowMeters = { calibration: { 1: 220, 2: 220 } };
+        }
+        // Initialize EC/pH defaults
+        if (!userSettings.ecphDefaults) {
+          userSettings.ecphDefaults = {
+            ec: { min: 1.0, max: 2.0 },
+            ph: { min: 5.5, max: 6.5 }
+          };
+        }
       }
+
       if (devResponse.ok) {
         const devData = await devResponse.json();
         devSettings = { ...devSettings, ...devData };
       }
+
+      if (nutrientsResponse.ok) {
+        const nutrientsData = await nutrientsResponse.json();
+        nutrientsConfig = { ...nutrientsConfig, ...nutrientsData };
+      }
     } catch (error) {
       console.error('Error loading settings:', error);
-      saveMessage = 'Error loading settings. Using defaults.';
+      loadError = 'Unable to connect to backend. Make sure the server is running.';
     } finally {
       loading = false;
     }
@@ -96,8 +170,9 @@
 
   async function saveSettings() {
     saving = true;
+    saveMessage = '';
     try {
-      const [userResponse, devResponse] = await Promise.all([
+      const [userResponse, devResponse, nutrientsResponse] = await Promise.all([
         fetch('/api/settings/user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -107,25 +182,57 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(devSettings)
+        }),
+        fetch('/api/nutrients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(nutrientsConfig)
         })
       ]);
 
-      if (userResponse.ok && devResponse.ok) {
+      if (userResponse.ok && devResponse.ok && nutrientsResponse.ok) {
         saveMessage = 'Settings saved successfully!';
       } else {
-        saveMessage = 'Error saving settings. Please try again.';
+        saveMessage = 'Error saving some settings. Please try again.';
       }
     } catch (error) {
       console.error('Error saving settings:', error);
-      saveMessage = 'Error saving settings. Please try again.';
+      saveMessage = 'Error connecting to server. Please check connection.';
     } finally {
       saving = false;
-      setTimeout(() => saveMessage = '', 3000);
+      setTimeout(() => saveMessage = '', 4000);
     }
   }
 
+  async function loadSystemStatus() {
+    statusLoading = true;
+    try {
+      const response = await fetch('/api/system/status');
+      if (response.ok) {
+        const data = await response.json();
+        systemStatus = {
+          connected: true,
+          relays: data.relays || [],
+          pumps: data.pumps || [],
+          flowMeters: data.flow_meters || [],
+          ecph: data.ecph || { ec: 0, ph: 0, monitoring: false }
+        };
+      } else {
+        systemStatus.connected = false;
+      }
+    } catch (error) {
+      console.error('Error loading system status:', error);
+      systemStatus.connected = false;
+    } finally {
+      statusLoading = false;
+    }
+  }
+
+  // ==================== TANK FUNCTIONS ====================
+
   function addTank() {
-    const newId = Object.keys(userSettings.tanks || {}).length + 1;
+    const existingIds = Object.keys(userSettings.tanks || {}).map(Number);
+    const newId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
     userSettings.tanks = {
       ...userSettings.tanks,
       [newId]: {
@@ -159,7 +266,103 @@
     }
   }
 
-  onMount(loadSettings);
+  // ==================== ROOM FUNCTIONS ====================
+
+  function addRoom() {
+    const existingIds = Object.keys(userSettings.rooms || {}).map(Number);
+    const newId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+    userSettings.rooms = {
+      ...userSettings.rooms,
+      [newId]: {
+        name: `Room ${newId}`,
+        relay: 0
+      }
+    };
+  }
+
+  function removeRoom(roomId) {
+    const { [roomId]: removed, ...rest } = userSettings.rooms;
+    userSettings.rooms = rest;
+  }
+
+  // ==================== RECIPE FUNCTIONS ====================
+
+  function getRecipeNames() {
+    return Object.keys(nutrientsConfig)
+      .filter(key => !['available_nutrients', 'pump_name_to_id'].includes(key));
+  }
+
+  function addNutrientToRecipe(recipeName, nutrientName) {
+    if (!nutrientsConfig[recipeName]) return;
+    const defaultDosage = nutrientsConfig.available_nutrients?.find(n => n.name === nutrientName)?.defaultDosage || 1;
+    nutrientsConfig[recipeName] = {
+      ...nutrientsConfig[recipeName],
+      [nutrientName]: defaultDosage
+    };
+    nutrientsConfig = { ...nutrientsConfig };
+  }
+
+  function removeNutrientFromRecipe(recipeName, nutrientName) {
+    if (!nutrientsConfig[recipeName]) return;
+    const { [nutrientName]: removed, ...rest } = nutrientsConfig[recipeName];
+    nutrientsConfig[recipeName] = rest;
+    nutrientsConfig = { ...nutrientsConfig };
+  }
+
+  function updateRecipeDosage(recipeName, nutrientName, value) {
+    if (!nutrientsConfig[recipeName]) return;
+    nutrientsConfig[recipeName][nutrientName] = parseFloat(value) || 0;
+    nutrientsConfig = { ...nutrientsConfig };
+  }
+
+  function createNewRecipe() {
+    if (!newRecipeName.trim()) return;
+    const key = newRecipeName.toLowerCase().replace(/\s+/g, '_');
+    nutrientsConfig[key] = { ...newRecipeNutrients };
+    nutrientsConfig = { ...nutrientsConfig };
+    newRecipeName = '';
+    newRecipeNutrients = {};
+    showNewRecipeForm = false;
+  }
+
+  function deleteRecipe(recipeName) {
+    if (['veg_formula', 'bloom_formula'].includes(recipeName)) {
+      alert('Cannot delete default recipes');
+      return;
+    }
+    const { [recipeName]: removed, ...rest } = nutrientsConfig;
+    nutrientsConfig = rest;
+  }
+
+  function formatRecipeName(name) {
+    return name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  }
+
+  // ==================== NUTRIENT FUNCTIONS ====================
+
+  function addNutrient() {
+    nutrientsConfig.available_nutrients = [
+      ...nutrientsConfig.available_nutrients,
+      { name: 'New Nutrient', defaultDosage: 1 }
+    ];
+  }
+
+  function removeNutrient(index) {
+    nutrientsConfig.available_nutrients = nutrientsConfig.available_nutrients.filter((_, i) => i !== index);
+  }
+
+  function updatePumpMapping(nutrientName, pumpId) {
+    nutrientsConfig.pump_name_to_id = {
+      ...nutrientsConfig.pump_name_to_id,
+      [nutrientName]: parseInt(pumpId) || 0
+    };
+  }
+
+  // ==================== LIFECYCLE ====================
+
+  onMount(() => {
+    loadSettings();
+  });
 </script>
 
 {#if loading}
@@ -171,35 +374,66 @@
   </div>
 {:else}
   <div class="space-y-6">
+    <!-- Error Alert -->
+    {#if loadError}
+      <Alert variant="destructive">
+        <AlertCircle class="size-4" />
+        <AlertDescription>
+          {loadError}
+          <Button variant="link" onclick={loadSettings} class="ml-2 p-0 h-auto">
+            Retry
+          </Button>
+        </AlertDescription>
+      </Alert>
+    {/if}
+
     <!-- Save Message -->
     {#if saveMessage}
       <Alert variant={saveMessage.includes('Error') ? 'destructive' : 'default'}>
-        <AlertCircle class="size-4" />
+        {#if saveMessage.includes('Error')}
+          <AlertCircle class="size-4" />
+        {:else}
+          <CheckCircle class="size-4" />
+        {/if}
         <AlertDescription>{saveMessage}</AlertDescription>
       </Alert>
     {/if}
 
     <!-- Settings Tabs -->
-    <Tabs defaultValue="user" class="space-y-6">
-      <TabsList class="grid w-full grid-cols-2">
-        <TabsTrigger value="user" class="flex items-center gap-2">
-          <User class="size-4" />
-          User Settings
+    <Tabs bind:value={activeTab} class="space-y-6">
+      <TabsList class="grid w-full grid-cols-4">
+        <TabsTrigger value="system" class="flex items-center gap-2">
+          <Droplets class="size-4" />
+          <span class="hidden sm:inline">System</span>
         </TabsTrigger>
-        <TabsTrigger value="developer" class="flex items-center gap-2">
-          <Code class="size-4" />
-          Developer Settings
+        <TabsTrigger value="recipes" class="flex items-center gap-2">
+          <FlaskConical class="size-4" />
+          <span class="hidden sm:inline">Recipes</span>
+        </TabsTrigger>
+        <TabsTrigger value="hardware" class="flex items-center gap-2">
+          <Cpu class="size-4" />
+          <span class="hidden sm:inline">Hardware</span>
+        </TabsTrigger>
+        <TabsTrigger value="info" class="flex items-center gap-2">
+          <Info class="size-4" />
+          <span class="hidden sm:inline">Info</span>
         </TabsTrigger>
       </TabsList>
 
-      <!-- User Settings Tab -->
-      <TabsContent value="user" class="space-y-6">
-        
+      <!-- ==================== SYSTEM TAB ==================== -->
+      <TabsContent value="system" class="space-y-6">
+
         <!-- Tank Configuration -->
         <Card>
           <CardHeader>
             <div class="flex items-center justify-between">
-              <CardTitle>Tank Configuration</CardTitle>
+              <div>
+                <CardTitle class="flex items-center gap-2">
+                  <Droplets class="size-5" />
+                  Tank Configuration
+                </CardTitle>
+                <CardDescription>Configure tanks, their capacities, and relay mappings</CardDescription>
+              </div>
               <Button onclick={addTank} size="sm">
                 <Plus class="size-4 mr-2" />
                 Add Tank
@@ -208,96 +442,73 @@
           </CardHeader>
           <CardContent>
             {#if userSettings.tanks && Object.keys(userSettings.tanks).length > 0}
-              <div class="grid gap-6 md:grid-cols-2">
+              <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {#each Object.entries(userSettings.tanks) as [tankId, tank]}
-                  <Card>
-                    <CardHeader>
+                  <Card class="border-muted">
+                    <CardHeader class="pb-3">
                       <div class="flex items-center justify-between">
-                        <h4 class="font-semibold">Tank {tankId}</h4>
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
+                        <Badge variant="outline">Tank {tankId}</Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onclick={() => removeTank(tankId)}
                         >
-                          <Trash2 class="size-4" />
+                          <Trash2 class="size-4 text-destructive" />
                         </Button>
                       </div>
                     </CardHeader>
-                    <CardContent class="space-y-4">
-                      <div class="space-y-2">
-                        <Label for="tank-{tankId}-name">Tank Name</Label>
-                        <Input 
-                          id="tank-{tankId}-name" 
-                          bind:value={tank.name}
-                          placeholder="Enter tank name"
-                        />
+                    <CardContent class="space-y-3">
+                      <div class="space-y-1">
+                        <Label class="text-xs">Name</Label>
+                        <Input bind:value={tank.name} placeholder="Tank name" />
                       </div>
 
-                      <div class="grid grid-cols-2 gap-4">
-                        <div class="space-y-2">
-                          <Label for="tank-{tankId}-capacity">Capacity (gal)</Label>
-                          <Input 
-                            id="tank-{tankId}-capacity" 
-                            type="number" 
-                            bind:value={tank.capacity_gallons}
-                            min="1"
-                          />
+                      <div class="grid grid-cols-2 gap-2">
+                        <div class="space-y-1">
+                          <Label class="text-xs">Capacity (gal)</Label>
+                          <Input type="number" bind:value={tank.capacity_gallons} min="1" />
                         </div>
-                        <div class="space-y-2">
-                          <Label for="tank-{tankId}-fill">Fill Relay</Label>
-                          <Input 
-                            id="tank-{tankId}-fill" 
-                            type="number" 
-                            bind:value={tank.fill_relay}
-                            min="0"
-                          />
+                        <div class="space-y-1">
+                          <Label class="text-xs">Fill Relay</Label>
+                          <Input type="number" bind:value={tank.fill_relay} min="0" />
                         </div>
                       </div>
 
-                      <div class="space-y-2">
-                        <Label for="tank-{tankId}-send">Send Relay</Label>
-                        <Input 
-                          id="tank-{tankId}-send" 
-                          type="number" 
-                          bind:value={tank.send_relay}
-                          min="0"
-                        />
+                      <div class="space-y-1">
+                        <Label class="text-xs">Send Relay</Label>
+                        <Input type="number" bind:value={tank.send_relay} min="0" />
                       </div>
 
                       <div class="space-y-2">
                         <div class="flex items-center justify-between">
-                          <Label>Mix Relays</Label>
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            onclick={() => addMixRelay(tankId)}
-                          >
-                            <Plus class="size-4" />
+                          <Label class="text-xs">Mix Relays</Label>
+                          <Button size="sm" variant="ghost" onclick={() => addMixRelay(tankId)}>
+                            <Plus class="size-3" />
                           </Button>
                         </div>
                         {#if tank.mix_relays && tank.mix_relays.length > 0}
-                          <div class="space-y-2">
+                          <div class="flex flex-wrap gap-2">
                             {#each tank.mix_relays as relay, index}
-                              <div class="flex items-center gap-2">
-                                <Input 
-                                  type="number" 
+                              <div class="flex items-center gap-1">
+                                <Input
+                                  type="number"
                                   bind:value={tank.mix_relays[index]}
-                                  placeholder="Relay number"
                                   min="0"
-                                  class="flex-1"
+                                  class="w-16 h-8"
                                 />
-                                <Button 
-                                  size="sm" 
-                                  variant="ghost" 
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
                                   onclick={() => removeMixRelay(tankId, index)}
+                                  class="h-8 w-8 p-0"
                                 >
-                                  <Trash2 class="size-4" />
+                                  <Trash2 class="size-3" />
                                 </Button>
                               </div>
                             {/each}
                           </div>
                         {:else}
-                          <p class="text-sm text-muted-foreground">No mix relays configured</p>
+                          <p class="text-xs text-muted-foreground">No mix relays</p>
                         {/if}
                       </div>
                     </CardContent>
@@ -306,6 +517,7 @@
               </div>
             {:else}
               <div class="text-center py-8">
+                <Droplets class="size-12 mx-auto text-muted-foreground/50 mb-4" />
                 <p class="text-muted-foreground">No tanks configured</p>
                 <Button onclick={addTank} class="mt-4">
                   <Plus class="size-4 mr-2" />
@@ -316,40 +528,207 @@
           </CardContent>
         </Card>
 
+        <!-- Room Configuration -->
+        <Card>
+          <CardHeader>
+            <div class="flex items-center justify-between">
+              <div>
+                <CardTitle class="flex items-center gap-2">
+                  <Zap class="size-5" />
+                  Room Configuration
+                </CardTitle>
+                <CardDescription>Configure grow rooms and their relay mappings for nutrient delivery</CardDescription>
+              </div>
+              <Button onclick={addRoom} size="sm">
+                <Plus class="size-4 mr-2" />
+                Add Room
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {#if userSettings.rooms && Object.keys(userSettings.rooms).length > 0}
+              <div class="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
+                {#each Object.entries(userSettings.rooms) as [roomId, room]}
+                  <Card class="border-muted">
+                    <CardContent class="pt-4 space-y-3">
+                      <div class="flex items-center justify-between">
+                        <Badge variant="outline">Room {roomId}</Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onclick={() => removeRoom(roomId)}
+                        >
+                          <Trash2 class="size-4 text-destructive" />
+                        </Button>
+                      </div>
+                      <div class="space-y-1">
+                        <Label class="text-xs">Name</Label>
+                        <Input bind:value={room.name} placeholder="Room name" />
+                      </div>
+                      <div class="space-y-1">
+                        <Label class="text-xs">Relay</Label>
+                        <Input type="number" bind:value={room.relay} min="0" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                {/each}
+              </div>
+            {:else}
+              <div class="text-center py-6">
+                <p class="text-muted-foreground">No rooms configured</p>
+              </div>
+            {/if}
+          </CardContent>
+        </Card>
+
+        <!-- Flow Meter Calibration -->
+        <Card>
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">
+              <Waves class="size-5" />
+              Flow Meter Calibration
+            </CardTitle>
+            <CardDescription>Set pulses per gallon for accurate flow measurement</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div class="space-y-2">
+                <Label>Flow Meter 1 (Tank Fill)</Label>
+                <div class="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={userSettings.flowMeters?.calibration?.[1] || 220}
+                    onchange={(e) => {
+                      if (!userSettings.flowMeters) userSettings.flowMeters = { calibration: {} };
+                      if (!userSettings.flowMeters.calibration) userSettings.flowMeters.calibration = {};
+                      userSettings.flowMeters.calibration[1] = parseInt(e.target.value) || 220;
+                    }}
+                    min="1"
+                  />
+                  <span class="text-sm text-muted-foreground whitespace-nowrap">pulses/gal</span>
+                </div>
+              </div>
+              <div class="space-y-2">
+                <Label>Flow Meter 2 (Tank Send)</Label>
+                <div class="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={userSettings.flowMeters?.calibration?.[2] || 220}
+                    onchange={(e) => {
+                      if (!userSettings.flowMeters) userSettings.flowMeters = { calibration: {} };
+                      if (!userSettings.flowMeters.calibration) userSettings.flowMeters.calibration = {};
+                      userSettings.flowMeters.calibration[2] = parseInt(e.target.value) || 220;
+                    }}
+                    min="1"
+                  />
+                  <span class="text-sm text-muted-foreground whitespace-nowrap">pulses/gal</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- EC/pH Default Targets -->
+        <Card>
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">
+              <Gauge class="size-5" />
+              Default EC/pH Targets
+            </CardTitle>
+            <CardDescription>Default target ranges used in Fill Tank workflow</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div class="grid gap-6 sm:grid-cols-2">
+              <div class="space-y-3">
+                <Label class="text-base font-medium">EC Range (mS/cm)</Label>
+                <div class="flex items-center gap-3">
+                  <div class="space-y-1 flex-1">
+                    <Label class="text-xs">Min</Label>
+                    <Input
+                      type="number"
+                      value={userSettings.ecphDefaults?.ec?.min || 1.0}
+                      onchange={(e) => {
+                        if (!userSettings.ecphDefaults) userSettings.ecphDefaults = { ec: {}, ph: {} };
+                        if (!userSettings.ecphDefaults.ec) userSettings.ecphDefaults.ec = {};
+                        userSettings.ecphDefaults.ec.min = parseFloat(e.target.value) || 1.0;
+                      }}
+                      min="0" max="5" step="0.1"
+                    />
+                  </div>
+                  <span class="mt-5">-</span>
+                  <div class="space-y-1 flex-1">
+                    <Label class="text-xs">Max</Label>
+                    <Input
+                      type="number"
+                      value={userSettings.ecphDefaults?.ec?.max || 2.0}
+                      onchange={(e) => {
+                        if (!userSettings.ecphDefaults) userSettings.ecphDefaults = { ec: {}, ph: {} };
+                        if (!userSettings.ecphDefaults.ec) userSettings.ecphDefaults.ec = {};
+                        userSettings.ecphDefaults.ec.max = parseFloat(e.target.value) || 2.0;
+                      }}
+                      min="0" max="5" step="0.1"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div class="space-y-3">
+                <Label class="text-base font-medium">pH Range</Label>
+                <div class="flex items-center gap-3">
+                  <div class="space-y-1 flex-1">
+                    <Label class="text-xs">Min</Label>
+                    <Input
+                      type="number"
+                      value={userSettings.ecphDefaults?.ph?.min || 5.5}
+                      onchange={(e) => {
+                        if (!userSettings.ecphDefaults) userSettings.ecphDefaults = { ec: {}, ph: {} };
+                        if (!userSettings.ecphDefaults.ph) userSettings.ecphDefaults.ph = {};
+                        userSettings.ecphDefaults.ph.min = parseFloat(e.target.value) || 5.5;
+                      }}
+                      min="0" max="14" step="0.1"
+                    />
+                  </div>
+                  <span class="mt-5">-</span>
+                  <div class="space-y-1 flex-1">
+                    <Label class="text-xs">Max</Label>
+                    <Input
+                      type="number"
+                      value={userSettings.ecphDefaults?.ph?.max || 6.5}
+                      onchange={(e) => {
+                        if (!userSettings.ecphDefaults) userSettings.ecphDefaults = { ec: {}, ph: {} };
+                        if (!userSettings.ecphDefaults.ph) userSettings.ecphDefaults.ph = {};
+                        userSettings.ecphDefaults.ph.max = parseFloat(e.target.value) || 6.5;
+                      }}
+                      min="0" max="14" step="0.1"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <!-- System Limits -->
         <Card>
           <CardHeader>
-            <CardTitle>System Limits</CardTitle>
+            <CardTitle class="flex items-center gap-2">
+              <AlertCircle class="size-5" />
+              System Limits
+            </CardTitle>
+            <CardDescription>Safety limits for pumps and flow meters</CardDescription>
           </CardHeader>
-          <CardContent class="space-y-4">
-            <div class="grid grid-cols-3 gap-4">
+          <CardContent>
+            <div class="grid gap-4 sm:grid-cols-3">
               <div class="space-y-2">
-                <Label for="max-pump-volume">Max Pump Volume (ml)</Label>
-                <Input 
-                  id="max-pump-volume"
-                  type="number"
-                  bind:value={userSettings.limits.max_pump_volume_ml}
-                  min="1"
-                />
+                <Label>Max Pump Volume (ml)</Label>
+                <Input type="number" bind:value={userSettings.limits.max_pump_volume_ml} min="1" />
               </div>
               <div class="space-y-2">
-                <Label for="min-pump-volume">Min Pump Volume (ml)</Label>
-                <Input 
-                  id="min-pump-volume"
-                  type="number"
-                  bind:value={userSettings.limits.min_pump_volume_ml}
-                  min="0.1"
-                  step="0.1"
-                />
+                <Label>Min Pump Volume (ml)</Label>
+                <Input type="number" bind:value={userSettings.limits.min_pump_volume_ml} min="0.1" step="0.1" />
               </div>
               <div class="space-y-2">
-                <Label for="max-flow-gallons">Max Flow (gallons)</Label>
-                <Input 
-                  id="max-flow-gallons"
-                  type="number"
-                  bind:value={userSettings.limits.max_flow_gallons}
-                  min="1"
-                />
+                <Label>Max Flow (gallons)</Label>
+                <Input type="number" bind:value={userSettings.limits.max_flow_gallons} min="1" />
               </div>
             </div>
           </CardContent>
@@ -357,56 +736,319 @@
 
       </TabsContent>
 
-      <!-- Developer Settings Tab -->
-      <TabsContent value="developer" class="space-y-6">
-        
-        <!-- Hardware Configuration -->
+      <!-- ==================== RECIPES TAB ==================== -->
+      <TabsContent value="recipes" class="space-y-6">
+
+        <!-- Nutrient Recipes -->
         <Card>
           <CardHeader>
-            <CardTitle>Hardware Configuration</CardTitle>
-          </CardHeader>
-          <CardContent class="space-y-4">
             <div class="flex items-center justify-between">
               <div>
-                <Label class="text-base">Mock Mode</Label>
+                <CardTitle class="flex items-center gap-2">
+                  <FlaskConical class="size-5" />
+                  Nutrient Recipes
+                </CardTitle>
+                <CardDescription>Configure nutrient formulas with ml per gallon dosages</CardDescription>
+              </div>
+              <Button onclick={() => showNewRecipeForm = !showNewRecipeForm} size="sm">
+                <Plus class="size-4 mr-2" />
+                New Recipe
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            {#if showNewRecipeForm}
+              <Card class="border-primary/50 bg-primary/5">
+                <CardContent class="pt-4 space-y-4">
+                  <div class="flex items-center gap-4">
+                    <div class="flex-1 space-y-1">
+                      <Label>Recipe Name</Label>
+                      <Input
+                        bind:value={newRecipeName}
+                        placeholder="e.g., Flower Week 3"
+                      />
+                    </div>
+                    <div class="flex gap-2 mt-5">
+                      <Button onclick={createNewRecipe} disabled={!newRecipeName.trim()}>
+                        Create
+                      </Button>
+                      <Button variant="outline" onclick={() => showNewRecipeForm = false}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            {/if}
+
+            <div class="grid gap-4 lg:grid-cols-2">
+              {#each getRecipeNames() as recipeName}
+                <Card>
+                  <CardHeader class="pb-3">
+                    <div class="flex items-center justify-between">
+                      <CardTitle class="text-base">{formatRecipeName(recipeName)}</CardTitle>
+                      <div class="flex items-center gap-2">
+                        {#if !['veg_formula', 'bloom_formula'].includes(recipeName)}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onclick={() => deleteRecipe(recipeName)}
+                          >
+                            <Trash2 class="size-4 text-destructive" />
+                          </Button>
+                        {:else}
+                          <Badge variant="secondary">Default</Badge>
+                        {/if}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent class="space-y-3">
+                    {#if nutrientsConfig[recipeName] && Object.keys(nutrientsConfig[recipeName]).length > 0}
+                      {#each Object.entries(nutrientsConfig[recipeName]) as [nutrient, dosage]}
+                        <div class="flex items-center gap-3">
+                          <span class="flex-1 text-sm">{nutrient}</span>
+                          <Input
+                            type="number"
+                            value={dosage}
+                            onchange={(e) => updateRecipeDosage(recipeName, nutrient, e.target.value)}
+                            min="0"
+                            step="0.1"
+                            class="w-20 h-8"
+                          />
+                          <span class="text-xs text-muted-foreground w-12">ml/gal</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onclick={() => removeNutrientFromRecipe(recipeName, nutrient)}
+                            class="h-8 w-8 p-0"
+                          >
+                            <Trash2 class="size-3" />
+                          </Button>
+                        </div>
+                      {/each}
+                    {:else}
+                      <p class="text-sm text-muted-foreground">No nutrients in this recipe</p>
+                    {/if}
+
+                    <Separator />
+
+                    <div class="flex items-center gap-2">
+                      <select
+                        class="flex-1 h-8 px-2 rounded-md border bg-background text-sm"
+                        onchange={(e) => {
+                          if (e.target.value) {
+                            addNutrientToRecipe(recipeName, e.target.value);
+                            e.target.value = '';
+                          }
+                        }}
+                      >
+                        <option value="">+ Add nutrient...</option>
+                        {#each nutrientsConfig.available_nutrients || [] as nutrient}
+                          {#if !nutrientsConfig[recipeName]?.[nutrient.name]}
+                            <option value={nutrient.name}>{nutrient.name}</option>
+                          {/if}
+                        {/each}
+                      </select>
+                    </div>
+                  </CardContent>
+                </Card>
+              {/each}
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- Available Nutrients -->
+        <Card>
+          <CardHeader>
+            <div class="flex items-center justify-between">
+              <div>
+                <CardTitle class="flex items-center gap-2">
+                  <Beaker class="size-5" />
+                  Available Nutrients
+                </CardTitle>
+                <CardDescription>All nutrients available for recipes with their default dosages</CardDescription>
+              </div>
+              <Button onclick={addNutrient} size="sm">
+                <Plus class="size-4 mr-2" />
+                Add Nutrient
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div class="space-y-3">
+              {#each nutrientsConfig.available_nutrients || [] as nutrient, index}
+                <div class="flex items-center gap-4 p-3 rounded-lg border">
+                  <div class="flex-1 space-y-1">
+                    <Label class="text-xs">Name</Label>
+                    <Input
+                      bind:value={nutrient.name}
+                      placeholder="Nutrient name"
+                    />
+                  </div>
+                  <div class="w-24 space-y-1">
+                    <Label class="text-xs">Default (ml/gal)</Label>
+                    <Input
+                      type="number"
+                      bind:value={nutrient.defaultDosage}
+                      min="0"
+                      step="0.1"
+                    />
+                  </div>
+                  <div class="w-20 space-y-1">
+                    <Label class="text-xs">Pump ID</Label>
+                    <Input
+                      type="number"
+                      value={nutrientsConfig.pump_name_to_id?.[nutrient.name] || 0}
+                      onchange={(e) => updatePumpMapping(nutrient.name, e.target.value)}
+                      min="0"
+                      max="8"
+                    />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onclick={() => removeNutrient(index)}
+                    class="mt-5"
+                  >
+                    <Trash2 class="size-4 text-destructive" />
+                  </Button>
+                </div>
+              {/each}
+            </div>
+          </CardContent>
+        </Card>
+
+      </TabsContent>
+
+      <!-- ==================== HARDWARE TAB ==================== -->
+      <TabsContent value="hardware" class="space-y-6">
+
+        <!-- Mock Mode Settings -->
+        <Card>
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">
+              <Cpu class="size-5" />
+              Hardware Mode
+            </CardTitle>
+            <CardDescription>Enable mock mode for testing without physical hardware</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="flex items-center justify-between p-4 rounded-lg border">
+              <div>
+                <Label class="text-base">Global Mock Mode</Label>
                 <p class="text-sm text-muted-foreground">
-                  Enable mock mode for development without physical hardware
+                  Enable mock mode for all hardware components
                 </p>
               </div>
-              <Switch bind:checked={devSettings.mock.mock_mode} />
+              <Switch
+                checked={devSettings.mock.mock_mode}
+                onCheckedChange={(checked) => devSettings.mock.mock_mode = checked}
+              />
             </div>
 
             <Separator />
 
-            <div class="grid grid-cols-2 gap-4">
-              <div class="space-y-2">
-                <Label for="i2c-bus">I2C Bus Number</Label>
-                <Input 
-                  id="i2c-bus"
-                  type="number"
-                  bind:value={devSettings.i2c.bus_number}
-                  min="0"
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div class="flex items-center justify-between p-3 rounded-lg border">
+                <Label>Mock Pumps</Label>
+                <Switch
+                  checked={devSettings.mock.mock_pumps}
+                  onCheckedChange={(checked) => devSettings.mock.mock_pumps = checked}
                 />
               </div>
-              <div class="space-y-2">
-                <Label for="arduino-baud">Arduino Baud Rate</Label>
-                <Input 
-                  id="arduino-baud"
-                  type="number"
-                  bind:value={devSettings.communication.arduino_baudrate}
+              <div class="flex items-center justify-between p-3 rounded-lg border">
+                <Label>Mock Relays</Label>
+                <Switch
+                  checked={devSettings.mock.mock_relays}
+                  onCheckedChange={(checked) => devSettings.mock.mock_relays = checked}
+                />
+              </div>
+              <div class="flex items-center justify-between p-3 rounded-lg border">
+                <Label>Mock Flow Meters</Label>
+                <Switch
+                  checked={devSettings.mock.mock_flow_meters}
+                  onCheckedChange={(checked) => devSettings.mock.mock_flow_meters = checked}
+                />
+              </div>
+              <div class="flex items-center justify-between p-3 rounded-lg border">
+                <Label>Mock EC/pH</Label>
+                <Switch
+                  checked={devSettings.mock.mock_ecph}
+                  onCheckedChange={(checked) => devSettings.mock.mock_ecph = checked}
                 />
               </div>
             </div>
+          </CardContent>
+        </Card>
 
-            <div class="space-y-2">
-              <Label for="command-delay">Command Delay (seconds)</Label>
-              <Input 
-                id="command-delay"
-                type="number"
-                bind:value={devSettings.i2c.command_delay}
-                min="0"
-                step="0.1"
-              />
+        <!-- GPIO Configuration (Read-only) -->
+        <Card>
+          <CardHeader>
+            <CardTitle>GPIO Pin Mappings</CardTitle>
+            <CardDescription>Current GPIO pin assignments (modify in config.py)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <h4 class="font-medium mb-2">Relay GPIO Pins</h4>
+                <div class="space-y-1 text-sm">
+                  {#each Object.entries(devSettings.gpio.relay_pins || {}) as [relayId, pin]}
+                    <div class="flex justify-between p-2 rounded bg-muted/50">
+                      <span>Relay {relayId}</span>
+                      <Badge variant="outline">GPIO {pin}</Badge>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+              <div>
+                <h4 class="font-medium mb-2">Flow Meter GPIO Pins</h4>
+                <div class="space-y-1 text-sm">
+                  {#each Object.entries(devSettings.gpio.flow_meter_pins || {}) as [meterId, pin]}
+                    <div class="flex justify-between p-2 rounded bg-muted/50">
+                      <span>Flow Meter {meterId}</span>
+                      <Badge variant="outline">GPIO {pin}</Badge>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- I2C Configuration -->
+        <Card>
+          <CardHeader>
+            <CardTitle>I2C Configuration</CardTitle>
+            <CardDescription>I2C bus settings for pump communication</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div class="grid gap-4 sm:grid-cols-3">
+              <div class="space-y-2">
+                <Label>I2C Bus Number</Label>
+                <Input type="number" bind:value={devSettings.i2c.bus_number} min="0" />
+              </div>
+              <div class="space-y-2">
+                <Label>Command Delay (sec)</Label>
+                <Input type="number" bind:value={devSettings.i2c.command_delay} min="0" step="0.1" />
+              </div>
+              <div class="space-y-2">
+                <Label>Arduino Baud Rate</Label>
+                <Input type="number" bind:value={devSettings.communication.arduino_baudrate} />
+              </div>
+            </div>
+
+            <Separator class="my-4" />
+
+            <div>
+              <h4 class="font-medium mb-2">Pump I2C Addresses</h4>
+              <div class="grid gap-2 sm:grid-cols-4">
+                {#each Object.entries(devSettings.i2c.pump_addresses || {}) as [pumpId, address]}
+                  <div class="flex justify-between p-2 rounded bg-muted/50 text-sm">
+                    <span>Pump {pumpId}</span>
+                    <Badge variant="outline">0x{address.toString(16)}</Badge>
+                  </div>
+                {/each}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -415,61 +1057,199 @@
         <Card>
           <CardHeader>
             <CardTitle>Debug Settings</CardTitle>
+            <CardDescription>Logging and debug configuration</CardDescription>
           </CardHeader>
           <CardContent class="space-y-4">
-            <div class="flex items-center justify-between">
-              <div>
-                <Label class="text-base">Enable Debug Logging</Label>
-                <p class="text-sm text-muted-foreground">
-                  Show detailed debug information in logs
-                </p>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div class="flex items-center justify-between p-3 rounded-lg border">
+                <div>
+                  <Label>Debug Mode</Label>
+                  <p class="text-xs text-muted-foreground">Enable detailed debug info</p>
+                </div>
+                <Switch
+                  checked={devSettings.debug.debug_mode}
+                  onCheckedChange={(checked) => devSettings.debug.debug_mode = checked}
+                />
               </div>
-              <Switch bind:checked={devSettings.debug.debug_mode} />
-            </div>
-
-            <div class="flex items-center justify-between">
-              <div>
-                <Label class="text-base">Verbose Hardware Output</Label>
-                <p class="text-sm text-muted-foreground">
-                  Log all hardware communication
-                </p>
+              <div class="flex items-center justify-between p-3 rounded-lg border">
+                <div>
+                  <Label>Verbose Logging</Label>
+                  <p class="text-xs text-muted-foreground">Log all hardware comms</p>
+                </div>
+                <Switch
+                  checked={devSettings.debug.verbose_logging}
+                  onCheckedChange={(checked) => devSettings.debug.verbose_logging = checked}
+                />
               </div>
-              <Switch bind:checked={devSettings.debug.verbose_logging} />
             </div>
-
             <div class="space-y-2">
-              <Label for="log-level">Log Level</Label>
-              <Input 
-                id="log-level"
-                bind:value={devSettings.debug.log_level}
-                placeholder="DEBUG, INFO, WARNING, ERROR"
-              />
+              <Label>Log Level</Label>
+              <select
+                class="w-full h-10 px-3 rounded-md border bg-background"
+                value={devSettings.debug.log_level}
+                onchange={(e) => devSettings.debug.log_level = e.target.value}
+              >
+                <option value="DEBUG">DEBUG</option>
+                <option value="INFO">INFO</option>
+                <option value="WARNING">WARNING</option>
+                <option value="ERROR">ERROR</option>
+              </select>
             </div>
           </CardContent>
         </Card>
 
-        <!-- Mock Settings -->
+      </TabsContent>
+
+      <!-- ==================== INFO TAB ==================== -->
+      <TabsContent value="info" class="space-y-6">
+
+        <!-- System Status -->
         <Card>
           <CardHeader>
-            <CardTitle>Mock Component Settings</CardTitle>
+            <div class="flex items-center justify-between">
+              <div>
+                <CardTitle class="flex items-center gap-2">
+                  {#if systemStatus.connected}
+                    <CheckCircle class="size-5 text-green-500" />
+                  {:else}
+                    <XCircle class="size-5 text-destructive" />
+                  {/if}
+                  System Status
+                </CardTitle>
+                <CardDescription>Real-time hardware connection status</CardDescription>
+              </div>
+              <Button
+                onclick={loadSystemStatus}
+                size="sm"
+                variant="outline"
+                disabled={statusLoading}
+              >
+                <RefreshCw class="size-4 mr-2 {statusLoading ? 'animate-spin' : ''}" />
+                Refresh
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div class="p-4 rounded-lg border text-center">
+                <div class="text-2xl font-bold">{systemStatus.relays?.length || 0}</div>
+                <div class="text-sm text-muted-foreground">Relays</div>
+                <div class="text-xs mt-1">
+                  {systemStatus.relays?.filter(r => r.state)?.length || 0} active
+                </div>
+              </div>
+              <div class="p-4 rounded-lg border text-center">
+                <div class="text-2xl font-bold">{systemStatus.pumps?.length || 0}</div>
+                <div class="text-sm text-muted-foreground">Pumps</div>
+                <div class="text-xs mt-1">
+                  {systemStatus.pumps?.filter(p => p.is_dispensing)?.length || 0} dispensing
+                </div>
+              </div>
+              <div class="p-4 rounded-lg border text-center">
+                <div class="text-2xl font-bold">{systemStatus.flowMeters?.length || 0}</div>
+                <div class="text-sm text-muted-foreground">Flow Meters</div>
+                <div class="text-xs mt-1">
+                  {systemStatus.flowMeters?.filter(f => f.status === 'running')?.length || 0} running
+                </div>
+              </div>
+              <div class="p-4 rounded-lg border text-center">
+                <div class="text-2xl font-bold">
+                  {systemStatus.ecph?.monitoring ? 'ON' : 'OFF'}
+                </div>
+                <div class="text-sm text-muted-foreground">EC/pH Monitor</div>
+                <div class="text-xs mt-1">
+                  EC: {systemStatus.ecph?.ec?.toFixed(2) || '0.00'} |
+                  pH: {systemStatus.ecph?.ph?.toFixed(2) || '0.00'}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- About -->
+        <Card>
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">
+              <Info class="size-5" />
+              About
+            </CardTitle>
           </CardHeader>
           <CardContent class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-              <div class="flex items-center justify-between">
-                <Label class="text-base">Mock Pumps</Label>
-                <Switch bind:checked={devSettings.mock.mock_pumps} />
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div class="space-y-1">
+                <Label class="text-muted-foreground">Application</Label>
+                <p class="font-medium">Nutrient Mixing System</p>
               </div>
-              <div class="flex items-center justify-between">
-                <Label class="text-base">Mock Relays</Label>
-                <Switch bind:checked={devSettings.mock.mock_relays} />
+              <div class="space-y-1">
+                <Label class="text-muted-foreground">Version</Label>
+                <p class="font-medium">1.0.0</p>
               </div>
-              <div class="flex items-center justify-between">
-                <Label class="text-base">Mock Flow Meters</Label>
-                <Switch bind:checked={devSettings.mock.mock_flow_meters} />
+              <div class="space-y-1">
+                <Label class="text-muted-foreground">Backend</Label>
+                <p class="font-medium">Flask + Python</p>
               </div>
-              <div class="flex items-center justify-between">
-                <Label class="text-base">Mock EC/pH</Label>
-                <Switch bind:checked={devSettings.mock.mock_ecph} />
+              <div class="space-y-1">
+                <Label class="text-muted-foreground">Frontend</Label>
+                <p class="font-medium">Svelte 5 + Vite</p>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div class="space-y-2">
+              <Label class="text-muted-foreground">Hardware Components</Label>
+              <div class="grid gap-2 sm:grid-cols-2 text-sm">
+                <div class="p-2 rounded bg-muted/50">
+                  <span class="font-medium">Pumps:</span> Atlas Scientific EZO-PMP (I2C)
+                </div>
+                <div class="p-2 rounded bg-muted/50">
+                  <span class="font-medium">Relays:</span> ULN2803A Darlington Array
+                </div>
+                <div class="p-2 rounded bg-muted/50">
+                  <span class="font-medium">Flow Meters:</span> VFS1001 via Optocoupler
+                </div>
+                <div class="p-2 rounded bg-muted/50">
+                  <span class="font-medium">EC/pH:</span> Atlas Scientific EZO (I2C)
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- Timing Settings -->
+        <Card>
+          <CardHeader>
+            <CardTitle>Update Intervals</CardTitle>
+            <CardDescription>Configure status polling intervals</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div class="grid gap-4 sm:grid-cols-3">
+              <div class="space-y-2">
+                <Label>Status Update (sec)</Label>
+                <Input
+                  type="number"
+                  bind:value={userSettings.timing.status_update_interval}
+                  min="0.5"
+                  step="0.5"
+                />
+              </div>
+              <div class="space-y-2">
+                <Label>Pump Check (sec)</Label>
+                <Input
+                  type="number"
+                  bind:value={userSettings.timing.pump_check_interval}
+                  min="0.5"
+                  step="0.5"
+                />
+              </div>
+              <div class="space-y-2">
+                <Label>Flow Update (sec)</Label>
+                <Input
+                  type="number"
+                  bind:value={userSettings.timing.flow_update_interval}
+                  min="0.1"
+                  step="0.1"
+                />
               </div>
             </div>
           </CardContent>
@@ -486,7 +1266,7 @@
           Saving...
         {:else}
           <Save class="size-4 mr-2" />
-          Save Settings
+          Save All Settings
         {/if}
       </Button>
     </div>
