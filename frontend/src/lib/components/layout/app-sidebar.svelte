@@ -1,13 +1,14 @@
 <script>
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
-  import { 
+  import {
     LayoutDashboard,
     FlaskConical,
     Settings,
     Activity,
     Droplets,
-    Zap
+    Zap,
+    BookOpen
   } from "@lucide/svelte/icons";
 
   let { systemStatus = "disconnected" } = $props();
@@ -21,9 +22,15 @@
     },
     {
       title: "Nutrients",
-      page: "nutrients", 
+      page: "nutrients",
       icon: FlaskConical,
       description: "Manual dispensing & recipes"
+    },
+    {
+      title: "Knowledge",
+      page: "knowledge",
+      icon: BookOpen,
+      description: "Growing reference & SOPs"
     },
     {
       title: "Stage 1: Hardware Testing",

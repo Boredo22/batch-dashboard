@@ -1,0 +1,127 @@
+{
+  "maintenance_schedule": {
+    "daily": [
+      "Check pump operation and listen for unusual sounds",
+      "Verify relay functionality - all valves responding",
+      "Monitor tank levels visually",
+      "Check for leaks at fittings and connections",
+      "Record EC/pH readings",
+      "Scout plants for pests/disease"
+    ],
+    "weekly": [
+      "Clean pre-filters and strainers",
+      "Calibrate EC meter with 1413 μS/cm solution",
+      "Calibrate pH meter with 7.0 and 4.0 buffers",
+      "Clean pump heads - remove buildup",
+      "Test emergency stop functionality",
+      "Clean mixing tank surfaces",
+      "Check tubing for kinks or wear"
+    ],
+    "monthly": [
+      "Deep clean all mixing tanks",
+      "Replace air stones if using aeration",
+      "Check pump calibration accuracy - run test dispenses",
+      "Inspect all tubing for wear, replace if needed",
+      "Clean flow meter sensors",
+      "Verify all sensor readings against manual measurements",
+      "Clean grow room air filters"
+    ],
+    "quarterly": [
+      "Replace peristaltic pump tubing",
+      "Replace EC/pH probes (or as needed based on drift)",
+      "Full system flush with cleaning solution",
+      "Inspect electrical connections for corrosion",
+      "Test backup systems if applicable",
+      "Review and update SOPs based on learnings"
+    ]
+  },
+  "calibration_reference": {
+    "ec_solutions": {
+      "dry": 0,
+      "low": 84,
+      "single": 1413,
+      "high": 1413,
+      "notes": "84 μS/cm and 1413 μS/cm are standard calibration solutions"
+    },
+    "ph_solutions": {
+      "low": 4.0,
+      "mid": 7.0,
+      "high": 10.0,
+      "notes": "Always calibrate at room temperature. Start with 7.0, then 4.0."
+    },
+    "calibration_tips": [
+      "Rinse probe with distilled water between solutions",
+      "Allow reading to stabilize before accepting",
+      "Store pH probe in storage solution, not distilled water",
+      "Replace probes if calibration won't hold"
+    ]
+  },
+  "harvest_timing": {
+    "trichome_indicators": {
+      "clear": "Too early - THC not fully developed",
+      "cloudy": "Peak THC - energetic/heady effect",
+      "amber": "THC degrading to CBN - sedative effect",
+      "target": "70-90% cloudy, 10-30% amber for balanced effect"
+    },
+    "visual_indicators": [
+      "Pistils 70%+ brown/orange (not always reliable)",
+      "Calyxes fully swollen",
+      "No new white pistil growth",
+      "Fan leaves yellowing naturally",
+      "Buds feel dense and firm"
+    ],
+    "timing_notes": [
+      "Check trichomes on buds, not sugar leaves",
+      "Use 60x loupe or USB microscope",
+      "Different strains mature differently",
+      "Sativa-dominant often takes longer",
+      "Indica-dominant typically finishes faster"
+    ]
+  },
+  "system_reference": {
+    "tanks": {
+      "tank_1": { "name": "Tank 1 - Grow 1", "capacity_gallons": 100 },
+      "tank_2": { "name": "Tank 2 - Grow 2", "capacity_gallons": 100 },
+      "tank_3": { "name": "Tank 3 - Nursery", "capacity_gallons": 35 }
+    },
+    "timing_defaults": {
+      "fill_timeout_minutes": 60,
+      "mix_duration_minutes": 5,
+      "send_timeout_minutes": 30,
+      "ph_tolerance": 0.1,
+      "ec_tolerance": 0.1,
+      "min_water_gallons": 20
+    },
+    "flow_meters": {
+      "pulses_per_gallon": 220,
+      "max_flow_gallons": 100,
+      "flow_timeout_minutes": 60
+    }
+  },
+  "troubleshooting": {
+    "ec_too_high": [
+      "Check for salt buildup in lines",
+      "Verify calibration",
+      "Reduce nutrient concentration",
+      "Flush system and substrate"
+    ],
+    "ec_too_low": [
+      "Verify calibration",
+      "Check for leaks diluting solution",
+      "Increase nutrient concentration",
+      "Ensure pumps are dispensing correctly"
+    ],
+    "ph_drifting": [
+      "Check probe storage - use storage solution not water",
+      "Recalibrate with fresh buffers",
+      "Replace probe if old or damaged",
+      "Check for contamination in reservoir"
+    ],
+    "pump_not_dispensing": [
+      "Check for air in lines - prime pump",
+      "Verify tubing not kinked or worn",
+      "Check calibration status",
+      "Verify pump is receiving commands"
+    ]
+  }
+}

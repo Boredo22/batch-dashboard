@@ -1,0 +1,88 @@
+{
+  "dli_targets": [
+    {
+      "stage": "Clone",
+      "dli_mol": [8, 12],
+      "ppfd_umol": [150, 250],
+      "photoperiod_hours": 18,
+      "notes": "Low light, high humidity"
+    },
+    {
+      "stage": "Seedling",
+      "dli_mol": [12, 18],
+      "ppfd_umol": [200, 300],
+      "photoperiod_hours": 18,
+      "notes": "Gradually increase as plants establish"
+    },
+    {
+      "stage": "Early Veg",
+      "dli_mol": [18, 25],
+      "ppfd_umol": [300, 400],
+      "photoperiod_hours": 18,
+      "notes": "Push light as roots develop"
+    },
+    {
+      "stage": "Late Veg",
+      "dli_mol": [25, 35],
+      "ppfd_umol": [400, 600],
+      "photoperiod_hours": 18,
+      "notes": "Maximum vegetative growth"
+    },
+    {
+      "stage": "Early Flower",
+      "dli_mol": [35, 45],
+      "ppfd_umol": [600, 800],
+      "photoperiod_hours": 12,
+      "notes": "Stretch phase - ramp up intensity"
+    },
+    {
+      "stage": "Peak Flower",
+      "dli_mol": [40, 55],
+      "ppfd_umol": [800, 1000],
+      "photoperiod_hours": 12,
+      "notes": "Bulk phase - maximum intensity"
+    },
+    {
+      "stage": "Late Flower",
+      "dli_mol": [35, 45],
+      "ppfd_umol": [600, 800],
+      "photoperiod_hours": 12,
+      "notes": "Can reduce slightly during ripening"
+    }
+  ],
+  "photoperiods": {
+    "vegetative": {
+      "light_hours": 18,
+      "dark_hours": 6,
+      "notes": "Standard veg schedule, some growers use 20/4"
+    },
+    "flower_trigger": {
+      "light_hours": 12,
+      "dark_hours": 12,
+      "notes": "Uninterrupted dark period critical"
+    },
+    "autoflower": {
+      "light_hours": 18,
+      "dark_hours": 6,
+      "notes": "Can run 18/6 entire cycle for autos"
+    },
+    "finisher": {
+      "light_hours": [10, 11],
+      "dark_hours": [13, 14],
+      "notes": "Optional - can enhance ripening in final 1-2 weeks"
+    }
+  },
+  "light_distance_guidelines": {
+    "led_bar_style": {
+      "clone_seedling_inches": [24, 36],
+      "veg_inches": [18, 24],
+      "flower_inches": [12, 18],
+      "notes": "Adjust based on PPFD readings"
+    },
+    "general_rule": "Start high, lower gradually while monitoring for stress (leaf taco, bleaching)"
+  },
+  "formulas": {
+    "dli_calculation": "DLI = PPFD × (photoperiod hours × 3600) / 1,000,000",
+    "ppfd_from_dli": "PPFD = (DLI × 1,000,000) / (photoperiod hours × 3600)"
+  }
+}

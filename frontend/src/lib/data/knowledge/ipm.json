@@ -1,0 +1,139 @@
+{
+  "philosophy": "Prevention over treatment - maintain consistent biological program",
+  "weekly_schedule": {
+    "monday": {
+      "application": "Foliar spray - fungal prevention",
+      "product": "Bacillus subtilis",
+      "target": "Powdery mildew, root rot prevention",
+      "timing": "Lights off or low light",
+      "concentration": "Per label rate"
+    },
+    "wednesday": {
+      "application": "Foliar spray - insect prevention",
+      "product": "Beauveria bassiana",
+      "target": "Thrips, whiteflies, aphids",
+      "timing": "Lights off",
+      "concentration": "Per label rate"
+    },
+    "friday": {
+      "application": "Root drench - beneficial microbes",
+      "product": "Trichoderma",
+      "target": "Root health, disease prevention",
+      "timing": "With normal irrigation",
+      "concentration": "Per label rate"
+    }
+  },
+  "products": [
+    {
+      "name": "Bacillus subtilis",
+      "type": "Bacterial fungicide",
+      "target_pests": ["Powdery mildew", "Botrytis", "Root rot", "Fusarium"],
+      "application_method": ["Foliar spray", "Root drench"],
+      "frequency": "Weekly preventive, or as needed for treatment",
+      "flower_safe": true,
+      "notes": "Apply in low light or lights off. Safe up to harvest."
+    },
+    {
+      "name": "Beauveria bassiana",
+      "type": "Fungal insecticide",
+      "target_pests": ["Thrips", "Whiteflies", "Aphids", "Spider mites", "Fungus gnats"],
+      "application_method": ["Foliar spray"],
+      "frequency": "Weekly preventive",
+      "flower_safe": true,
+      "notes": "Spores infect and kill soft-bodied insects. Best applied in evening."
+    },
+    {
+      "name": "Bacillus thuringiensis (Bt)",
+      "type": "Bacterial insecticide",
+      "target_pests": ["Fungus gnat larvae", "Caterpillars", "Moth larvae"],
+      "application_method": ["Root drench", "Foliar spray"],
+      "frequency": "As needed",
+      "flower_safe": true,
+      "notes": "Specifically targets larvae. Safe for beneficials."
+    },
+    {
+      "name": "Trichoderma",
+      "type": "Beneficial fungus",
+      "target_pests": ["Root rot", "Pythium", "Fusarium"],
+      "application_method": ["Root drench", "Media amendment"],
+      "frequency": "Weekly",
+      "flower_safe": true,
+      "notes": "Colonizes root zone, outcompetes pathogens. Excellent preventive."
+    },
+    {
+      "name": "Spinosad",
+      "type": "Natural insecticide",
+      "target_pests": ["Spider mites", "Thrips", "Caterpillars", "Leaf miners"],
+      "application_method": ["Foliar spray"],
+      "frequency": "As needed for active infestations",
+      "flower_safe": "Use caution in late flower",
+      "notes": "Derived from soil bacteria. Fast knockdown. Rotate with other products."
+    }
+  ],
+  "predatory_insects": [
+    {
+      "name": "Stratiolaelaps scimitus",
+      "formerly": "Hypoaspis miles",
+      "target": "Fungus gnat larvae, thrips pupae",
+      "release_rate": "10,000-25,000 per 1000 sq ft",
+      "frequency": "Every 2-4 weeks",
+      "notes": "Lives in soil/media, hunts larvae"
+    },
+    {
+      "name": "Amblyseius swirskii",
+      "target": "Thrips, whiteflies, spider mites",
+      "release_rate": "50-100 per plant",
+      "frequency": "Every 1-2 weeks during veg",
+      "notes": "Generalist predator, excellent preventive"
+    },
+    {
+      "name": "Amblyseius californicus",
+      "target": "Spider mites (two-spotted)",
+      "release_rate": "2-5 per sq ft",
+      "frequency": "At first sign of mites",
+      "notes": "Persists even when prey is scarce"
+    },
+    {
+      "name": "Orius insidiosus",
+      "common_name": "Minute pirate bug",
+      "target": "Thrips (all stages)",
+      "release_rate": "1-2 per 10 sq ft",
+      "frequency": "Bi-weekly",
+      "notes": "Aggressive thrips predator"
+    }
+  ],
+  "pest_identification": {
+    "spider_mites": {
+      "signs": ["Fine webbing on undersides of leaves", "Yellow stippling", "Tiny moving dots"],
+      "treatment": ["Spinosad", "Beauveria bassiana", "Amblyseius californicus"],
+      "prevention": ["Maintain humidity 50%+", "Regular scouting", "Predatory mites"]
+    },
+    "thrips": {
+      "signs": ["Silver streaks on leaves", "Black dots (frass)", "Damaged flower petals"],
+      "treatment": ["Spinosad", "Beauveria bassiana", "Orius"],
+      "prevention": ["Blue sticky traps", "Amblyseius swirskii", "Weekly Beauveria"]
+    },
+    "fungus_gnats": {
+      "signs": ["Small flies around soil", "Larvae in media", "Seedling damage"],
+      "treatment": ["Bt drench", "Stratiolaelaps", "Let media dry between waterings"],
+      "prevention": ["Yellow sticky traps", "Don't overwater", "Beneficial nematodes"]
+    },
+    "powdery_mildew": {
+      "signs": ["White powdery spots on leaves", "Spreads rapidly in high humidity"],
+      "treatment": ["Bacillus subtilis", "Potassium bicarbonate", "Remove affected leaves"],
+      "prevention": ["Good airflow", "Keep humidity below 60%", "Weekly Bacillus"]
+    },
+    "botrytis": {
+      "signs": ["Gray fuzzy mold on buds", "Brown rotting tissue", "Appears in dense colas"],
+      "treatment": ["Remove affected material immediately", "Improve airflow", "Lower humidity"],
+      "prevention": ["Humidity below 50% in flower", "Good airflow", "Don't wet buds"]
+    }
+  },
+  "application_tips": {
+    "timing": "Always apply in low light or lights off - prevents leaf burn and improves efficacy",
+    "coverage": "Spray undersides of leaves where pests hide",
+    "rotation": "Rotate products to prevent resistance",
+    "scouting": "Check plants 2-3x weekly with loupe or microscope",
+    "isolation": "Quarantine new plants for 1-2 weeks before introducing to main grow"
+  }
+}

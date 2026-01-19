@@ -1,0 +1,92 @@
+{
+  "media": "100% Coco Coir",
+  "strategies": {
+    "vegetative": {
+      "label": "Vegetative Steering",
+      "goal": "Maximize plant size, root development, leaf production",
+      "dryback_percent": [5, 15],
+      "ec_range": [2.0, 2.2],
+      "irrigation_frequency": "High frequency, small shots",
+      "irrigation_events_per_day": [8, 15],
+      "shot_size": "Small - 2-4% of container volume",
+      "temperature_strategy": "Minimal day/night differential (5-8°F)",
+      "vpd_range_kpa": [0.8, 1.0],
+      "best_for": ["Early veg", "Recovery from stress", "Building structure"],
+      "signs_of_success": ["Rapid leaf expansion", "Strong branching", "Healthy green color"]
+    },
+    "generative": {
+      "label": "Generative Steering",
+      "goal": "Promote flowering, fruit/flower production, ripening",
+      "dryback_percent": [20, 35],
+      "ec_range": [2.2, 2.3],
+      "irrigation_frequency": "Less frequent, larger shots",
+      "irrigation_events_per_day": [4, 8],
+      "shot_size": "Larger - 5-10% of container volume",
+      "temperature_strategy": "10-15°F day/night differential",
+      "vpd_range_kpa": [1.2, 1.5],
+      "best_for": ["Flower initiation", "Bulk phase", "Ripening"],
+      "signs_of_success": ["Increased flower sites", "Denser buds", "Earlier maturation"]
+    },
+    "balanced": {
+      "label": "Balanced Approach",
+      "goal": "Maintain healthy growth while flowering",
+      "dryback_percent": [10, 20],
+      "ec_range": [2.2, 2.2],
+      "irrigation_frequency": "Moderate",
+      "irrigation_events_per_day": [6, 10],
+      "shot_size": "Medium - 3-6% of container volume",
+      "temperature_strategy": "5-10°F day/night differential",
+      "vpd_range_kpa": [1.0, 1.2],
+      "best_for": ["Mid-flower", "Maintaining structure during bulk"],
+      "signs_of_success": ["Steady growth", "Good flower development", "No stress signs"]
+    }
+  },
+  "irrigation_timing": {
+    "first_irrigation": {
+      "timing": "1-2 hours after lights on",
+      "notes": "Allow plant to wake up and begin transpiring"
+    },
+    "p1_shot": {
+      "description": "First irrigation of the day",
+      "size": "Largest shot (15-20% of daily volume)",
+      "purpose": "Rehydrate substrate after overnight dryback"
+    },
+    "maintenance_shots": {
+      "description": "P2-P4 shots",
+      "size": "Medium shots",
+      "purpose": "Maintain field capacity"
+    },
+    "final_shots": {
+      "description": "P5+ shots",
+      "size": "Smaller shots",
+      "purpose": "Top off before night"
+    },
+    "last_irrigation": {
+      "timing": "2-3 hours before lights off",
+      "notes": "Allow dryback to begin before dark period"
+    },
+    "night": {
+      "irrigation": "None",
+      "notes": "Allow overnight dryback for generative signaling"
+    }
+  },
+  "coco_specific": {
+    "notes": [
+      "Coco dries back faster than rockwool - monitor closely",
+      "High-frequency fertigation (6-12+ events/day) is common",
+      "Coco has natural cation exchange - holds calcium/magnesium well",
+      "Never let coco dry out completely - damages root zone",
+      "Aim for 10-20% runoff to prevent salt accumulation"
+    ],
+    "runoff_target_percent": [10, 20],
+    "field_capacity_description": "Substrate is saturated but not dripping"
+  },
+  "dryback_guide": {
+    "how_to_measure": "Weigh pot at field capacity (wet), weigh at driest point, calculate percentage loss",
+    "formula": "Dryback % = ((Wet Weight - Current Weight) / (Wet Weight - Dry Weight)) × 100",
+    "warning_signs": {
+      "too_dry": ["Leaf wilting", "Curling", "Slowed growth"],
+      "too_wet": ["Root rot", "Nutrient lockout", "Slow dryback"]
+    }
+  }
+}

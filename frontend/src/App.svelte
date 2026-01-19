@@ -6,6 +6,7 @@
   import Settings from './Settings.svelte';
   import HeadGrower from './HeadGrower.svelte';
   import Nutrients from './Nutrients.svelte';
+  import Knowledge from './Knowledge.svelte';
   import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
 
   let currentPage = $state('headgrower');
@@ -54,6 +55,12 @@
           subtitle: 'Configuration and preferences',
           breadcrumbs: [{ title: 'Settings' }]
         };
+      case 'knowledge':
+        return {
+          title: 'Knowledge Base',
+          subtitle: 'Growing reference, SOPs, and best practices',
+          breadcrumbs: [{ title: 'Knowledge' }]
+        };
       default:
         return {
           title: 'Nutrient Mixing System',
@@ -92,6 +99,8 @@
         <Stage2Testing />
       {:else if currentPage === 'settings'}
         <Settings />
+      {:else if currentPage === 'knowledge'}
+        <Knowledge />
       {/if}
     {/snippet}
   </DashboardLayout>

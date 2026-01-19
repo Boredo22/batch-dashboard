@@ -1,0 +1,105 @@
+{
+  "protocol_summary": {
+    "philosophy": "Keep it simple - consistent EC and pH throughout the grow cycle",
+    "target_ph": 6.2,
+    "target_ec": 2.2,
+    "heavy_flower_ec": 2.3,
+    "media": "100% Coco Coir",
+    "water_source": "Well water (~500 ppm)",
+    "notes": "Due to 500 ppm well water, actual nutrient dosing runs slightly under label rate to hit EC targets"
+  },
+  "ec_ph_by_stage": [
+    { "stage": "Clone", "ec": [1.0, 1.2], "ph": 6.2, "notes": "Clonex Solution" },
+    { "stage": "Veg (all)", "ec": [2.2, 2.2], "ph": 6.2, "notes": "Constant, simple" },
+    { "stage": "Early Flower", "ec": [2.2, 2.2], "ph": 6.2, "notes": "Maintain consistency" },
+    { "stage": "Heavy Flower (Wk 4-6)", "ec": [2.3, 2.3], "ph": 6.2, "notes": "Slight bump for bulk" },
+    { "stage": "Late Flower/Ripen", "ec": [2.2, 2.2], "ph": 6.2, "notes": "Back to standard" },
+    { "stage": "Flush", "ec": [0.0, 0.3], "ph": 6.2, "notes": "Plain water" }
+  ],
+  "crop_salt": {
+    "line": "Crop Salt Liquid Concentrate",
+    "products": [
+      {
+        "name": "Veg A",
+        "label_rate_ml_gal": 30,
+        "usage": "Vegetative growth - nitrogen focused",
+        "stages": ["veg"]
+      },
+      {
+        "name": "Veg B",
+        "label_rate_ml_gal": 30,
+        "usage": "Vegetative growth - calcium/magnesium",
+        "stages": ["veg"]
+      },
+      {
+        "name": "Bloom A",
+        "label_rate_ml_gal": 30,
+        "usage": "Flowering - phosphorus focused",
+        "stages": ["flower"]
+      },
+      {
+        "name": "Bloom B",
+        "label_rate_ml_gal": 30,
+        "usage": "Flowering - potassium focused",
+        "stages": ["flower"]
+      },
+      {
+        "name": "Cake",
+        "usage": "Carbohydrate/sugar supplement for flower development",
+        "stages": ["mid_flower", "late_flower"]
+      },
+      {
+        "name": "PK Synergy",
+        "usage": "PK booster for bulk and ripening",
+        "stages": ["mid_flower", "late_flower"]
+      },
+      {
+        "name": "Runclean",
+        "default_ml_gal": 0.2,
+        "usage": "Enzyme cleaner - prevents salt buildup",
+        "stages": ["all"]
+      },
+      {
+        "name": "pH Down",
+        "default_ml_gal": 0.5,
+        "usage": "pH adjustment",
+        "stages": ["as_needed"]
+      }
+    ]
+  },
+  "additives": {
+    "power_si_bloom": {
+      "name": "Power Si Bloom",
+      "type": "Silicate supplement",
+      "benefits": ["Stronger cell walls", "Increased pest resistance", "Better structure"],
+      "usage": "Throughout veg and flower",
+      "notes": "Add first before other nutrients, silicate can precipitate"
+    },
+    "clonex_solution": {
+      "name": "Clonex Clone Solution",
+      "type": "Rooting nutrient",
+      "usage": "Clone stage only",
+      "ec_target": [1.0, 1.2],
+      "notes": "Low EC, high humidity for root development"
+    },
+    "clonex_mist": {
+      "name": "Clonex Mist",
+      "type": "Foliar spray",
+      "usage": "Spray cuttings and young clones",
+      "frequency": "2-3x daily until roots show",
+      "notes": "Reduces transplant stress"
+    }
+  },
+  "flush_protocol": {
+    "duration_days": [7, 14],
+    "timing": "Begin when trichomes are 70-80% cloudy",
+    "ec_target": [0.0, 0.3],
+    "ph": 6.2,
+    "method": "Plain water only",
+    "indicators": [
+      "Fan leaves begin yellowing naturally",
+      "No new white pistils",
+      "Trichomes transitioning to amber"
+    ]
+  }
+}
