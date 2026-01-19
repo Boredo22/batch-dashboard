@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import DashboardLayout from '$lib/components/layout/dashboard-layout.svelte';
   import Dashboard from './Dashboard.svelte';
-  import Stage2Testing from './Stage2Testing.svelte';
+  import FillTank from './FillTank.svelte';
   import Settings from './Settings.svelte';
   import HeadGrower from './HeadGrower.svelte';
   import Nutrients from './Nutrients.svelte';
@@ -45,9 +45,9 @@
         };
       case 'stage2':
         return {
-          title: 'Stage 2 Testing',
-          subtitle: 'Complete job process testing',
-          breadcrumbs: [{ title: 'Stage 2', href: '#' }, { title: 'Job Testing' }]
+          title: 'Fill Tank',
+          subtitle: 'Tank filling, nutrient mixing, and distribution',
+          breadcrumbs: [{ title: 'Operations', href: '#' }, { title: 'Fill Tank' }]
         };
       case 'settings':
         return {
@@ -96,7 +96,7 @@
       {:else if currentPage === 'stage1'}
         <Dashboard />
       {:else if currentPage === 'stage2'}
-        <Stage2Testing />
+        <FillTank />
       {:else if currentPage === 'settings'}
         <Settings />
       {:else if currentPage === 'knowledge'}
