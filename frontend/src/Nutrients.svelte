@@ -1,5 +1,5 @@
 <script>
-  import { Beaker, Play, Square, Settings, Droplets, AlertTriangle, CheckCircle, XCircle, Loader2, RotateCcw, Trash2 } from '@lucide/svelte/icons';
+  import { Beaker, Play, Square, Settings, Droplets, AlertTriangle, CheckCircle, XCircle, Loader2, RotateCcw, Trash2, Zap, Activity, Clock } from '@lucide/svelte/icons';
   import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -8,6 +8,7 @@
   import { TabsRoot, TabsList, TabsTrigger, TabsContent } from '$lib/components/ui/tabs';
   import { Select, SelectTrigger, SelectContent, SelectItem } from '$lib/components/ui/select';
   import { Label } from '$lib/components/ui/label';
+  import { Checkbox } from '$lib/components/ui/checkbox';
   import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
 
   // Get reactive system status from SSE store
@@ -54,9 +55,29 @@
   let activeTab = $state('pumps');
   let lastUpdate = $state(new Date());
 
+  // Quick actions state
+  let primingPumps = $state(new Set());
+  let primeVolume = $state(2); // ml to prime
+
+  // Batch dispense state
+  let batchMode = $state(false);
+  let selectedPumps = $state(new Set());
+  let batchAmount = $state(10);
+
+  // Activity log
+  let activityLog = $state([]);
+
   // Derived states
   let isConnected = $derived(sseStatus.isConnected);
   let lastProcessedTimestamp = '';
+
+  // Pump health summary
+  let pumpHealthSummary = $derived(() => {
+    const total = pumps.length || 8;
+    const calibrated = pumps.filter(p => p.calibrated || p.calibration_status === 'calibrated' || p.calibration_status === 'single_point').length;
+    const running = pumps.filter(p => p.status === 'running').length;
+    return { total, calibrated, running };
+  });
 
   // SSE subscription
   let unsubscribe = null;
@@ -139,6 +160,7 @@
 
     dispensingPumps.add(pumpId);
     dispensingPumps = new Set(dispensingPumps);
+    logActivity('dispense', pumpId, `${amount}ml`);
 
     try {
       const response = await fetch(`/api/pumps/${pumpId}/dispense`, {
@@ -265,6 +287,98 @@
     }
   }
 
+  // Activity logging
+  function logActivity(action, pumpId, details = '') {
+    const entry = {
+      timestamp: new Date(),
+      action,
+      pumpId,
+      details
+    };
+    activityLog = [entry, ...activityLog].slice(0, 20); // Keep last 20 entries
+  }
+
+  // Prime pump function
+  async function primePump(pumpId) {
+    primingPumps.add(pumpId);
+    primingPumps = new Set(primingPumps);
+    logActivity('prime', pumpId, `${primeVolume}ml`);
+
+    try {
+      const response = await fetch(`/api/pumps/${pumpId}/dispense`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: primeVolume })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to prime pump');
+      }
+
+      // Wait for prime to complete
+      setTimeout(() => {
+        primingPumps.delete(pumpId);
+        primingPumps = new Set(primingPumps);
+      }, 3000);
+    } catch (error) {
+      console.error(`Error priming pump ${pumpId}:`, error);
+      primingPumps.delete(pumpId);
+      primingPumps = new Set(primingPumps);
+    }
+  }
+
+  async function primeAllPumps() {
+    for (let pumpId = 1; pumpId <= 8; pumpId++) {
+      await primePump(pumpId);
+      // Small delay between pumps to avoid overwhelming the system
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  // Batch dispense functions
+  function togglePumpSelection(pumpId) {
+    if (selectedPumps.has(pumpId)) {
+      selectedPumps.delete(pumpId);
+    } else {
+      selectedPumps.add(pumpId);
+    }
+    selectedPumps = new Set(selectedPumps);
+  }
+
+  function selectAllPumps() {
+    selectedPumps = new Set([1, 2, 3, 4, 5, 6, 7, 8]);
+  }
+
+  function clearPumpSelection() {
+    selectedPumps = new Set();
+  }
+
+  async function batchDispense() {
+    if (selectedPumps.size === 0 || batchAmount <= 0) return;
+
+    const pumpsToDispense = [...selectedPumps];
+    for (const pumpId of pumpsToDispense) {
+      dispensingPumps.add(pumpId);
+    }
+    dispensingPumps = new Set(dispensingPumps);
+
+    logActivity('batch', null, `${pumpsToDispense.length} pumps × ${batchAmount}ml`);
+
+    for (const pumpId of pumpsToDispense) {
+      try {
+        await fetch(`/api/pumps/${pumpId}/dispense`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: batchAmount })
+        });
+      } catch (error) {
+        console.error(`Error dispensing from pump ${pumpId}:`, error);
+        dispensingPumps.delete(pumpId);
+      }
+    }
+    dispensingPumps = new Set(dispensingPumps);
+  }
+
   function getPumpData(pumpId) {
     return pumps.find(p => p.id === pumpId) || {
       id: pumpId,
@@ -332,6 +446,81 @@
       {statusMessage}
     </div>
   {/if}
+
+  <!-- Quick Stats & Actions Row -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <!-- Pump Health Overview -->
+    <Card class="col-span-1 md:col-span-2">
+      <CardHeader class="pb-2">
+        <CardTitle class="text-sm font-medium flex items-center gap-2">
+          <Activity class="h-4 w-4 text-primary" />
+          Pump Status Overview
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div class="flex items-center gap-6">
+          <div class="text-center">
+            <div class="text-2xl font-bold text-foreground">{pumpHealthSummary().calibrated}/{pumpHealthSummary().total}</div>
+            <div class="text-xs text-muted-foreground">Calibrated</div>
+          </div>
+          <div class="text-center">
+            <div class="text-2xl font-bold text-green-500">{pumpHealthSummary().running}</div>
+            <div class="text-xs text-muted-foreground">Running</div>
+          </div>
+          <div class="text-center">
+            <div class="text-2xl font-bold text-muted-foreground">{dispensingPumps.size}</div>
+            <div class="text-xs text-muted-foreground">Dispensing</div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+
+    <!-- Quick Actions -->
+    <Card class="col-span-1 md:col-span-2">
+      <CardHeader class="pb-2">
+        <CardTitle class="text-sm font-medium flex items-center gap-2">
+          <Zap class="h-4 w-4 text-yellow-500" />
+          Quick Actions
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="flex items-center gap-2">
+            <Label class="text-xs text-muted-foreground whitespace-nowrap">Prime (ml):</Label>
+            <Input
+              type="number"
+              min="0.5"
+              max="10"
+              step="0.5"
+              bind:value={primeVolume}
+              class="w-16 h-8 text-sm"
+            />
+          </div>
+          <Button size="sm" variant="outline" onclick={primeAllPumps} class="gap-1">
+            <Droplets class="h-3 w-3" />
+            Prime All
+          </Button>
+          <div class="flex gap-1">
+            {#each [1, 2, 3, 4, 5, 6, 7, 8] as pumpId}
+              <Button
+                size="sm"
+                variant={primingPumps.has(pumpId) ? 'default' : 'ghost'}
+                class="h-8 w-8 p-0 text-xs"
+                onclick={() => primePump(pumpId)}
+                disabled={primingPumps.has(pumpId)}
+              >
+                {#if primingPumps.has(pumpId)}
+                  <Loader2 class="h-3 w-3 animate-spin" />
+                {:else}
+                  {pumpId}
+                {/if}
+              </Button>
+            {/each}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  </div>
 
   <!-- Tabs -->
   <TabsRoot bind:value={activeTab} class="w-full">
@@ -408,15 +597,65 @@
 
     <!-- Test Dispense Tab -->
     <TabsContent value="test">
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+      <!-- Batch Mode Controls -->
+      <Card class="mt-4 mb-4">
+        <CardContent class="py-4">
+          <div class="flex flex-wrap items-center gap-4">
+            <div class="flex items-center gap-2">
+              <Checkbox bind:checked={batchMode} id="batch-mode" />
+              <Label for="batch-mode" class="text-sm font-medium cursor-pointer">Batch Mode</Label>
+            </div>
+            {#if batchMode}
+              <div class="flex items-center gap-2">
+                <Label class="text-xs text-muted-foreground">Amount (ml):</Label>
+                <Input
+                  type="number"
+                  min="0.5"
+                  max="500"
+                  step="0.5"
+                  bind:value={batchAmount}
+                  class="w-20 h-8 text-sm"
+                />
+              </div>
+              <div class="flex items-center gap-2">
+                <Button size="sm" variant="ghost" onclick={selectAllPumps}>Select All</Button>
+                <Button size="sm" variant="ghost" onclick={clearPumpSelection}>Clear</Button>
+              </div>
+              <Badge variant="outline" class="ml-auto">
+                {selectedPumps.size} pump{selectedPumps.size !== 1 ? 's' : ''} selected
+              </Badge>
+              <Button
+                size="sm"
+                onclick={batchDispense}
+                disabled={selectedPumps.size === 0 || batchAmount <= 0}
+                class="gap-1"
+              >
+                <Play class="h-3 w-3" />
+                Dispense All
+              </Button>
+            {/if}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {#each [1, 2, 3, 4, 5, 6, 7, 8] as pumpId}
           {@const pump = getPumpData(pumpId)}
           {@const config = pumpConfig[pumpId]}
           {@const isDispensing = dispensingPumps.has(pumpId)}
-          <Card class={isDispensing ? 'ring-2 ring-green-500' : ''}>
+          {@const isSelected = selectedPumps.has(pumpId)}
+          <Card class="{isDispensing ? 'ring-2 ring-green-500' : ''} {batchMode && isSelected ? 'ring-2 ring-primary' : ''}">
             <CardHeader class="pb-3">
               <div class="flex items-center justify-between">
-                <CardTitle class="text-lg">{config?.label || `Pump ${pumpId}`}</CardTitle>
+                <div class="flex items-center gap-2">
+                  {#if batchMode}
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={() => togglePumpSelection(pumpId)}
+                    />
+                  {/if}
+                  <CardTitle class="text-lg">{config?.label || `Pump ${pumpId}`}</CardTitle>
+                </div>
                 <span class="text-xs text-muted-foreground">Pump {pumpId}</span>
               </div>
               <CardDescription>
@@ -424,18 +663,20 @@
               </CardDescription>
             </CardHeader>
             <CardContent class="space-y-4">
-              <div class="space-y-2">
-                <Label class="text-xs text-muted-foreground">Amount (ml)</Label>
-                <Input
-                  type="number"
-                  min="0.5"
-                  max="500"
-                  step="0.5"
-                  bind:value={testAmounts[pumpId]}
-                  disabled={isDispensing}
-                  class="text-center"
-                />
-              </div>
+              {#if !batchMode}
+                <div class="space-y-2">
+                  <Label class="text-xs text-muted-foreground">Amount (ml)</Label>
+                  <Input
+                    type="number"
+                    min="0.5"
+                    max="500"
+                    step="0.5"
+                    bind:value={testAmounts[pumpId]}
+                    disabled={isDispensing}
+                    class="text-center"
+                  />
+                </div>
+              {/if}
 
               {#if isDispensing && pump.target_volume > 0}
                 <div class="space-y-2">
@@ -451,27 +692,29 @@
                 </div>
               {/if}
             </CardContent>
-            <CardFooter class="pt-0">
-              {#if isDispensing}
-                <Button
-                  variant="destructive"
-                  class="w-full gap-2"
-                  onclick={() => stopPump(pumpId)}
-                >
-                  <Square class="h-4 w-4" />
-                  Stop
-                </Button>
-              {:else}
-                <Button
-                  class="w-full gap-2"
-                  onclick={() => testDispense(pumpId)}
-                  disabled={!testAmounts[pumpId] || testAmounts[pumpId] <= 0}
-                >
-                  <Play class="h-4 w-4" />
-                  Dispense
-                </Button>
-              {/if}
-            </CardFooter>
+            {#if !batchMode}
+              <CardFooter class="pt-0">
+                {#if isDispensing}
+                  <Button
+                    variant="destructive"
+                    class="w-full gap-2"
+                    onclick={() => stopPump(pumpId)}
+                  >
+                    <Square class="h-4 w-4" />
+                    Stop
+                  </Button>
+                {:else}
+                  <Button
+                    class="w-full gap-2"
+                    onclick={() => testDispense(pumpId)}
+                    disabled={!testAmounts[pumpId] || testAmounts[pumpId] <= 0}
+                  >
+                    <Play class="h-4 w-4" />
+                    Dispense
+                  </Button>
+                {/if}
+              </CardFooter>
+            {/if}
           </Card>
         {/each}
       </div>
@@ -613,4 +856,43 @@
       </Card>
     </TabsContent>
   </TabsRoot>
+
+  <!-- Recent Activity Log -->
+  {#if activityLog.length > 0}
+    <Card>
+      <CardHeader class="pb-2">
+        <CardTitle class="text-sm font-medium flex items-center gap-2">
+          <Clock class="h-4 w-4 text-muted-foreground" />
+          Recent Activity
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div class="space-y-2 max-h-48 overflow-y-auto">
+          {#each activityLog as entry}
+            <div class="flex items-center justify-between text-sm py-1 border-b border-border/50 last:border-0">
+              <div class="flex items-center gap-2">
+                {#if entry.action === 'dispense'}
+                  <Play class="h-3 w-3 text-green-500" />
+                  <span>Pump {entry.pumpId}</span>
+                {:else if entry.action === 'prime'}
+                  <Droplets class="h-3 w-3 text-blue-500" />
+                  <span>Prime Pump {entry.pumpId}</span>
+                {:else if entry.action === 'batch'}
+                  <Zap class="h-3 w-3 text-yellow-500" />
+                  <span>Batch Dispense</span>
+                {:else}
+                  <Activity class="h-3 w-3 text-muted-foreground" />
+                  <span>{entry.action}</span>
+                {/if}
+                <span class="text-muted-foreground">{entry.details}</span>
+              </div>
+              <span class="text-xs text-muted-foreground">
+                {entry.timestamp.toLocaleTimeString()}
+              </span>
+            </div>
+          {/each}
+        </div>
+      </CardContent>
+    </Card>
+  {/if}
 </div>

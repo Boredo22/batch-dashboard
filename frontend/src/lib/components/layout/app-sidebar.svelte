@@ -15,7 +15,7 @@
 
   const menuItems = [
     {
-      title: "Head Grower",
+      title: "Dashboard",
       page: "headgrower",
       icon: LayoutDashboard,
       description: "Complete growing operations"
