@@ -442,6 +442,191 @@ def api_save_nutrients():
         }), 500
 
 # =============================================================================
+# GROW CYCLES ENDPOINTS - Plant cycle tracking and daily reports
+# =============================================================================
+
+GROW_CYCLES_FILE = 'grow_cycles.json'
+
+@app.route('/api/grow-cycles', methods=['GET'])
+def api_get_grow_cycles():
+    """Get grow cycles configuration"""
+    try:
+        import json
+        import os
+
+        if os.path.exists(GROW_CYCLES_FILE):
+            with open(GROW_CYCLES_FILE, 'r') as f:
+                data = json.load(f)
+        else:
+            data = {"cycles": {}}
+            with open(GROW_CYCLES_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+
+        return jsonify(data)
+
+    except Exception as e:
+        logger.error(f"Error loading grow cycles: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/grow-cycles', methods=['POST'])
+def api_save_grow_cycles():
+    """Save grow cycles configuration"""
+    try:
+        import json
+
+        data = request.get_json()
+        if not data or 'cycles' not in data:
+            return jsonify({'success': False, 'error': 'Missing cycles data'}), 400
+
+        # Validate each cycle
+        required_fields = ['room_id', 'start_date', 'veg_days', 'flower_days', 'flush_days']
+        for room_id, cycle in data['cycles'].items():
+            for field in required_fields:
+                if field not in cycle:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Cycle for room {room_id} missing required field: {field}'
+                    }), 400
+            # Validate date format
+            try:
+                from datetime import date as dt_date
+                dt_date.fromisoformat(cycle['start_date'])
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'error': f'Invalid date format for room {room_id}: {cycle["start_date"]}'
+                }), 400
+            # Validate day counts are positive
+            for day_field in ['veg_days', 'flower_days', 'flush_days']:
+                if not isinstance(cycle[day_field], (int, float)) or cycle[day_field] < 0:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Invalid {day_field} for room {room_id}: must be a non-negative number'
+                    }), 400
+
+        with open(GROW_CYCLES_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+
+        logger.info("Grow cycles saved successfully")
+        return jsonify({
+            'success': True,
+            'message': 'Grow cycles saved successfully',
+            'timestamp': datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        logger.error(f"Error saving grow cycles: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/grow-cycles/report', methods=['GET'])
+def api_get_grow_cycles_report():
+    """Compute daily watering reports for all active cycles"""
+    try:
+        import json
+        import os
+        from datetime import date as dt_date, timedelta
+
+        # Load cycles
+        if not os.path.exists(GROW_CYCLES_FILE):
+            return jsonify({'reports': []})
+        with open(GROW_CYCLES_FILE, 'r') as f:
+            cycles_data = json.load(f)
+
+        # Load nutrients
+        nutrients_data = {}
+        if os.path.exists('nutrients.json'):
+            with open('nutrients.json', 'r') as f:
+                nutrients_data = json.load(f)
+
+        reports = []
+        today = dt_date.today()
+
+        for room_id, cycle in cycles_data.get('cycles', {}).items():
+            if not cycle.get('active', False):
+                continue
+
+            start = dt_date.fromisoformat(cycle['start_date'])
+            current_day = (today - start).days + 1
+
+            veg_days = int(cycle['veg_days'])
+            flower_days = int(cycle['flower_days'])
+            flush_days = int(cycle['flush_days'])
+            total_days = veg_days + flower_days + flush_days
+
+            # Determine stage
+            if current_day <= 0:
+                stage = 'not_started'
+                stage_day = 0
+            elif current_day <= veg_days:
+                stage = 'veg'
+                stage_day = current_day
+            elif current_day <= veg_days + flower_days:
+                stage = 'flower'
+                stage_day = current_day - veg_days
+            elif current_day <= total_days:
+                stage = 'flush'
+                stage_day = current_day - veg_days - flower_days
+            else:
+                stage = 'complete'
+                stage_day = 0
+
+            # Map stage to recipe
+            recipe_map = {'veg': 'veg_formula', 'flower': 'bloom_formula'}
+            recipe_key = recipe_map.get(stage)
+            recipe = dict(nutrients_data.get(recipe_key, {})) if recipe_key else {}
+
+            # Scale by watering volume
+            volume = cycle.get('watering_volume_gallons', 1)
+            scaled = {name: round(ml * volume, 1) for name, ml in recipe.items()}
+
+            # EC/pH targets by stage
+            if stage == 'veg':
+                target_ec = [2.2, 2.2]
+            elif stage == 'flower':
+                # Heavy flower bump during weeks 4-6
+                heavy_start = max(1, int(flower_days * 0.4))
+                heavy_end = int(flower_days * 0.75)
+                if heavy_start <= stage_day <= heavy_end:
+                    target_ec = [2.3, 2.3]
+                else:
+                    target_ec = [2.2, 2.2]
+            elif stage == 'flush':
+                target_ec = [0.0, 0.3]
+            else:
+                target_ec = [0, 0]
+
+            harvest_date = start + timedelta(days=total_days - 1)
+            days_remaining = max(0, (harvest_date - today).days + 1)
+
+            reports.append({
+                'room_id': room_id,
+                'room_name': cycle.get('room_name', f'Room {room_id}'),
+                'strain': cycle.get('strain', ''),
+                'current_day': max(0, current_day),
+                'total_days': total_days,
+                'current_stage': stage,
+                'stage_day': stage_day,
+                'veg_days': veg_days,
+                'flower_days': flower_days,
+                'flush_days': flush_days,
+                'days_remaining': days_remaining if stage != 'complete' else 0,
+                'harvest_date': harvest_date.isoformat(),
+                'recipe_name': recipe_key or ('flush' if stage == 'flush' else 'none'),
+                'recipe_per_gallon': recipe,
+                'recipe_total_ml': scaled,
+                'watering_volume_gallons': volume,
+                'target_ec': target_ec,
+                'target_ph': 6.2,
+                'notes': cycle.get('notes', '')
+            })
+
+        return jsonify({'reports': reports})
+
+    except Exception as e:
+        logger.error(f"Error generating grow cycle reports: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# =============================================================================
 # API ENDPOINTS - Hardware Control (same patterns as simple_gui.py)
 # =============================================================================
 

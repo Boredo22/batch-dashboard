@@ -8,7 +8,8 @@
     Activity,
     Droplets,
     Zap,
-    BookOpen
+    BookOpen,
+    Sprout
   } from "@lucide/svelte/icons";
 
   let { systemStatus = "disconnected" } = $props();
@@ -25,6 +26,12 @@
       page: "nutrients",
       icon: FlaskConical,
       description: "Manual dispensing & recipes"
+    },
+    {
+      title: "Grow Cycles",
+      page: "grow-cycles",
+      icon: Sprout,
+      description: "Plant cycle tracking & daily reports"
     },
     {
       title: "Knowledge",

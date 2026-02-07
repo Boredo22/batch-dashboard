@@ -7,6 +7,7 @@
   import HeadGrower from './HeadGrower.svelte';
   import Nutrients from './Nutrients.svelte';
   import Knowledge from './Knowledge.svelte';
+  import GrowCycles from './GrowCycles.svelte';
   import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
 
   let currentPage = $state('headgrower');
@@ -36,6 +37,12 @@
           title: 'Nutrient Management',
           subtitle: 'Manual dispensing and recipe management',
           breadcrumbs: [{ title: 'Nutrients' }]
+        };
+      case 'grow-cycles':
+        return {
+          title: 'Grow Cycles',
+          subtitle: 'Plant cycle tracking and daily watering reports',
+          breadcrumbs: [{ title: 'Grow Cycles' }]
         };
       case 'stage1':
         return {
@@ -93,6 +100,8 @@
         <HeadGrower />
       {:else if currentPage === 'nutrients'}
         <Nutrients />
+      {:else if currentPage === 'grow-cycles'}
+        <GrowCycles />
       {:else if currentPage === 'stage1'}
         <Dashboard />
       {:else if currentPage === 'stage2'}
