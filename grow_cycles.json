@@ -1,0 +1,28 @@
+{
+  "cycles": {
+    "1": {
+      "room_id": "1",
+      "room_name": "Grow Room 1",
+      "strain": "",
+      "start_date": "2026-01-01",
+      "veg_days": 28,
+      "flower_days": 50,
+      "flush_days": 14,
+      "watering_volume_gallons": 50,
+      "notes": "",
+      "active": true
+    },
+    "2": {
+      "room_id": "2",
+      "room_name": "Grow Room 2",
+      "strain": "",
+      "start_date": "2025-11-17",
+      "veg_days": 28,
+      "flower_days": 50,
+      "flush_days": 14,
+      "watering_volume_gallons": 50,
+      "notes": "Harvesting Monday Feb 16th",
+      "active": true
+    }
+  }
+}
