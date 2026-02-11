@@ -7,7 +7,7 @@ set -e
 # === CONFIGURATION ===
 APP_DIR="/home/pi/batch-dashboard"       # Adjust to your actual project path on the Pi
 BRANCH="newTablet"                            # Git branch to track for updates
-PYTHON="/home/pi/batch-dashboard/venv/bin/python"  # Path to your virtualenv python
+PYTHON="/home/pi/batch-dashboard/.venv/bin/python"  # Path to your virtualenv python
 LOG_FILE="/var/log/batch-dashboard.log"
 
 # === FUNCTIONS ===
