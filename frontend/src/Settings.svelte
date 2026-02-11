@@ -25,7 +25,9 @@
     FlaskConical,
     Gauge,
     Waves,
-    Zap
+    Zap,
+    Sprout,
+    CalendarDays
   } from "@lucide/svelte/icons";
 
   // ==================== STATE ====================
@@ -71,6 +73,14 @@
       max_pump_volume_ml: 2500.0,
       min_pump_volume_ml: 0.5,
       max_flow_gallons: 100
+    },
+    growDefaults: {
+      veg_days: 28,
+      flower_days: 50,
+      flush_days: 14,
+      flower_veg_nute_days: 21,
+      feedings_per_day: 2,
+      default_watering_volume: 50
     }
   });
 
@@ -155,6 +165,17 @@
           userSettings.ecphDefaults = {
             ec: { min: 1.0, max: 2.0 },
             ph: { min: 5.5, max: 6.5 }
+          };
+        }
+        // Initialize grow cycle defaults
+        if (!userSettings.growDefaults) {
+          userSettings.growDefaults = {
+            veg_days: 28,
+            flower_days: 50,
+            flush_days: 14,
+            flower_veg_nute_days: 21,
+            feedings_per_day: 2,
+            default_watering_volume: 50
           };
         }
       }
@@ -342,7 +363,7 @@
   }
 
   function deleteRecipe(recipeName) {
-    if (['veg_formula', 'bloom_formula'].includes(recipeName)) {
+    if (['veg_formula', 'bloom_formula', 'flush_formula'].includes(recipeName)) {
       alert('Cannot delete default recipes');
       return;
     }
@@ -597,6 +618,87 @@
           </CardContent>
         </Card>
 
+        <!-- Grow Cycle Defaults -->
+        <Card>
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">
+              <Sprout class="size-5" />
+              Grow Cycle Defaults
+            </CardTitle>
+            <CardDescription>Default schedule and feeding settings for new grow cycles</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="grid gap-4 sm:grid-cols-3">
+              <div class="space-y-2">
+                <Label>Veg Days</Label>
+                <Input type="number" bind:value={userSettings.growDefaults.veg_days} min="0" />
+              </div>
+              <div class="space-y-2">
+                <Label>Flower Days</Label>
+                <Input type="number" bind:value={userSettings.growDefaults.flower_days} min="0" />
+              </div>
+              <div class="space-y-2">
+                <Label>Flush Days</Label>
+                <Input type="number" bind:value={userSettings.growDefaults.flush_days} min="0" />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div>
+              <h4 class="text-sm font-medium mb-1">Flower Nutrient Schedule</h4>
+              <p class="text-xs text-muted-foreground mb-3">During flower, veg nutes are used for the first transition period before switching to bloom</p>
+              <div class="grid gap-4 sm:grid-cols-3">
+                <div class="space-y-2">
+                  <Label>Veg Nutes in Flower (days)</Label>
+                  <Input type="number" bind:value={userSettings.growDefaults.flower_veg_nute_days} min="0" />
+                  <p class="text-xs text-muted-foreground">First N days of flower use veg formula</p>
+                </div>
+                <div class="space-y-2">
+                  <Label>Feedings Per Day</Label>
+                  <Input type="number" bind:value={userSettings.growDefaults.feedings_per_day} min="1" max="6" />
+                </div>
+                <div class="space-y-2">
+                  <Label>Default Volume (gal)</Label>
+                  <Input type="number" bind:value={userSettings.growDefaults.default_watering_volume} min="1" />
+                  <p class="text-xs text-muted-foreground">Per feeding, not daily total</p>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div class="p-3 rounded-lg bg-muted/50 text-sm">
+              <div class="flex items-center gap-2 mb-2">
+                <CalendarDays class="size-4 text-muted-foreground" />
+                <span class="font-medium">Schedule Overview</span>
+              </div>
+              <div class="grid grid-cols-3 gap-2 text-xs">
+                <div class="p-2 rounded bg-green-500/10 text-center">
+                  <div class="font-medium text-green-600">Veg</div>
+                  <div>{userSettings.growDefaults.veg_days} days</div>
+                </div>
+                <div class="p-2 rounded bg-purple-500/10 text-center">
+                  <div class="font-medium text-purple-600">Flower</div>
+                  <div>{userSettings.growDefaults.flower_days} days</div>
+                  <div class="text-[10px] text-muted-foreground mt-0.5">
+                    {userSettings.growDefaults.flower_veg_nute_days}d veg nutes &rarr; {Math.max(0, userSettings.growDefaults.flower_days - userSettings.growDefaults.flower_veg_nute_days)}d bloom nutes
+                  </div>
+                </div>
+                <div class="p-2 rounded bg-blue-500/10 text-center">
+                  <div class="font-medium text-blue-600">Flush</div>
+                  <div>{userSettings.growDefaults.flush_days} days</div>
+                  <div class="text-[10px] text-muted-foreground mt-0.5">Cake only</div>
+                </div>
+              </div>
+              <div class="text-center mt-2 text-muted-foreground">
+                Total: {userSettings.growDefaults.veg_days + userSettings.growDefaults.flower_days + userSettings.growDefaults.flush_days} days
+                ({Math.round((userSettings.growDefaults.veg_days + userSettings.growDefaults.flower_days + userSettings.growDefaults.flush_days) / 7)} weeks)
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <!-- Flow Meter Calibration -->
         <Card>
           <CardHeader>
@@ -804,7 +906,7 @@
                     <div class="flex items-center justify-between">
                       <CardTitle class="text-base">{formatRecipeName(recipeName)}</CardTitle>
                       <div class="flex items-center gap-2">
-                        {#if !['veg_formula', 'bloom_formula'].includes(recipeName)}
+                        {#if !['veg_formula', 'bloom_formula', 'flush_formula'].includes(recipeName)}
                           <Button
                             variant="ghost"
                             size="sm"

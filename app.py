@@ -118,6 +118,14 @@ def _build_default_settings():
                 'max_pump_volume_ml': getattr(config, 'MAX_PUMP_VOLUME_ML', 2500.0),
                 'min_pump_volume_ml': getattr(config, 'MIN_PUMP_VOLUME_ML', 0.5),
                 'max_flow_gallons': getattr(config, 'MAX_FLOW_GALLONS', 100)
+            },
+            'growDefaults': {
+                'veg_days': 28,
+                'flower_days': 50,
+                'flush_days': 14,
+                'flower_veg_nute_days': 21,
+                'feedings_per_day': 2,
+                'default_watering_volume': 50
             }
         },
         'developer': {
@@ -564,6 +572,12 @@ def api_get_grow_cycles_report():
             with open('nutrients.json', 'r') as f:
                 nutrients_data = json.load(f)
 
+        # Load grow defaults from settings
+        settings_data = load_settings()
+        grow_defaults = settings_data.get('user', {}).get('growDefaults', {})
+        flower_veg_nute_days = int(grow_defaults.get('flower_veg_nute_days', 21))
+        default_feedings_per_day = int(grow_defaults.get('feedings_per_day', 2))
+
         reports = []
         today = dt_date.today()
 
@@ -596,14 +610,34 @@ def api_get_grow_cycles_report():
                 stage = 'complete'
                 stage_day = 0
 
-            # Map stage to recipe
-            recipe_map = {'veg': 'veg_formula', 'flower': 'bloom_formula'}
-            recipe_key = recipe_map.get(stage)
+            # Map stage to recipe with flower sub-stages
+            # First N days of flower use veg nutes (from settings), then bloom nutes
+            sub_stage = None
+            if stage == 'veg':
+                recipe_key = 'veg_formula'
+            elif stage == 'flower':
+                if stage_day <= flower_veg_nute_days:
+                    recipe_key = 'veg_formula'
+                    sub_stage = 'flower_veg'
+                else:
+                    recipe_key = 'bloom_formula'
+                    sub_stage = 'flower_bloom'
+            elif stage == 'flush':
+                recipe_key = 'flush_formula'
+            else:
+                recipe_key = None
+
             recipe = dict(nutrients_data.get(recipe_key, {})) if recipe_key else {}
 
-            # Scale by watering volume
+            # Default flush formula: Cake only (cropsalt flush)
+            if stage == 'flush' and not recipe:
+                recipe = {'Cake': 2.0}
+
+            # Scale by watering volume (per feeding)
             volume = cycle.get('watering_volume_gallons', 1)
+            feedings_per_day = default_feedings_per_day
             scaled = {name: round(ml * volume, 1) for name, ml in recipe.items()}
+            daily_scaled = {name: round(ml * volume * feedings_per_day, 1) for name, ml in recipe.items()}
 
             # EC/pH targets by stage
             if stage == 'veg':
@@ -631,6 +665,7 @@ def api_get_grow_cycles_report():
                 'current_day': max(0, current_day),
                 'total_days': total_days,
                 'current_stage': stage,
+                'sub_stage': sub_stage,
                 'stage_day': stage_day,
                 'veg_days': veg_days,
                 'flower_days': flower_days,
@@ -640,6 +675,8 @@ def api_get_grow_cycles_report():
                 'recipe_name': recipe_key or ('flush' if stage == 'flush' else 'none'),
                 'recipe_per_gallon': recipe,
                 'recipe_total_ml': scaled,
+                'recipe_daily_total_ml': daily_scaled,
+                'feedings_per_day': feedings_per_day,
                 'watering_volume_gallons': volume,
                 'target_ec': target_ec,
                 'target_ph': 6.2,

@@ -37,6 +37,13 @@
   let reports = $state([]);
   let rooms = $state({});
   let nutrientsConfig = $state({});
+  let growDefaults = $state({
+    veg_days: 28,
+    flower_days: 50,
+    flush_days: 14,
+    feedings_per_day: 2,
+    default_watering_volume: 50
+  });
 
   // ==================== DATA LOADING ====================
 
@@ -70,10 +77,20 @@
         if (Object.keys(rooms).length === 0) {
           rooms = { 1: { name: "Grow Room 1", relay: 10 } };
         }
+        if (data.growDefaults) {
+          growDefaults = { ...growDefaults, ...data.growDefaults };
+        }
       }
 
       if (nutrientsRes.ok) {
         nutrientsConfig = await nutrientsRes.json();
+      }
+
+      // Ensure rooms from existing cycles are visible in manage tab
+      for (const [roomId, cycle] of Object.entries(cycles)) {
+        if (!rooms[roomId]) {
+          rooms = { ...rooms, [roomId]: { name: cycle.room_name || `Room ${roomId}` } };
+        }
       }
     } catch (err) {
       console.error('Error loading grow cycle data:', err);
@@ -127,10 +144,10 @@
         room_name: room?.name || `Room ${roomId}`,
         strain: '',
         start_date: today,
-        veg_days: 28,
-        flower_days: 56,
-        flush_days: 10,
-        watering_volume_gallons: 50,
+        veg_days: growDefaults.veg_days,
+        flower_days: growDefaults.flower_days,
+        flush_days: growDefaults.flush_days,
+        watering_volume_gallons: growDefaults.default_watering_volume,
         notes: '',
         active: true
       }
@@ -329,12 +346,14 @@
                   <Separator class="my-3" />
 
                   <!-- Targets -->
-                  <div class="flex items-center gap-3 mb-3">
+                  <div class="flex items-center gap-3 mb-3 flex-wrap">
                     <div class="flex items-center gap-1.5">
                       <FlaskConical class="size-4 text-muted-foreground" />
                       <span class="text-sm font-medium">
                         {#if report.current_stage === 'flush'}
-                          Flush (Plain Water)
+                          Flush (Cake)
+                        {:else if report.sub_stage === 'flower_veg'}
+                          Veg Formula (Early Flower)
                         {:else if report.recipe_name === 'veg_formula'}
                           Veg Formula
                         {:else if report.recipe_name === 'bloom_formula'}
@@ -348,7 +367,7 @@
                     <Badge variant="outline">pH {report.target_ph}</Badge>
                     <Badge variant="outline">
                       <Droplets class="size-3 mr-1" />
-                      {report.watering_volume_gallons} gal
+                      {report.watering_volume_gallons} gal &times; {report.feedings_per_day || 2}/day
                     </Badge>
                   </div>
 
@@ -358,13 +377,15 @@
                       <div class="dosage-header">
                         <span>Nutrient</span>
                         <span>ml/gal</span>
-                        <span>Total ml</span>
+                        <span>Per Feed</span>
+                        <span>Daily ({report.feedings_per_day || 2}x)</span>
                       </div>
                       {#each nutrients as [name, mlPerGal]}
                         <div class="dosage-row">
                           <span class="font-medium">{name}</span>
                           <span>{mlPerGal}</span>
-                          <span class="font-medium">{report.recipe_total_ml[name]}</span>
+                          <span>{report.recipe_total_ml[name]}</span>
+                          <span class="font-medium">{report.recipe_daily_total_ml?.[name] ?? report.recipe_total_ml[name] * 2}</span>
                         </div>
                       {/each}
                     </div>
@@ -372,8 +393,8 @@
                     <div class="flush-notice">
                       <Droplets class="size-5 text-blue-400" />
                       <div>
-                        <p class="font-medium">Plain Water Only</p>
-                        <p class="text-sm text-muted-foreground">No nutrients during flush period. Target EC 0.0–0.3</p>
+                        <p class="font-medium">Flush with Cake</p>
+                        <p class="text-sm text-muted-foreground">Cake only during flush period. Target EC 0.0–0.3</p>
                       </div>
                     </div>
                   {/if}
@@ -590,7 +611,7 @@
 
   .dosage-header {
     display: grid;
-    grid-template-columns: 1fr 80px 80px;
+    grid-template-columns: 1fr 70px 90px 90px;
     padding: 0.5rem 0.75rem;
     background: hsl(var(--muted));
     font-size: 0.75rem;
@@ -602,7 +623,7 @@
 
   .dosage-row {
     display: grid;
-    grid-template-columns: 1fr 80px 80px;
+    grid-template-columns: 1fr 70px 90px 90px;
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
     border-top: 1px solid hsl(var(--border));

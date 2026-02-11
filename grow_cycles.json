@@ -8,7 +8,7 @@
       "veg_days": 28,
       "flower_days": 50,
       "flush_days": 14,
-      "watering_volume_gallons": 50,
+      "watering_volume_gallons": 100,
       "notes": "",
       "active": true
     },

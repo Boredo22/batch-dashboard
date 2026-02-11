@@ -39,6 +39,9 @@
     "pH Down": 0.5,
     "Runclean": 0.2
   },
+  "flush_formula": {
+    "Cake": 2.0
+  },
   "pump_name_to_id": {
     "Bloom A": 3,
     "Bloom B": 4,
