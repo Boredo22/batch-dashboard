@@ -182,7 +182,25 @@
 
       if (devResponse.ok) {
         const devData = await devResponse.json();
-        devSettings = { ...devSettings, ...devData };
+        // Deep merge to preserve nested defaults (backend keys may differ)
+        for (const [key, value] of Object.entries(devData)) {
+          if (typeof value === 'object' && value !== null && !Array.isArray(value) && devSettings[key]) {
+            devSettings[key] = { ...devSettings[key], ...value };
+          } else {
+            devSettings[key] = value;
+          }
+        }
+        // Map backend mock keys to frontend expected keys
+        if (devData.mock) {
+          const m = devData.mock;
+          devSettings.mock = {
+            mock_mode: m.mock_mode ?? false,
+            mock_pumps: m.mock_pumps ?? m.pumps ?? false,
+            mock_relays: m.mock_relays ?? m.relays ?? false,
+            mock_flow_meters: m.mock_flow_meters ?? m.flow_meters ?? false,
+            mock_ecph: m.mock_ecph ?? m.ecph ?? false
+          };
+        }
       }
 
       if (nutrientsResponse.ok) {
@@ -1059,7 +1077,7 @@
                 </p>
               </div>
               <Switch
-                checked={devSettings.mock.mock_mode}
+                checked={devSettings.mock.mock_mode ?? false}
                 onCheckedChange={(checked) => devSettings.mock.mock_mode = checked}
               />
             </div>
@@ -1070,28 +1088,28 @@
               <div class="flex items-center justify-between p-3 rounded-lg border">
                 <Label>Mock Pumps</Label>
                 <Switch
-                  checked={devSettings.mock.mock_pumps}
+                  checked={devSettings.mock.mock_pumps ?? false}
                   onCheckedChange={(checked) => devSettings.mock.mock_pumps = checked}
                 />
               </div>
               <div class="flex items-center justify-between p-3 rounded-lg border">
                 <Label>Mock Relays</Label>
                 <Switch
-                  checked={devSettings.mock.mock_relays}
+                  checked={devSettings.mock.mock_relays ?? false}
                   onCheckedChange={(checked) => devSettings.mock.mock_relays = checked}
                 />
               </div>
               <div class="flex items-center justify-between p-3 rounded-lg border">
                 <Label>Mock Flow Meters</Label>
                 <Switch
-                  checked={devSettings.mock.mock_flow_meters}
+                  checked={devSettings.mock.mock_flow_meters ?? false}
                   onCheckedChange={(checked) => devSettings.mock.mock_flow_meters = checked}
                 />
               </div>
               <div class="flex items-center justify-between p-3 rounded-lg border">
                 <Label>Mock EC/pH</Label>
                 <Switch
-                  checked={devSettings.mock.mock_ecph}
+                  checked={devSettings.mock.mock_ecph ?? false}
                   onCheckedChange={(checked) => devSettings.mock.mock_ecph = checked}
                 />
               </div>
@@ -1185,7 +1203,7 @@
                   <p class="text-xs text-muted-foreground">Enable detailed debug info</p>
                 </div>
                 <Switch
-                  checked={devSettings.debug.debug_mode}
+                  checked={devSettings.debug.debug_mode ?? false}
                   onCheckedChange={(checked) => devSettings.debug.debug_mode = checked}
                 />
               </div>
@@ -1195,7 +1213,7 @@
                   <p class="text-xs text-muted-foreground">Log all hardware comms</p>
                 </div>
                 <Switch
-                  checked={devSettings.debug.verbose_logging}
+                  checked={devSettings.debug.verbose_logging ?? false}
                   onCheckedChange={(checked) => devSettings.debug.verbose_logging = checked}
                 />
               </div>

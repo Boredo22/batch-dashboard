@@ -1,0 +1,23 @@
+[Unit]
+Description=Batch Dashboard Flask Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/batch-dashboard
+ExecStart=/bin/bash /home/pi/batch-dashboard/scripts/start-server.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Give the service time to pull updates and build
+TimeoutStartSec=300
+
+# Environment variables (adjust as needed)
+Environment=FLASK_ENV=production
+
+[Install]
+WantedBy=multi-user.target
