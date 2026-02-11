@@ -119,14 +119,22 @@
 
   // ==================== API FUNCTIONS ====================
 
+  const FETCH_TIMEOUT = 8000; // 8 seconds — enough for the Pi, fast enough to not hang
+
+  function fetchWithTimeout(url, options = {}) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+  }
+
   async function loadSettings() {
     loading = true;
     loadError = '';
     try {
       const [userResponse, devResponse, nutrientsResponse] = await Promise.all([
-        fetch('/api/settings/user'),
-        fetch('/api/settings/developer'),
-        fetch('/api/nutrients')
+        fetchWithTimeout('/api/settings/user'),
+        fetchWithTimeout('/api/settings/developer'),
+        fetchWithTimeout('/api/nutrients')
       ]);
 
       if (userResponse.ok) {
@@ -162,7 +170,11 @@
       }
     } catch (error) {
       console.error('Error loading settings:', error);
-      loadError = 'Unable to connect to backend. Make sure the server is running.';
+      if (error.name === 'AbortError') {
+        loadError = 'Request timed out. Is the backend running?';
+      } else {
+        loadError = 'Unable to connect to backend. Make sure the server is running.';
+      }
     } finally {
       loading = false;
     }
@@ -173,17 +185,17 @@
     saveMessage = '';
     try {
       const [userResponse, devResponse, nutrientsResponse] = await Promise.all([
-        fetch('/api/settings/user', {
+        fetchWithTimeout('/api/settings/user', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(userSettings)
         }),
-        fetch('/api/settings/developer', {
+        fetchWithTimeout('/api/settings/developer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(devSettings)
         }),
-        fetch('/api/nutrients', {
+        fetchWithTimeout('/api/nutrients', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(nutrientsConfig)
@@ -197,7 +209,11 @@
       }
     } catch (error) {
       console.error('Error saving settings:', error);
-      saveMessage = 'Error connecting to server. Please check connection.';
+      if (error.name === 'AbortError') {
+        saveMessage = 'Save timed out. Is the backend running?';
+      } else {
+        saveMessage = 'Error connecting to server. Please check connection.';
+      }
     } finally {
       saving = false;
       setTimeout(() => saveMessage = '', 4000);
@@ -207,7 +223,7 @@
   async function loadSystemStatus() {
     statusLoading = true;
     try {
-      const response = await fetch('/api/system/status');
+      const response = await fetchWithTimeout('/api/system/status');
       if (response.ok) {
         const data = await response.json();
         systemStatus = {
