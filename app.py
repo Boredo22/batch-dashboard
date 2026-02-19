@@ -27,7 +27,7 @@ from hardware.hardware_comms import (
     pause_pump, get_pump_voltage, get_current_dispensed_volume,
     get_pump_status, refresh_pump_calibrations,
     read_ec_ph_sensors, calibrate_ph, calibrate_ec, get_sensor_calibration_status,
-    get_flow_status
+    get_flow_status, get_tank_monitor_readings
 )
 
 # Import configuration constants and all settings
@@ -747,7 +747,8 @@ def build_status_data():
                       for fid in hardware['flow_meters']['ids']],
         'ec_value': status.get('ec', 0),
         'ph_value': status.get('ph', 0),
-        'ec_ph_monitoring': status.get('ec_ph_active', False)
+        'ec_ph_monitoring': status.get('ec_ph_active', False),
+        'tank_monitors': status.get('tank_monitors', {})
     }
 
 
@@ -1497,6 +1498,48 @@ def api_get_calibration_status():
         return jsonify(result)
     except Exception as e:
         logger.error(f"Error getting calibration status: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# -----------------------------------------------------------------------------
+# TANK MONITOR ENDPOINTS - Per-tank pH/EC Arduino monitors
+# -----------------------------------------------------------------------------
+
+@app.route('/api/tank-monitors', methods=['GET'])
+def api_get_all_tank_monitors():
+    """Get readings from all tank monitors"""
+    try:
+        readings = get_tank_monitor_readings()
+        return jsonify({
+            'success': True,
+            'monitors': readings
+        })
+    except Exception as e:
+        logger.error(f"Error getting tank monitor readings: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/tank-monitors/<int:tank_id>', methods=['GET'])
+def api_get_tank_monitor(tank_id):
+    """Get readings from a specific tank monitor"""
+    try:
+        readings = get_tank_monitor_readings(tank_id)
+        if 'error' in readings:
+            return jsonify({
+                'success': False,
+                'error': readings['error']
+            }), 404
+
+        return jsonify({
+            'success': True,
+            'data': readings
+        })
+    except Exception as e:
+        logger.error(f"Error getting tank {tank_id} monitor readings: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

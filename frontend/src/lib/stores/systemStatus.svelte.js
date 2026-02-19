@@ -230,6 +230,7 @@ export function getSystemStatus() {
     get ecValue() { return systemData.ec_value || 0; },
     get phValue() { return systemData.ph_value || 0; },
     get ecPhMonitoring() { return systemData.ec_ph_monitoring || false; },
+    get tankMonitors() { return systemData.tank_monitors || {}; },
     get timestamp() { return systemData.timestamp || ''; },
     get hardware() { return systemData.hardware || {}; },
     get isConnected() { return connectionStatus === 'connected'; }

@@ -156,6 +156,21 @@ PH_CALIBRATION_SOLUTIONS = {
 }
 
 # =============================================================================
+# TANK MONITOR CONFIGURATION (Per-tank Arduino pH/EC monitors)
+# =============================================================================
+# Each tank can have a dedicated Arduino with EZO pH/EC sensors connected
+# via USB serial. The Arduino sends JSON: {"ph":X.XX,"ec":X.XX}
+
+TANK_MONITOR_BAUDRATE = 9600
+
+# Map tank_id -> serial port (None = auto-detect)
+TANK_MONITOR_PORTS = {
+    1: None,  # Tank 1 - auto-detect (first Arduino found)
+    # 2: "/dev/ttyUSB1",  # Uncomment when adding Tank 2 monitor
+    # 3: "/dev/ttyUSB2",  # Uncomment when adding Tank 3 monitor
+}
+
+# =============================================================================
 # LEGACY ARDUINO UNO CONFIGURATION (DEPRECATED - replaced by direct I2C)
 # =============================================================================
 
@@ -361,10 +376,11 @@ VERBOSE_LOGGING = False
 
 # Mock hardware settings (for testing without real hardware)
 MOCK_SETTINGS = {
-    "pumps": False,      # Use mock pumps
-    "relays": False,    # Use real relays
-    "flow_meters": False, # Use mock flow meters
-    "arduino": False     # Use mock Arduino
+    "pumps": False,         # Use mock pumps
+    "relays": False,        # Use real relays
+    "flow_meters": False,   # Use mock flow meters
+    "arduino": False,       # Use mock Arduino
+    "tank_monitors": False  # Use mock tank monitors
 }
 
 # Test configuration

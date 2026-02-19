@@ -15,6 +15,7 @@ from hardware.rpi_pumps import EZOPumpController
 from hardware.rpi_relays import RelayController
 from hardware.rpi_flow import FlowMeterController, MockFlowMeterController
 from hardware.rpi_ezo_sensors import EZOSensorController  # Replaced Arduino Uno with direct I2C
+from hardware.tank_monitor import TankMonitorManager
 
 # Import configuration
 from config import (
@@ -27,6 +28,8 @@ from config import (
     USE_MOCK_HARDWARE,
     MOCK_SETTINGS,
     MESSAGE_FORMATS,
+    TANK_MONITOR_PORTS,
+    TANK_MONITOR_BAUDRATE,
     get_available_pumps,
     get_available_relays,
     get_available_flow_meters,
@@ -113,7 +116,23 @@ class FeedControlSystem:
         except Exception as e:
             logger.error(f"✗ EZO pH/EC sensor controller failed: {e}")
             self.sensor_controller = None
-        
+
+        # Initialize per-tank pH/EC monitors (Arduino via USB serial)
+        self.tank_monitor_manager = TankMonitorManager()
+        use_mock_monitors = MOCK_SETTINGS.get('tank_monitors', False)
+        for tank_id, port in TANK_MONITOR_PORTS.items():
+            try:
+                self.tank_monitor_manager.add_monitor(
+                    tank_id, port=port,
+                    baudrate=TANK_MONITOR_BAUDRATE,
+                    use_mock=use_mock_monitors
+                )
+            except Exception as e:
+                logger.error(f"✗ Tank {tank_id} monitor failed: {e}")
+
+        if self.tank_monitor_manager.get_monitor_count() > 0:
+            logger.info(f"✓ {self.tank_monitor_manager.get_monitor_count()} tank monitor(s) registered")
+
         # Timing for status updates
         self.last_status_update = 0
         self.last_pump_check = 0
@@ -136,14 +155,18 @@ class FeedControlSystem:
             return
         
         self.running = True
-        
+
         # Start worker thread
         self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
         self.worker_thread.start()
-        
+
         # EC/pH sensors are always available via I2C (no need to start monitoring explicitly)
         # Sensors can be read on-demand when needed
-        
+
+        # Start per-tank monitors
+        if self.tank_monitor_manager.get_monitor_count() > 0:
+            self.tank_monitor_manager.start_all()
+
         # Print system info
         self._print_system_info()
         
@@ -174,7 +197,9 @@ class FeedControlSystem:
             self.flow_controller.cleanup()
         if self.sensor_controller:
             self.sensor_controller.close()
-        
+        if self.tank_monitor_manager:
+            self.tank_monitor_manager.stop_all()
+
         logger.info("Feed control system stopped")
     
     def _worker_loop(self):
@@ -498,7 +523,11 @@ class FeedControlSystem:
             status['ec_ph_active'] = self.sensor_controller.monitoring_active
             status['ec'] = readings.get('ec')
             status['ph'] = readings.get('ph')
-        
+
+        # Get per-tank monitor readings
+        if self.tank_monitor_manager and self.tank_monitor_manager.get_monitor_count() > 0:
+            status['tank_monitors'] = self.tank_monitor_manager.get_readings()
+
         return status
 
 

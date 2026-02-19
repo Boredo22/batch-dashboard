@@ -2,7 +2,7 @@
 # start-server.sh - Auto-update and start the batch-dashboard Flask server
 # Place this file on your Raspberry Pi and reference it from the systemd service
 
-set -e
+set -eo pipefail
 
 # === CONFIGURATION ===
 APP_DIR="/home/pi/batch-dashboard"       # Adjust to your actual project path on the Pi
@@ -26,6 +26,10 @@ if [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
     log "Switching from $CURRENT_BRANCH to $BRANCH"
     git checkout "$BRANCH"
 fi
+
+# Discard any local changes so pull never conflicts
+# (the repo is the source of truth — local edits on the Pi get overwritten)
+git reset --hard HEAD 2>&1 | tee -a "$LOG_FILE"
 
 # Fetch and check for updates
 git fetch origin "$BRANCH" 2>&1 | tee -a "$LOG_FILE"

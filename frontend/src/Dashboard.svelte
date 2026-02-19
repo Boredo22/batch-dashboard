@@ -4,6 +4,7 @@
   import PumpControlCard from '$lib/components/hardware/pump-control-card.svelte';
   import FlowMeterCard from '$lib/components/hardware/flow-meter-card.svelte';
   import ECPHMonitorCard from '$lib/components/hardware/ecph-monitor-card.svelte';
+  import TankMonitorCard from '$lib/components/hardware/tank-monitor-card.svelte';
   import SystemLogCard from '$lib/components/hardware/system-log-card.svelte';
   import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
 
@@ -50,6 +51,7 @@
   let ecPhMonitoring = $state(false);
   let ecValue = $state(0);
   let phValue = $state(0);
+  let tankMonitors = $state({});
 
   // Form inputs
   let selectedPump = $state("");
@@ -82,6 +84,11 @@
     ecValue = data.ec_value || 0;
     phValue = data.ph_value || 0;
     ecPhMonitoring = data.ec_ph_monitoring || false;
+
+    // Update tank monitor readings
+    if (data.tank_monitors) {
+      tankMonitors = data.tank_monitors;
+    }
 
     // Update relays from SSE data
     if (data.relays && data.relays.length > 0) {
@@ -449,6 +456,8 @@
         onStartMonitoring={startEcPhMonitoring}
         onStopMonitoring={stopEcPhMonitoring}
       />
+
+      <TankMonitorCard {tankMonitors} />
     </div>
 
     <!-- Right Column - System Log -->
