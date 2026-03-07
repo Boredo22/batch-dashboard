@@ -68,20 +68,22 @@ class FeedControlSystem:
         try:
             # Initialize pump controller
             if MOCK_SETTINGS.get('pumps', False):
-                logger.info("Using mock pump controller")
-                self.pump_controller = None  # Would implement mock pump controller
+                from hardware.mock_controllers import MockPumpController
+                self.pump_controller = MockPumpController()
+                logger.info("✓ Mock pump controller initialized")
             else:
                 self.pump_controller = EZOPumpController()
                 logger.info("✓ EZO pump controller initialized")
         except Exception as e:
             logger.error(f"✗ Pump controller failed: {e}")
             self.pump_controller = None
-        
+
         try:
             # Initialize relay controller
             if MOCK_SETTINGS.get('relays', False):
-                logger.info("Using mock relay controller")
-                self.relay_controller = None  # Would implement mock relay controller
+                from hardware.mock_controllers import MockRelayController
+                self.relay_controller = MockRelayController()
+                logger.info("✓ Mock relay controller initialized")
             else:
                 self.relay_controller = RelayController()
                 logger.info("✓ Relay controller initialized")

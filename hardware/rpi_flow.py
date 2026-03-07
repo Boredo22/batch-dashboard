@@ -364,17 +364,20 @@ class MockFlowMeterController(FlowMeterController):
         pass
     
     def update_mock_pulses(self):
-        """Generate mock pulses for testing"""
+        """Generate mock pulses for testing, catching up on missed intervals"""
         current_time = time.time()
-        
-        # Generate pulses at configured interval
-        if current_time - self.last_mock_time >= MOCK_FLOW_PULSE_INTERVAL:
-            self.last_mock_time = current_time
-            
-            # Add pulses to active flow meters
+        elapsed = current_time - self.last_mock_time
+
+        # Calculate how many intervals have passed since last update
+        if elapsed >= MOCK_FLOW_PULSE_INTERVAL:
+            intervals = int(elapsed / MOCK_FLOW_PULSE_INTERVAL)
+            # Advance by exact interval count to preserve fractional remainder
+            self.last_mock_time += intervals * MOCK_FLOW_PULSE_INTERVAL
+
+            # Add accumulated pulses to active flow meters
             for meter_id, meter in self.flow_meters.items():
                 if meter['status'] == 1:
-                    meter['pulse_count'] += MOCK_PULSES_PER_INTERVAL
+                    meter['pulse_count'] += MOCK_PULSES_PER_INTERVAL * intervals
     
     def update_flow_status(self, meter_id):
         """Update with mock pulse generation"""

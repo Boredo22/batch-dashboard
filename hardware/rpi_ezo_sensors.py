@@ -13,7 +13,16 @@ import logging
 import sys
 import threading
 from pathlib import Path
-from smbus2 import SMBus
+import platform
+
+try:
+    from smbus2 import SMBus
+except ImportError:
+    if platform.system() == 'Windows':
+        print("Running on Windows - using mock smbus2 for EZO sensors")
+        from .mock_hardware_libs import MockSMBus as SMBus
+    else:
+        raise
 
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent))
