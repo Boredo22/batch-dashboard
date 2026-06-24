@@ -25,16 +25,25 @@ RELAY_GPIO_PINS = {
     13: 5    # Drain
 }
 
-# Descriptive names for each relay
+# Descriptive names for each relay.
+# Kept consistent with RELAY_GPIO_PINS above (previously this map was missing
+# entries and mislabeled relay 6 as "Tank 2 Nute Dispense").
 RELAY_NAMES = {
+    1: "Tank 1 Fill",
     2: "Tank 2 Fill",
-    3: "Tank 3 Fill", 
+    3: "Tank 3 Fill",
     4: "Tank 1 Nute Dispense",
-    6: "Tank 2 Nute Dispense",
+    5: "Tank 2 Nute Dispense",
+    6: "Tank 3 Nute Dispense",
     7: "Tank 1 Dispense Send",
     8: "Tank 2 Dispense Send",
     9: "Tank 3 Dispense Send",
     10: "Room 1",
+    # 11: intentionally absent - no GPIO pin is defined for relay 11, yet TANKS
+    #     (tank 2 send_relay) and RELAY_COMBOS ("Send Tank 2") reference it. The
+    #     startup check below warns about this so it fails loudly, not silently.
+    12: "Nursery",
+    13: "Drain",
 }
 
 RELAY_COMBOS = {
@@ -55,14 +64,14 @@ RELAY_ACTIVE_HIGH = True  # GPIO HIGH = Relay ON (due to ULN2803A inversion)
 
 # EZO Pump I2C addresses
 PUMP_ADDRESSES = {
-    1: 11,    # Pump 1 at I2C address 1
-    2: 12,    # Pump 2 at I2C address 2
-    3: 13,    # Pump 3 at I2C address 3
-    4: 14,    # Pump 4 at I2C address 4
-    5: 15,    # Pump 5 at I2C address 5
-    6: 16,    # Pump 6 at I2C address 6
-    7: 17,    # Pump 7 at I2C address 7
-    8: 18,    # Pump 8 at I2C address 8
+    1: 11,    # Pump 1 at I2C address 11 (0x0B)
+    2: 12,    # Pump 2 at I2C address 12 (0x0C)
+    3: 13,    # Pump 3 at I2C address 13 (0x0D)
+    4: 14,    # Pump 4 at I2C address 14 (0x0E)
+    5: 15,    # Pump 5 at I2C address 15 (0x0F)
+    6: 16,    # Pump 6 at I2C address 16 (0x10)
+    7: 17,    # Pump 7 at I2C address 17 (0x11)
+    8: 18,    # Pump 8 at I2C address 18 (0x12)
 }
 
 # Pump names/descriptions
@@ -347,6 +356,43 @@ def validate_pump_id(pump_id):
 def validate_flow_meter_id(meter_id):
     """Check if flow meter ID is valid"""
     return meter_id in FLOW_METER_GPIO_PINS
+
+
+def _validate_relay_references():
+    """Fail loudly on relay-config drift.
+
+    Every relay referenced by TANKS and RELAY_COMBOS must have a GPIO pin in
+    RELAY_GPIO_PINS, otherwise control_relay() silently rejects it and the
+    corresponding tank operation (e.g. "Send Tank 2", which references relay 11)
+    just does nothing. This surfaces that as a startup warning instead of a
+    silent no-op. Returns the list of missing relay IDs.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    referenced = set()
+    for tank in TANKS.values():
+        if "fill_relay" in tank:
+            referenced.add(tank["fill_relay"])
+        if "send_relay" in tank:
+            referenced.add(tank["send_relay"])
+        referenced.update(tank.get("mix_relays", []))
+    for combo in RELAY_COMBOS.values():
+        referenced.update(combo)
+
+    missing = sorted(r for r in referenced if r not in RELAY_GPIO_PINS)
+    if missing:
+        log.warning(
+            "Relay config drift: relay(s) %s are referenced by TANKS/RELAY_COMBOS "
+            "but have no GPIO pin in RELAY_GPIO_PINS. Operations using them will "
+            "silently fail validation. Add the pin(s) or fix the references.",
+            missing,
+        )
+    return missing
+
+
+# Run the check at import so the warning shows up wherever config is loaded.
+_validate_relay_references()
 
 # =============================================================================
 # NUTRIENT FORMULAS - MOVED TO nutrients.json

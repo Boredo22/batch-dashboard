@@ -7,6 +7,7 @@ Works independently without hardware manager - compatible with simple_gui.py pat
 """
 
 import time
+import threading
 import logging
 from config import (
     PUMP_ADDRESSES,
@@ -41,10 +42,19 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class EZOPumpController:
-    def __init__(self, bus_number=None):
-        """Initialize EZO Pump Controller"""
+    def __init__(self, bus_number=None, i2c_lock=None):
+        """Initialize EZO Pump Controller
+
+        Args:
+            bus_number: I2C bus number (defaults to config I2C_BUS_NUMBER)
+            i2c_lock: Shared threading.Lock serializing access to the physical
+                I2C bus. Pass the same lock used by the EC/pH sensor controller
+                so the two never transact concurrently. Falls back to a private
+                lock if not supplied (still serializes this controller's own calls).
+        """
         self.bus_number = bus_number or I2C_BUS_NUMBER
         self.bus = None
+        self._i2c_lock = i2c_lock or threading.Lock()
         
         # Pump information storage
         self.pump_info = {}
@@ -104,18 +114,22 @@ class EZOPumpController:
         retries = 0
         while retries < EZO_MAX_RETRIES:
             try:
-                # Send command using raw I2C (equivalent to Arduino Wire library)
-                msg = smbus2.i2c_msg.write(address, list(command.encode()))
-                self.bus.i2c_rdwr(msg)
-                
-                # Wait for processing
-                time.sleep(delay)
-                
-                # Read response
-                msg = smbus2.i2c_msg.read(address, 32)
-                self.bus.i2c_rdwr(msg)
-                
-                data = list(msg)
+                # Hold the shared bus lock for the whole write->wait->read
+                # transaction so a sensor read on the same physical bus cannot
+                # interleave between this pump's write and its read-back.
+                with self._i2c_lock:
+                    # Send command using raw I2C (equivalent to Arduino Wire library)
+                    msg = smbus2.i2c_msg.write(address, list(command.encode()))
+                    self.bus.i2c_rdwr(msg)
+
+                    # Wait for processing
+                    time.sleep(delay)
+
+                    # Read response
+                    msg = smbus2.i2c_msg.read(address, 32)
+                    self.bus.i2c_rdwr(msg)
+
+                    data = list(msg)
                 
                 # Parse response
                 if len(data) > 0:

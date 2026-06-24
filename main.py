@@ -14,7 +14,7 @@ from datetime import datetime
 from hardware.rpi_pumps import EZOPumpController
 from hardware.rpi_relays import RelayController
 from hardware.rpi_flow import FlowMeterController, MockFlowMeterController
-from hardware.rpi_ezo_sensors import EZOSensorController  # Replaced Arduino Uno with direct I2C
+from hardware.rpi_ezo_sensors import EZOSensorController, MockEZOSensorController  # Replaced Arduino Uno with direct I2C
 from hardware.tank_monitor import TankMonitorManager
 
 # Import configuration
@@ -61,7 +61,15 @@ class FeedControlSystem:
         # Use config for mock settings
         if use_mock_flow is None:
             use_mock_flow = MOCK_SETTINGS.get('flow_meters', False)
-        
+
+        # Shared I2C bus lock. The pump controller and the EC/pH sensor
+        # controller open separate smbus2 handles on the SAME physical bus
+        # (/dev/i2c-1) and are driven from different threads (the command
+        # worker and the sensor monitoring thread). Serialize every bus
+        # transaction through this one lock so a sensor read can never
+        # interleave between a pump's write and its read-back.
+        self._i2c_lock = threading.Lock()
+
         # Initialize controllers
         logger.info("Initializing feed control system with config.py...")
         
@@ -72,7 +80,7 @@ class FeedControlSystem:
                 self.pump_controller = MockPumpController()
                 logger.info("✓ Mock pump controller initialized")
             else:
-                self.pump_controller = EZOPumpController()
+                self.pump_controller = EZOPumpController(i2c_lock=self._i2c_lock)
                 logger.info("✓ EZO pump controller initialized")
         except Exception as e:
             logger.error(f"✗ Pump controller failed: {e}")
@@ -107,9 +115,10 @@ class FeedControlSystem:
             # Initialize EZO EC/pH sensor controller (replaces Arduino Uno)
             if MOCK_SETTINGS.get('ecph', False) or MOCK_SETTINGS.get('arduino', False):
                 logger.info("Using mock EC/pH sensors")
-                self.sensor_controller = None  # Would implement mock sensor controller
+                self.sensor_controller = MockEZOSensorController()
+                self.sensor_controller.connect()
             else:
-                self.sensor_controller = EZOSensorController()
+                self.sensor_controller = EZOSensorController(i2c_lock=self._i2c_lock)
                 if self.sensor_controller.connect():
                     logger.info(f"✓ EZO pH/EC sensors initialized via I2C")
                 else:

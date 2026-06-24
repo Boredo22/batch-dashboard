@@ -29,7 +29,7 @@
   }
 
   // Filtered logs
-  let filteredLogs = $derived(() => {
+  let filteredLogs = $derived.by(() => {
     return logs.filter(log => {
       // Filter by type
       if (!activeFilters.includes(log.type)) return false;
@@ -101,7 +101,7 @@
   <div class="log-header">
     <div class="header-left">
       <h4><i class="fas fa-terminal"></i> System Log</h4>
-      <span class="log-count">{filteredLogs().length} entries</span>
+      <span class="log-count">{filteredLogs.length} entries</span>
     </div>
     <div class="header-actions">
       <button class="action-btn" onclick={clearLogs} title="Clear logs" aria-label="Clear logs">
@@ -147,13 +147,13 @@
   </div>
 
   <div class="log-container" bind:this={logContainer}>
-    {#if filteredLogs().length === 0}
+    {#if filteredLogs.length === 0}
       <div class="empty-log">
         <i class="fas fa-clipboard-list"></i>
         <span>No log entries</span>
       </div>
     {:else}
-      {#each filteredLogs() as log}
+      {#each filteredLogs as log}
         <div class="log-entry" style="--type-color: {getTypeColor(log.type)}">
           <span class="log-time">{formatTime(log.timestamp)}</span>
           <span class="log-type">[{getTypeLabel(log.type)}]</span>

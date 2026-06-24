@@ -8,12 +8,13 @@ Uses hardware_comms.py for reliable hardware control like simple_gui.py
 # CRITICAL: Import hardware safety FIRST
 from hardware_safety import setup_hardware_safety
 import sys
+import time
 
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 import logging
 import atexit
-from datetime import datetime, time
+from datetime import datetime
 from typing import Dict, Any
 import json
 import threading
@@ -83,6 +84,29 @@ if not safety_manager:
 
 # Register cleanup on app shutdown
 atexit.register(cleanup_hardware)
+
+
+def api_endpoint(func):
+    """Wrap a route handler with the standard JSON error envelope.
+
+    Replaces the per-handler `try / except Exception -> logger.error +
+    jsonify(success=False, error=...), 500` boilerplate that was repeated in
+    ~40 handlers. Handlers can still early-return their own responses
+    (validation 400s, custom statuses, etc.); only an *uncaught* exception is
+    turned into a 500 here.
+    """
+    from functools import wraps
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error in {func.__name__}: {e}")
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    return wrapper
+
 
 # =============================================================================
 # SETTINGS JSON PERSISTENCE
@@ -209,271 +233,227 @@ def serve_dist(filename):
 # =============================================================================
 
 @app.route('/api/config', methods=['GET'])
+@api_endpoint
 def api_get_config():
     """Get current system configuration"""
-    try:
-        # Return all configuration settings in the format expected by Settings.svelte
-        config_data = {
-            # Tank configuration
-            'TANKS': getattr(config, 'TANKS', {}),
-            
-            # Pump configuration
-            'PUMP_NAMES': getattr(config, 'PUMP_NAMES', {}),
-            'PUMP_ADDRESSES': getattr(config, 'PUMP_ADDRESSES', {}),
-            
-            # System timing
-            'STATUS_UPDATE_INTERVAL': getattr(config, 'STATUS_UPDATE_INTERVAL', 2.0),
-            'PUMP_CHECK_INTERVAL': getattr(config, 'PUMP_CHECK_INTERVAL', 1.0),
-            'FLOW_UPDATE_INTERVAL': getattr(config, 'FLOW_UPDATE_INTERVAL', 0.5),
-            
-            # Safety limits
-            'MAX_PUMP_VOLUME_ML': getattr(config, 'MAX_PUMP_VOLUME_ML', 2500.0),
-            'MIN_PUMP_VOLUME_ML': getattr(config, 'MIN_PUMP_VOLUME_ML', 0.5),
-            'MAX_FLOW_GALLONS': getattr(config, 'MAX_FLOW_GALLONS', 100),
-            
-            # GPIO Configuration
-            'RELAY_GPIO_PINS': getattr(config, 'RELAY_GPIO_PINS', {}),
-            'FLOW_METER_GPIO_PINS': getattr(config, 'FLOW_METER_GPIO_PINS', {}),
-            
-            # I2C Configuration
-            'I2C_BUS_NUMBER': getattr(config, 'I2C_BUS_NUMBER', 1),
-            'EZO_COMMAND_DELAY': getattr(config, 'EZO_COMMAND_DELAY', 0.3),
-            
-            # Communication
-            'COMMAND_START': getattr(config, 'COMMAND_START', 'Start'),
-            'COMMAND_END': getattr(config, 'COMMAND_END', 'end'),
-            'ARDUINO_UNO_BAUDRATE': getattr(config, 'ARDUINO_UNO_BAUDRATE', 115200),
-            
-            # Mock settings
-            'MOCK_SETTINGS': getattr(config, 'MOCK_SETTINGS', {}),
-            
-            # Debug settings
-            'DEBUG_MODE': getattr(config, 'DEBUG_MODE', False),
-            'VERBOSE_LOGGING': getattr(config, 'VERBOSE_LOGGING', False),
-            'LOG_LEVEL': getattr(config, 'LOG_LEVEL', 'INFO')
-        }
+    # Return all configuration settings in the format expected by Settings.svelte
+    config_data = {
+        # Tank configuration
+        'TANKS': getattr(config, 'TANKS', {}),
         
-        return jsonify(config_data)
+        # Pump configuration
+        'PUMP_NAMES': getattr(config, 'PUMP_NAMES', {}),
+        'PUMP_ADDRESSES': getattr(config, 'PUMP_ADDRESSES', {}),
         
-    except Exception as e:
-        logger.error(f"Error getting configuration: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        # System timing
+        'STATUS_UPDATE_INTERVAL': getattr(config, 'STATUS_UPDATE_INTERVAL', 2.0),
+        'PUMP_CHECK_INTERVAL': getattr(config, 'PUMP_CHECK_INTERVAL', 1.0),
+        'FLOW_UPDATE_INTERVAL': getattr(config, 'FLOW_UPDATE_INTERVAL', 0.5),
+        
+        # Safety limits
+        'MAX_PUMP_VOLUME_ML': getattr(config, 'MAX_PUMP_VOLUME_ML', 2500.0),
+        'MIN_PUMP_VOLUME_ML': getattr(config, 'MIN_PUMP_VOLUME_ML', 0.5),
+        'MAX_FLOW_GALLONS': getattr(config, 'MAX_FLOW_GALLONS', 100),
+        
+        # GPIO Configuration
+        'RELAY_GPIO_PINS': getattr(config, 'RELAY_GPIO_PINS', {}),
+        'FLOW_METER_GPIO_PINS': getattr(config, 'FLOW_METER_GPIO_PINS', {}),
+        
+        # I2C Configuration
+        'I2C_BUS_NUMBER': getattr(config, 'I2C_BUS_NUMBER', 1),
+        'EZO_COMMAND_DELAY': getattr(config, 'EZO_COMMAND_DELAY', 0.3),
+        
+        # Communication
+        'COMMAND_START': getattr(config, 'COMMAND_START', 'Start'),
+        'COMMAND_END': getattr(config, 'COMMAND_END', 'end'),
+        'ARDUINO_UNO_BAUDRATE': getattr(config, 'ARDUINO_UNO_BAUDRATE', 115200),
+        
+        # Mock settings
+        'MOCK_SETTINGS': getattr(config, 'MOCK_SETTINGS', {}),
+        
+        # Debug settings
+        'DEBUG_MODE': getattr(config, 'DEBUG_MODE', False),
+        'VERBOSE_LOGGING': getattr(config, 'VERBOSE_LOGGING', False),
+        'LOG_LEVEL': getattr(config, 'LOG_LEVEL', 'INFO')
+    }
+    
+    return jsonify(config_data)
+    
 
 @app.route('/api/config', methods=['POST'])
+@api_endpoint
 def api_save_config():
     """Save system configuration changes"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({
-                'success': False,
-                'error': 'No configuration data provided'
-            }), 400
-        
-        user_settings = data.get('userSettings', {})
-        dev_settings = data.get('devSettings', {})
-        
-        # For now, just log the configuration changes
-        # In a full implementation, you would save these to a configuration file
-        logger.info("Configuration update received:")
-        logger.info(f"User settings: {user_settings}")
-        logger.info(f"Dev settings: {dev_settings}")
-        
-        # TODO: Implement actual configuration saving to file
-        # This would typically involve:
-        # 1. Validating the configuration values
-        # 2. Writing to config.py or a separate config file
-        # 3. Potentially restarting certain services
-        
-        return jsonify({
-            'success': True,
-            'message': 'Configuration saved successfully',
-            'timestamp': datetime.now().isoformat()
-        })
-        
-    except Exception as e:
-        logger.error(f"Error saving configuration: {e}")
+    data = request.get_json()
+    if not data:
         return jsonify({
             'success': False,
-            'error': str(e)
-        }), 500
+            'error': 'No configuration data provided'
+        }), 400
+    
+    # This legacy endpoint never persisted anything - it only logged. Rather
+    # than return a misleading "saved successfully", report honestly and
+    # point callers at the endpoints that actually persist settings.
+    logger.warning(
+        "Deprecated /api/config POST called; this endpoint does not persist. "
+        "Use POST /api/settings/user and /api/settings/developer instead."
+    )
+    return jsonify({
+        'success': False,
+        'error': 'Not implemented: use /api/settings/user and '
+                 '/api/settings/developer to persist settings.'
+    }), 501
+
 
 # =============================================================================
 # SETTINGS ENDPOINTS - User and Developer Settings
 # =============================================================================
 
 @app.route('/api/settings/user', methods=['GET'])
+@api_endpoint
 def api_get_user_settings():
     """Get user settings from settings.json"""
-    try:
-        settings = load_settings()
-        return jsonify(settings.get('user', {}))
-    except Exception as e:
-        logger.error(f"Error loading user settings: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    settings = load_settings()
+    return jsonify(settings.get('user', {}))
 
 @app.route('/api/settings/user', methods=['POST'])
+@api_endpoint
 def api_save_user_settings():
     """Save user settings to settings.json"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'success': False, 'error': 'No user settings data provided'}), 400
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No user settings data provided'}), 400
 
-        settings = load_settings()
-        settings['user'] = data
-        save_settings(settings)
+    settings = load_settings()
+    settings['user'] = data
+    save_settings(settings)
 
-        logger.info("User settings saved to settings.json")
-        return jsonify({
-            'success': True,
-            'message': 'User settings saved successfully',
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        logger.error(f"Error saving user settings: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    logger.info("User settings saved to settings.json")
+    return jsonify({
+        'success': True,
+        'message': 'User settings saved successfully',
+        'timestamp': datetime.now().isoformat()
+    })
 
 @app.route('/api/settings/developer', methods=['GET'])
+@api_endpoint
 def api_get_developer_settings():
     """Get developer settings from settings.json"""
-    try:
-        settings = load_settings()
-        return jsonify(settings.get('developer', {}))
-    except Exception as e:
-        logger.error(f"Error loading developer settings: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    settings = load_settings()
+    return jsonify(settings.get('developer', {}))
 
 @app.route('/api/settings/developer', methods=['POST'])
+@api_endpoint
 def api_save_developer_settings():
     """Save developer settings to settings.json"""
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'success': False, 'error': 'No developer settings data provided'}), 400
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No developer settings data provided'}), 400
 
-        settings = load_settings()
-        settings['developer'] = data
-        save_settings(settings)
+    settings = load_settings()
+    settings['developer'] = data
+    save_settings(settings)
 
-        logger.info("Developer settings saved to settings.json")
-        return jsonify({
-            'success': True,
-            'message': 'Developer settings saved successfully',
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        logger.error(f"Error saving developer settings: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    logger.info("Developer settings saved to settings.json")
+    return jsonify({
+        'success': True,
+        'message': 'Developer settings saved successfully',
+        'timestamp': datetime.now().isoformat()
+    })
 
 # =============================================================================
 # NUTRIENTS CONFIGURATION ENDPOINTS - Separate nutrients management
 # =============================================================================
 
 @app.route('/api/nutrients', methods=['GET'])
+@api_endpoint
 def api_get_nutrients():
     """Get nutrients configuration"""
-    try:
-        import json
-        import os
-        
-        nutrients_file = 'nutrients.json'
-        if os.path.exists(nutrients_file):
-            with open(nutrients_file, 'r') as f:
-                nutrients_data = json.load(f)
-        else:
-            # Create default nutrients configuration if file doesn't exist
-            nutrients_data = {
-                "available_nutrients": [
-                    {"name": "Veg A", "defaultDosage": 4.0},
-                    {"name": "Veg B", "defaultDosage": 4.0},
-                    {"name": "Bloom A", "defaultDosage": 4.0},
-                    {"name": "Bloom B", "defaultDosage": 4.0},
-                    {"name": "Cake", "defaultDosage": 2.0},
-                    {"name": "PK Synergy", "defaultDosage": 2.0},
-                    {"name": "Runclean", "defaultDosage": 1.0},
-                    {"name": "pH Down", "defaultDosage": 0.5}
-                ],
-                "veg_formula": {
-                    "Veg A": 4.0,
-                    "Veg B": 4.0,
-                    "Cake": 2.0,
-                    "pH Down": 0.5
-                },
-                "bloom_formula": {
-                    "Bloom A": 4.0,
-                    "Bloom B": 4.0,
-                    "PK Synergy": 2.0,
-                    "Cake": 1.0,
-                    "pH Down": 0.5
-                },
-                "pump_name_to_id": {
-                    "Veg A": 1,
-                    "Veg B": 2,
-                    "Bloom A": 3,
-                    "Bloom B": 4,
-                    "Cake": 5,
-                    "PK Synergy": 6,
-                    "Runclean": 7,
-                    "pH Down": 8
-                }
+    import json
+    import os
+    
+    nutrients_file = 'nutrients.json'
+    if os.path.exists(nutrients_file):
+        with open(nutrients_file, 'r') as f:
+            nutrients_data = json.load(f)
+    else:
+        # Create default nutrients configuration if file doesn't exist
+        nutrients_data = {
+            "available_nutrients": [
+                {"name": "Veg A", "defaultDosage": 4.0},
+                {"name": "Veg B", "defaultDosage": 4.0},
+                {"name": "Bloom A", "defaultDosage": 4.0},
+                {"name": "Bloom B", "defaultDosage": 4.0},
+                {"name": "Cake", "defaultDosage": 2.0},
+                {"name": "PK Synergy", "defaultDosage": 2.0},
+                {"name": "Runclean", "defaultDosage": 1.0},
+                {"name": "pH Down", "defaultDosage": 0.5}
+            ],
+            "veg_formula": {
+                "Veg A": 4.0,
+                "Veg B": 4.0,
+                "Cake": 2.0,
+                "pH Down": 0.5
+            },
+            "bloom_formula": {
+                "Bloom A": 4.0,
+                "Bloom B": 4.0,
+                "PK Synergy": 2.0,
+                "Cake": 1.0,
+                "pH Down": 0.5
+            },
+            "pump_name_to_id": {
+                "Veg A": 1,
+                "Veg B": 2,
+                "Bloom A": 3,
+                "Bloom B": 4,
+                "Cake": 5,
+                "PK Synergy": 6,
+                "Runclean": 7,
+                "pH Down": 8
             }
-            # Save default configuration
-            with open(nutrients_file, 'w') as f:
-                json.dump(nutrients_data, f, indent=2)
-        
-        return jsonify(nutrients_data)
-        
-    except Exception as e:
-        logger.error(f"Error loading nutrients configuration: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        }
+        # Save default configuration
+        with open(nutrients_file, 'w') as f:
+            json.dump(nutrients_data, f, indent=2)
+    
+    return jsonify(nutrients_data)
+    
 
 @app.route('/api/nutrients', methods=['POST'])
+@api_endpoint
 def api_save_nutrients():
     """Save nutrients configuration"""
-    try:
-        import json
-        
-        data = request.get_json()
-        if not data:
-            return jsonify({
-                'success': False,
-                'error': 'No nutrients data provided'
-            }), 400
-        
-        # Validate required fields
-        required_fields = ['available_nutrients', 'veg_formula', 'bloom_formula', 'pump_name_to_id']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({
-                    'success': False,
-                    'error': f'Missing required field: {field}'
-                }), 400
-        
-        # Save to nutrients.json
-        with open('nutrients.json', 'w') as f:
-            json.dump(data, f, indent=2)
-        
-        logger.info("Nutrients configuration saved successfully")
-        
-        return jsonify({
-            'success': True,
-            'message': 'Nutrients configuration saved successfully',
-            'timestamp': datetime.now().isoformat()
-        })
-        
-    except Exception as e:
-        logger.error(f"Error saving nutrients configuration: {e}")
+    import json
+    
+    data = request.get_json()
+    if not data:
         return jsonify({
             'success': False,
-            'error': str(e)
-        }), 500
+            'error': 'No nutrients data provided'
+        }), 400
+    
+    # Validate required fields
+    required_fields = ['available_nutrients', 'veg_formula', 'bloom_formula', 'pump_name_to_id']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({
+                'success': False,
+                'error': f'Missing required field: {field}'
+            }), 400
+    
+    # Save to nutrients.json
+    with open('nutrients.json', 'w') as f:
+        json.dump(data, f, indent=2)
+    
+    logger.info("Nutrients configuration saved successfully")
+    
+    return jsonify({
+        'success': True,
+        'message': 'Nutrients configuration saved successfully',
+        'timestamp': datetime.now().isoformat()
+    })
+    
 
 # =============================================================================
 # GROW CYCLES ENDPOINTS - Plant cycle tracking and daily reports
@@ -482,212 +462,96 @@ def api_save_nutrients():
 GROW_CYCLES_FILE = 'grow_cycles.json'
 
 @app.route('/api/grow-cycles', methods=['GET'])
+@api_endpoint
 def api_get_grow_cycles():
     """Get grow cycles configuration"""
-    try:
-        import json
-        import os
+    import json
+    import os
 
-        if os.path.exists(GROW_CYCLES_FILE):
-            with open(GROW_CYCLES_FILE, 'r') as f:
-                data = json.load(f)
-        else:
-            data = {"cycles": {}}
-            with open(GROW_CYCLES_FILE, 'w') as f:
-                json.dump(data, f, indent=2)
-
-        return jsonify(data)
-
-    except Exception as e:
-        logger.error(f"Error loading grow cycles: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/grow-cycles', methods=['POST'])
-def api_save_grow_cycles():
-    """Save grow cycles configuration"""
-    try:
-        import json
-
-        data = request.get_json()
-        if not data or 'cycles' not in data:
-            return jsonify({'success': False, 'error': 'Missing cycles data'}), 400
-
-        # Validate each cycle
-        required_fields = ['room_id', 'start_date', 'veg_days', 'flower_days', 'flush_days']
-        for room_id, cycle in data['cycles'].items():
-            for field in required_fields:
-                if field not in cycle:
-                    return jsonify({
-                        'success': False,
-                        'error': f'Cycle for room {room_id} missing required field: {field}'
-                    }), 400
-            # Validate date format
-            try:
-                from datetime import date as dt_date
-                dt_date.fromisoformat(cycle['start_date'])
-            except ValueError:
-                return jsonify({
-                    'success': False,
-                    'error': f'Invalid date format for room {room_id}: {cycle["start_date"]}'
-                }), 400
-            # Validate day counts are positive
-            for day_field in ['veg_days', 'flower_days', 'flush_days']:
-                if not isinstance(cycle[day_field], (int, float)) or cycle[day_field] < 0:
-                    return jsonify({
-                        'success': False,
-                        'error': f'Invalid {day_field} for room {room_id}: must be a non-negative number'
-                    }), 400
-
+    if os.path.exists(GROW_CYCLES_FILE):
+        with open(GROW_CYCLES_FILE, 'r') as f:
+            data = json.load(f)
+    else:
+        data = {"cycles": {}}
         with open(GROW_CYCLES_FILE, 'w') as f:
             json.dump(data, f, indent=2)
 
-        logger.info("Grow cycles saved successfully")
-        return jsonify({
-            'success': True,
-            'message': 'Grow cycles saved successfully',
-            'timestamp': datetime.now().isoformat()
-        })
+    return jsonify(data)
 
-    except Exception as e:
-        logger.error(f"Error saving grow cycles: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/grow-cycles', methods=['POST'])
+@api_endpoint
+def api_save_grow_cycles():
+    """Save grow cycles configuration"""
+    import json
+
+    data = request.get_json()
+    if not data or 'cycles' not in data:
+        return jsonify({'success': False, 'error': 'Missing cycles data'}), 400
+
+    # Validate each cycle
+    required_fields = ['room_id', 'start_date', 'veg_days', 'flower_days', 'flush_days']
+    for room_id, cycle in data['cycles'].items():
+        for field in required_fields:
+            if field not in cycle:
+                return jsonify({
+                    'success': False,
+                    'error': f'Cycle for room {room_id} missing required field: {field}'
+                }), 400
+        # Validate date format
+        try:
+            from datetime import date as dt_date
+            dt_date.fromisoformat(cycle['start_date'])
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid date format for room {room_id}: {cycle["start_date"]}'
+            }), 400
+        # Validate day counts are positive
+        for day_field in ['veg_days', 'flower_days', 'flush_days']:
+            if not isinstance(cycle[day_field], (int, float)) or cycle[day_field] < 0:
+                return jsonify({
+                    'success': False,
+                    'error': f'Invalid {day_field} for room {room_id}: must be a non-negative number'
+                }), 400
+
+    with open(GROW_CYCLES_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+    logger.info("Grow cycles saved successfully")
+    return jsonify({
+        'success': True,
+        'message': 'Grow cycles saved successfully',
+        'timestamp': datetime.now().isoformat()
+    })
+
 
 @app.route('/api/grow-cycles/report', methods=['GET'])
+@api_endpoint
 def api_get_grow_cycles_report():
     """Compute daily watering reports for all active cycles"""
-    try:
-        import json
-        import os
-        from datetime import date as dt_date, timedelta
+    from grow_cycles import build_reports
 
-        # Load cycles
-        if not os.path.exists(GROW_CYCLES_FILE):
-            return jsonify({'reports': []})
-        with open(GROW_CYCLES_FILE, 'r') as f:
-            cycles_data = json.load(f)
+    # Load cycles
+    if not os.path.exists(GROW_CYCLES_FILE):
+        return jsonify({'reports': []})
+    with open(GROW_CYCLES_FILE, 'r') as f:
+        cycles_data = json.load(f)
 
-        # Load nutrients
-        nutrients_data = {}
-        if os.path.exists('nutrients.json'):
-            with open('nutrients.json', 'r') as f:
-                nutrients_data = json.load(f)
+    # Load nutrients
+    nutrients_data = {}
+    if os.path.exists('nutrients.json'):
+        with open('nutrients.json', 'r') as f:
+            nutrients_data = json.load(f)
 
-        # Load grow defaults from settings
-        settings_data = load_settings()
-        grow_defaults = settings_data.get('user', {}).get('growDefaults', {})
-        flower_veg_nute_days = int(grow_defaults.get('flower_veg_nute_days', 21))
-        default_feedings_per_day = int(grow_defaults.get('feedings_per_day', 2))
+    # Load grow defaults from settings
+    settings_data = load_settings()
+    grow_defaults = settings_data.get('user', {}).get('growDefaults', {})
 
-        reports = []
-        today = dt_date.today()
+    # All the agronomic math now lives in the pure, testable grow_cycles module.
+    reports = build_reports(cycles_data, nutrients_data, grow_defaults)
+    return jsonify({'reports': reports})
 
-        for room_id, cycle in cycles_data.get('cycles', {}).items():
-            if not cycle.get('active', False):
-                continue
-
-            start = dt_date.fromisoformat(cycle['start_date'])
-            current_day = (today - start).days + 1
-
-            veg_days = int(cycle['veg_days'])
-            flower_days = int(cycle['flower_days'])
-            flush_days = int(cycle['flush_days'])
-            total_days = veg_days + flower_days + flush_days
-
-            # Determine stage
-            if current_day <= 0:
-                stage = 'not_started'
-                stage_day = 0
-            elif current_day <= veg_days:
-                stage = 'veg'
-                stage_day = current_day
-            elif current_day <= veg_days + flower_days:
-                stage = 'flower'
-                stage_day = current_day - veg_days
-            elif current_day <= total_days:
-                stage = 'flush'
-                stage_day = current_day - veg_days - flower_days
-            else:
-                stage = 'complete'
-                stage_day = 0
-
-            # Map stage to recipe with flower sub-stages
-            # First N days of flower use veg nutes (from settings), then bloom nutes
-            sub_stage = None
-            if stage == 'veg':
-                recipe_key = 'veg_formula'
-            elif stage == 'flower':
-                if stage_day <= flower_veg_nute_days:
-                    recipe_key = 'veg_formula'
-                    sub_stage = 'flower_veg'
-                else:
-                    recipe_key = 'bloom_formula'
-                    sub_stage = 'flower_bloom'
-            elif stage == 'flush':
-                recipe_key = 'flush_formula'
-            else:
-                recipe_key = None
-
-            recipe = dict(nutrients_data.get(recipe_key, {})) if recipe_key else {}
-
-            # Default flush formula: Cake only (cropsalt flush)
-            if stage == 'flush' and not recipe:
-                recipe = {'Cake': 2.0}
-
-            # Scale by watering volume (per feeding)
-            volume = cycle.get('watering_volume_gallons', 1)
-            feedings_per_day = default_feedings_per_day
-            scaled = {name: round(ml * volume, 1) for name, ml in recipe.items()}
-            daily_scaled = {name: round(ml * volume * feedings_per_day, 1) for name, ml in recipe.items()}
-
-            # EC/pH targets by stage
-            if stage == 'veg':
-                target_ec = [2.2, 2.2]
-            elif stage == 'flower':
-                # Heavy flower bump during weeks 4-6
-                heavy_start = max(1, int(flower_days * 0.4))
-                heavy_end = int(flower_days * 0.75)
-                if heavy_start <= stage_day <= heavy_end:
-                    target_ec = [2.3, 2.3]
-                else:
-                    target_ec = [2.2, 2.2]
-            elif stage == 'flush':
-                target_ec = [0.0, 0.3]
-            else:
-                target_ec = [0, 0]
-
-            harvest_date = start + timedelta(days=total_days - 1)
-            days_remaining = max(0, (harvest_date - today).days + 1)
-
-            reports.append({
-                'room_id': room_id,
-                'room_name': cycle.get('room_name', f'Room {room_id}'),
-                'strain': cycle.get('strain', ''),
-                'current_day': max(0, current_day),
-                'total_days': total_days,
-                'current_stage': stage,
-                'sub_stage': sub_stage,
-                'stage_day': stage_day,
-                'veg_days': veg_days,
-                'flower_days': flower_days,
-                'flush_days': flush_days,
-                'days_remaining': days_remaining if stage != 'complete' else 0,
-                'harvest_date': harvest_date.isoformat(),
-                'recipe_name': recipe_key or ('flush' if stage == 'flush' else 'none'),
-                'recipe_per_gallon': recipe,
-                'recipe_total_ml': scaled,
-                'recipe_daily_total_ml': daily_scaled,
-                'feedings_per_day': feedings_per_day,
-                'watering_volume_gallons': volume,
-                'target_ec': target_ec,
-                'target_ph': 6.2,
-                'notes': cycle.get('notes', '')
-            })
-
-        return jsonify({'reports': reports})
-
-    except Exception as e:
-        logger.error(f"Error generating grow cycle reports: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 # =============================================================================
 # API ENDPOINTS - Hardware Control (same patterns as simple_gui.py)
@@ -755,16 +619,10 @@ def build_status_data():
 @app.route('/api/status')
 @app.route('/api/hardware/status')
 @app.route('/api/system/status')
+@api_endpoint
 def api_status():
     """Get current system status"""
-    try:
-        return jsonify(build_status_data())
-    except Exception as e:
-        logger.error(f"Error getting status: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    return jsonify(build_status_data())
 
 
 # =============================================================================
@@ -854,516 +712,388 @@ def api_control_relay(relay_id, state):
         }), 500
 
 @app.route('/api/relays/<int:relay_id>/control', methods=['POST'])
+@api_endpoint
 def api_control_relay_json(relay_id):
     """Control individual relay (JSON format for HeadGrower)"""
-    try:
-        data = request.get_json() or {}
-        relay_state = data.get('state', False)
-        
-        success = control_relay(relay_id, relay_state)
-        
-        return jsonify({
-            'success': success,
-            'relay_id': relay_id,
-            'state': 'ON' if relay_state else 'OFF',
-            'message': f"Relay {relay_id} {'turned on' if relay_state else 'turned off'}" if success else "Command failed"
-        })
-    except Exception as e:
-        logger.error(f"Error controlling relay {relay_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    data = request.get_json() or {}
+    relay_state = data.get('state', False)
+    
+    success = control_relay(relay_id, relay_state)
+    
+    return jsonify({
+        'success': success,
+        'relay_id': relay_id,
+        'state': 'ON' if relay_state else 'OFF',
+        'message': f"Relay {relay_id} {'turned on' if relay_state else 'turned off'}" if success else "Command failed"
+    })
 
 @app.route('/api/relay/all/off', methods=['POST'])
+@api_endpoint
 def api_all_relays_off():
     """Turn all relays off"""
-    try:
-        success = all_relays_off()
-        
-        return jsonify({
-            'success': success,
-            'message': "All relays turned off" if success else "Failed to turn off relays"
-        })
-    except Exception as e:
-        logger.error(f"Error turning off all relays: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    success = all_relays_off()
+    
+    return jsonify({
+        'success': success,
+        'message': "All relays turned off" if success else "Failed to turn off relays"
+    })
 
 # -----------------------------------------------------------------------------
 # PUMP CONTROL - Using exact same patterns as simple_gui.py
 # -----------------------------------------------------------------------------
 
 @app.route('/api/pump/<int:pump_id>/dispense', methods=['POST'])
+@api_endpoint
 def api_dispense_pump(pump_id):
     """Start pump dispensing"""
-    try:
-        data = request.get_json() or {}
-        amount = float(data.get('amount', request.args.get('amount', 0)))
-        
-        if not amount:
-            return jsonify({
-                'success': False,
-                'error': 'Amount parameter required'
-            }), 400
-        
-        success = dispense_pump(pump_id, amount)
-        
-        return jsonify({
-            'success': success,
-            'pump_id': pump_id,
-            'amount': amount,
-            'message': f"Dispensing {amount}ml from pump {pump_id}" if success else "Dispense command failed"
-        })
-    except ValueError as e:
+    data = request.get_json() or {}
+    amount = float(data.get('amount', request.args.get('amount', 0)))
+    
+    if not amount:
         return jsonify({
             'success': False,
-            'error': f'Invalid amount: {e}'
+            'error': 'Amount parameter required'
         }), 400
-    except Exception as e:
-        logger.error(f"Error dispensing from pump {pump_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    
+    success = dispense_pump(pump_id, amount)
+    
+    return jsonify({
+        'success': success,
+        'pump_id': pump_id,
+        'amount': amount,
+        'message': f"Dispensing {amount}ml from pump {pump_id}" if success else "Dispense command failed"
+    })
 
 @app.route('/api/pumps/<int:pump_id>/dispense', methods=['POST'])
+@api_endpoint
 def api_dispense_pump_plural(pump_id):
     """Start pump dispensing (plural endpoint for HeadGrower)"""
-    try:
-        data = request.get_json() or {}
-        amount = float(data.get('volume_ml', data.get('amount', request.args.get('amount', 0))))
-        
-        if not amount:
-            return jsonify({
-                'success': False,
-                'error': 'Volume_ml parameter required'
-            }), 400
-        
-        success = dispense_pump(pump_id, amount)
-        
-        return jsonify({
-            'success': success,
-            'pump_id': pump_id,
-            'volume_ml': amount,
-            'message': f"Dispensing {amount}ml from pump {pump_id}" if success else "Dispense command failed"
-        })
-    except ValueError as e:
+    data = request.get_json() or {}
+    amount = float(data.get('volume_ml', data.get('amount', request.args.get('amount', 0))))
+    
+    if not amount:
         return jsonify({
             'success': False,
-            'error': f'Invalid volume_ml: {e}'
+            'error': 'Volume_ml parameter required'
         }), 400
-    except Exception as e:
-        logger.error(f"Error dispensing from pump {pump_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    
+    success = dispense_pump(pump_id, amount)
+    
+    return jsonify({
+        'success': success,
+        'pump_id': pump_id,
+        'volume_ml': amount,
+        'message': f"Dispensing {amount}ml from pump {pump_id}" if success else "Dispense command failed"
+    })
 
 @app.route('/api/pump/<int:pump_id>/stop', methods=['POST'])
+@api_endpoint
 def api_stop_pump(pump_id):
     """Stop pump"""
-    try:
-        success = stop_pump(pump_id)
-        
-        return jsonify({
-            'success': success,
-            'pump_id': pump_id,
-            'message': f"Pump {pump_id} stopped" if success else "Stop command failed"
-        })
-    except Exception as e:
-        logger.error(f"Error stopping pump {pump_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    success = stop_pump(pump_id)
+    
+    return jsonify({
+        'success': success,
+        'pump_id': pump_id,
+        'message': f"Pump {pump_id} stopped" if success else "Stop command failed"
+    })
 
 
 @app.route('/api/pumps/<int:pump_id>/calibration/clear', methods=['POST'])
+@api_endpoint
 def api_clear_pump_calibration(pump_id):
     """Clear pump calibration data"""
-    try:
-        success = clear_pump_calibration(pump_id)
-        
-        return jsonify({
-            'success': success,
-            'pump_id': pump_id,
-            'message': f"Pump {pump_id} calibration cleared" if success else "Failed to clear calibration"
-        })
-        
-    except Exception as e:
-        logger.error(f"Error clearing pump {pump_id} calibration: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    success = clear_pump_calibration(pump_id)
+    
+    return jsonify({
+        'success': success,
+        'pump_id': pump_id,
+        'message': f"Pump {pump_id} calibration cleared" if success else "Failed to clear calibration"
+    })
+    
 
 @app.route('/api/pumps/<int:pump_id>/calibration/status', methods=['GET'])
+@api_endpoint
 def api_check_pump_calibration_status(pump_id):
     """Check pump calibration status"""
-    try:
-        result = check_pump_calibration_status(pump_id)
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Error checking pump {pump_id} calibration status: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    result = check_pump_calibration_status(pump_id)
+    
+    return jsonify(result)
+    
 
 @app.route('/api/pumps/<int:pump_id>/pause', methods=['POST'])
+@api_endpoint
 def api_pause_pump(pump_id):
     """Pause pump during dispensing"""
-    try:
-        success = pause_pump(pump_id)
-        
-        return jsonify({
-            'success': success,
-            'pump_id': pump_id,
-            'message': f"Pump {pump_id} paused" if success else "Failed to pause pump"
-        })
-        
-    except Exception as e:
-        logger.error(f"Error pausing pump {pump_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    success = pause_pump(pump_id)
+    
+    return jsonify({
+        'success': success,
+        'pump_id': pump_id,
+        'message': f"Pump {pump_id} paused" if success else "Failed to pause pump"
+    })
+    
 
 @app.route('/api/pumps/<int:pump_id>/status', methods=['GET'])
+@api_endpoint
 def api_get_pump_status(pump_id):
     """Get comprehensive pump status including voltage, calibration, and current volume"""
-    try:
-        # Get all status info
-        voltage_info = get_pump_voltage(pump_id)
-        calibration_info = check_pump_calibration_status(pump_id)
-        volume_info = get_current_dispensed_volume(pump_id)
-        
-        pump_name = get_pump_name(pump_id)
-        
-        return jsonify({
-            'success': True,
-            'pump_id': pump_id,
-            'pump_name': pump_name,
-            'voltage': voltage_info,
-            'calibration': calibration_info,
-            'current_volume': volume_info
-        })
-        
-    except Exception as e:
-        logger.error(f"Error getting pump {pump_id} status: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    # Get all status info
+    voltage_info = get_pump_voltage(pump_id)
+    calibration_info = check_pump_calibration_status(pump_id)
+    volume_info = get_current_dispensed_volume(pump_id)
+    
+    pump_name = get_pump_name(pump_id)
+    
+    return jsonify({
+        'success': True,
+        'pump_id': pump_id,
+        'pump_name': pump_name,
+        'voltage': voltage_info,
+        'calibration': calibration_info,
+        'current_volume': volume_info
+    })
+    
 
 @app.route('/api/pumps/<int:pump_id>/volume', methods=['GET'])
+@api_endpoint
 def api_get_current_volume(pump_id):
     """Get current dispensed volume from pump"""
-    try:
-        result = get_current_dispensed_volume(pump_id)
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Error getting pump {pump_id} current volume: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    result = get_current_dispensed_volume(pump_id)
+    
+    return jsonify(result)
+    
 
 @app.route('/api/pumps/refresh-calibration', methods=['POST'])
+@api_endpoint
 def api_refresh_calibration():
     """Manually refresh calibration status for all pumps"""
-    try:
-        success = refresh_pump_calibrations()
-        
-        return jsonify({
-            'success': success,
-            'message': 'Calibration status refreshed' if success else 'Failed to refresh calibration status'
-        })
-        
-    except Exception as e:
-        logger.error(f"Error refreshing calibration: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    success = refresh_pump_calibrations()
+    
+    return jsonify({
+        'success': success,
+        'message': 'Calibration status refreshed' if success else 'Failed to refresh calibration status'
+    })
+    
 
 @app.route('/api/pumps/<int:pump_id>/calibrate', methods=['POST'])
+@api_endpoint
 def api_calibrate_pump_with_refresh(pump_id):
     """Calibrate a specific pump and update cache"""
-    try:
-        data = request.get_json() or {}
-        target_volume = float(data.get('target_volume', 0))
-        actual_volume = float(data.get('actual_volume', 0))
-        
-        if not target_volume or not actual_volume:
-            return jsonify({
-                'success': False,
-                'error': 'Both target_volume and actual_volume parameters required'
-            }), 400
-        
-        if target_volume <= 0 or actual_volume <= 0:
-            return jsonify({
-                'success': False,
-                'error': 'Volumes must be greater than 0'
-            }), 400
-        
-        # Calculate calibration factor for logging
-        calibration_factor = actual_volume / target_volume
-        
-        # Log the calibration for debugging
-        logger.info(f"Calibrating pump {pump_id}: target={target_volume}ml, actual={actual_volume}ml, factor={calibration_factor:.4f}")
-        
-        # Calibrate the pump using hardware_comms
-        success = calibrate_pump(pump_id, actual_volume)
-        
-        if success:
-            # Update cached calibration status after successful calibration
-            refresh_success = refresh_pump_calibrations()
-            if not refresh_success:
-                logger.warning(f"Calibration succeeded but cache refresh failed for pump {pump_id}")
-        
-        return jsonify({
-            'success': success,
-            'pump_id': pump_id,
-            'target_volume': target_volume,
-            'actual_volume': actual_volume,
-            'calibration_factor': calibration_factor,
-            'message': f"Pump {pump_id} calibrated successfully (factor: {calibration_factor:.4f})" if success else "Calibration failed - check logs"
-        })
-        
-    except ValueError as e:
+    data = request.get_json() or {}
+    target_volume = float(data.get('target_volume', 0))
+    actual_volume = float(data.get('actual_volume', 0))
+    
+    if not target_volume or not actual_volume:
         return jsonify({
             'success': False,
-            'error': f'Invalid volume values: {e}'
+            'error': 'Both target_volume and actual_volume parameters required'
         }), 400
-    except Exception as e:
-        logger.error(f"Error calibrating pump {pump_id}: {e}")
+    
+    if target_volume <= 0 or actual_volume <= 0:
         return jsonify({
             'success': False,
-            'error': str(e)
-        }), 500
+            'error': 'Volumes must be greater than 0'
+        }), 400
+    
+    # Calculate calibration factor for logging
+    calibration_factor = actual_volume / target_volume
+    
+    # Log the calibration for debugging
+    logger.info(f"Calibrating pump {pump_id}: target={target_volume}ml, actual={actual_volume}ml, factor={calibration_factor:.4f}")
+    
+    # Calibrate the pump using hardware_comms
+    success = calibrate_pump(pump_id, actual_volume)
+    
+    if success:
+        # Update cached calibration status after successful calibration
+        refresh_success = refresh_pump_calibrations()
+        if not refresh_success:
+            logger.warning(f"Calibration succeeded but cache refresh failed for pump {pump_id}")
+    
+    return jsonify({
+        'success': success,
+        'pump_id': pump_id,
+        'target_volume': target_volume,
+        'actual_volume': actual_volume,
+        'calibration_factor': calibration_factor,
+        'message': f"Pump {pump_id} calibrated successfully (factor: {calibration_factor:.4f})" if success else "Calibration failed - check logs"
+    })
+    
 
 # -----------------------------------------------------------------------------
 # FLOW CONTROL - Using exact same patterns as simple_gui.py
 # -----------------------------------------------------------------------------
 
 @app.route('/api/flow/<int:flow_id>/start', methods=['POST'])
+@api_endpoint
 def api_start_flow(flow_id):
     """Start flow monitoring"""
-    try:
-        data = request.get_json() or {}
-        gallons = int(data.get('gallons', request.args.get('gallons', 0)))
-        
-        if not gallons:
-            return jsonify({
-                'success': False,
-                'error': 'Gallons parameter required'
-            }), 400
-        
-        success = start_flow(flow_id, gallons)
-        
-        return jsonify({
-            'success': success,
-            'flow_id': flow_id,
-            'gallons': gallons,
-            'message': f"Flow meter {flow_id} started for {gallons} gallons" if success else "Flow start command failed"
-        })
-    except ValueError as e:
+    data = request.get_json() or {}
+    gallons = int(data.get('gallons', request.args.get('gallons', 0)))
+    
+    if not gallons:
         return jsonify({
             'success': False,
-            'error': f'Invalid gallons: {e}'
+            'error': 'Gallons parameter required'
         }), 400
-    except Exception as e:
-        logger.error(f"Error starting flow {flow_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    
+    success = start_flow(flow_id, gallons)
+    
+    return jsonify({
+        'success': success,
+        'flow_id': flow_id,
+        'gallons': gallons,
+        'message': f"Flow meter {flow_id} started for {gallons} gallons" if success else "Flow start command failed"
+    })
 
 @app.route('/api/flow/<int:flow_id>/stop', methods=['POST'])
+@api_endpoint
 def api_stop_flow(flow_id):
     """Stop flow monitoring"""
-    try:
-        success = stop_flow(flow_id)
-        
-        return jsonify({
-            'success': success,
-            'flow_id': flow_id,
-            'message': f"Flow meter {flow_id} stopped" if success else "Flow stop command failed"
-        })
-    except Exception as e:
-        logger.error(f"Error stopping flow {flow_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    success = stop_flow(flow_id)
+    
+    return jsonify({
+        'success': success,
+        'flow_id': flow_id,
+        'message': f"Flow meter {flow_id} stopped" if success else "Flow stop command failed"
+    })
 
 @app.route('/api/flow/<int:flow_id>/status', methods=['GET'])
+@api_endpoint
 def api_get_flow_status(flow_id):
     """Get detailed flow meter status including pulse count"""
-    try:
-        status = get_flow_status(flow_id)
+    status = get_flow_status(flow_id)
 
-        if status is None:
-            return jsonify({
-                'success': False,
-                'error': f'Invalid flow meter ID: {flow_id}'
-            }), 400
-
-        return jsonify({
-            'success': True,
-            'flow_id': flow_id,
-            'status': status
-        })
-    except Exception as e:
-        logger.error(f"Error getting flow status {flow_id}: {e}")
+    if status is None:
         return jsonify({
             'success': False,
-            'error': str(e)
-        }), 500
+            'error': f'Invalid flow meter ID: {flow_id}'
+        }), 400
+
+    return jsonify({
+        'success': True,
+        'flow_id': flow_id,
+        'status': status
+    })
 
 # -----------------------------------------------------------------------------
 # FLOW METER DIAGNOSTICS - For troubleshooting page
 # -----------------------------------------------------------------------------
 
 @app.route('/api/flow/<int:flow_id>/diagnostics/gpio', methods=['GET'])
+@api_endpoint
 def api_flow_gpio_diagnostics(flow_id):
     """Get GPIO pin status and configuration for flow meter"""
-    try:
-        from hardware.hardware_comms import get_flow_controller
-        from config import FLOW_METER_GPIO_PINS, FLOW_METER_NAMES, FLOW_METER_CALIBRATION
+    from hardware.hardware_comms import get_flow_controller
+    from config import FLOW_METER_GPIO_PINS, FLOW_METER_NAMES, FLOW_METER_CALIBRATION
 
-        if flow_id not in FLOW_METER_GPIO_PINS:
-            return jsonify({
-                'success': False,
-                'error': f'Invalid flow meter ID: {flow_id}'
-            }), 400
-
-        gpio_pin = FLOW_METER_GPIO_PINS[flow_id]
-        meter_name = FLOW_METER_NAMES.get(flow_id, f'Flow Meter {flow_id}')
-        calibration = FLOW_METER_CALIBRATION.get(flow_id, 220)
-
-        # Try to read GPIO level if controller is available
-        gpio_level = None
-        gpio_level_voltage = None
-
-        flow_controller = get_flow_controller()
-        if flow_controller:
-            try:
-                import lgpio
-                if flow_controller.h is not None:
-                    level = lgpio.gpio_read(flow_controller.h, gpio_pin)
-                    gpio_level = 'HIGH' if level else 'LOW'
-                    gpio_level_voltage = '~3.3V' if level else '~0V'
-            except Exception as e:
-                logger.debug(f"Could not read GPIO level: {e}")
-
-        return jsonify({
-            'success': True,
-            'flow_id': flow_id,
-            'diagnostics': {
-                'meter_name': meter_name,
-                'gpio_pin': gpio_pin,
-                'calibration_ppg': calibration,
-                'gpio_level': gpio_level,
-                'gpio_voltage': gpio_level_voltage,
-                'interrupt_edge': 'RISING',
-                'pull_resistor': 'PULL_UP'
-            }
-        })
-    except Exception as e:
-        logger.error(f"Error getting GPIO diagnostics for flow {flow_id}: {e}")
+    if flow_id not in FLOW_METER_GPIO_PINS:
         return jsonify({
             'success': False,
-            'error': str(e)
-        }), 500
+            'error': f'Invalid flow meter ID: {flow_id}'
+        }), 400
+
+    gpio_pin = FLOW_METER_GPIO_PINS[flow_id]
+    meter_name = FLOW_METER_NAMES.get(flow_id, f'Flow Meter {flow_id}')
+    calibration = FLOW_METER_CALIBRATION.get(flow_id, 220)
+
+    # Try to read GPIO level if controller is available
+    gpio_level = None
+    gpio_level_voltage = None
+
+    flow_controller = get_flow_controller()
+    if flow_controller:
+        try:
+            import lgpio
+            if flow_controller.h is not None:
+                level = lgpio.gpio_read(flow_controller.h, gpio_pin)
+                gpio_level = 'HIGH' if level else 'LOW'
+                gpio_level_voltage = '~3.3V' if level else '~0V'
+        except Exception as e:
+            logger.debug(f"Could not read GPIO level: {e}")
+
+    return jsonify({
+        'success': True,
+        'flow_id': flow_id,
+        'diagnostics': {
+            'meter_name': meter_name,
+            'gpio_pin': gpio_pin,
+            'calibration_ppg': calibration,
+            'gpio_level': gpio_level,
+            'gpio_voltage': gpio_level_voltage,
+            'interrupt_edge': 'RISING',
+            'pull_resistor': 'PULL_UP'
+        }
+    })
 
 @app.route('/api/flow/<int:flow_id>/diagnostics/pulse-test', methods=['POST'])
+@api_endpoint
 def api_flow_pulse_test(flow_id):
     """Start a pulse counting test for specified duration"""
-    try:
-        from hardware.hardware_comms import get_flow_controller
-        from config import FLOW_METER_GPIO_PINS
+    from hardware.hardware_comms import get_flow_controller
+    from config import FLOW_METER_GPIO_PINS
 
-        if flow_id not in FLOW_METER_GPIO_PINS:
-            return jsonify({
-                'success': False,
-                'error': f'Invalid flow meter ID: {flow_id}'
-            }), 400
-
-        data = request.get_json() or {}
-        duration = int(data.get('duration', 10))  # Default 10 seconds
-
-        flow_controller = get_flow_controller()
-        if not flow_controller:
-            return jsonify({
-                'success': False,
-                'error': 'Flow controller not available'
-            }), 500
-
-        # Reset pulse counter and activate monitoring
-        flow_controller.flow_meters[flow_id]['pulse_count'] = 0
-        flow_controller.flow_meters[flow_id]['status'] = 1
-
-        return jsonify({
-            'success': True,
-            'flow_id': flow_id,
-            'message': f'Pulse test started for {duration} seconds',
-            'test_duration': duration,
-            'start_time': time.time()
-        })
-    except Exception as e:
-        logger.error(f"Error starting pulse test for flow {flow_id}: {e}")
+    if flow_id not in FLOW_METER_GPIO_PINS:
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'Invalid flow meter ID: {flow_id}'
+        }), 400
+
+    data = request.get_json() or {}
+    duration = int(data.get('duration', 10))  # Default 10 seconds
+
+    flow_controller = get_flow_controller()
+    if not flow_controller:
+        return jsonify({
+            'success': False,
+            'error': 'Flow controller not available'
         }), 500
+
+    # Reset pulse counter and activate monitoring
+    flow_controller.flow_meters[flow_id]['pulse_count'] = 0
+    flow_controller.flow_meters[flow_id]['status'] = 1
+
+    return jsonify({
+        'success': True,
+        'flow_id': flow_id,
+        'message': f'Pulse test started for {duration} seconds',
+        'test_duration': duration,
+        'start_time': time.time()
+    })
 
 @app.route('/api/flow/<int:flow_id>/diagnostics/reset', methods=['POST'])
+@api_endpoint
 def api_flow_reset_counter(flow_id):
     """Reset pulse counter for flow meter"""
-    try:
-        from hardware.hardware_comms import get_flow_controller
-        from config import FLOW_METER_GPIO_PINS
+    from hardware.hardware_comms import get_flow_controller
+    from config import FLOW_METER_GPIO_PINS
 
-        if flow_id not in FLOW_METER_GPIO_PINS:
-            return jsonify({
-                'success': False,
-                'error': f'Invalid flow meter ID: {flow_id}'
-            }), 400
-
-        flow_controller = get_flow_controller()
-        if not flow_controller:
-            return jsonify({
-                'success': False,
-                'error': 'Flow controller not available'
-            }), 500
-
-        # Reset all counters
-        flow_controller.flow_meters[flow_id]['pulse_count'] = 0
-        flow_controller.flow_meters[flow_id]['last_count'] = 0
-        flow_controller.flow_meters[flow_id]['current_gallons'] = 0
-        flow_controller.flow_meters[flow_id]['target_gallons'] = 0
-        flow_controller.flow_meters[flow_id]['status'] = 0
-
-        return jsonify({
-            'success': True,
-            'flow_id': flow_id,
-            'message': 'Flow meter counter reset'
-        })
-    except Exception as e:
-        logger.error(f"Error resetting flow {flow_id}: {e}")
+    if flow_id not in FLOW_METER_GPIO_PINS:
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'Invalid flow meter ID: {flow_id}'
+        }), 400
+
+    flow_controller = get_flow_controller()
+    if not flow_controller:
+        return jsonify({
+            'success': False,
+            'error': 'Flow controller not available'
         }), 500
+
+    # Reset all counters
+    flow_controller.flow_meters[flow_id]['pulse_count'] = 0
+    flow_controller.flow_meters[flow_id]['last_count'] = 0
+    flow_controller.flow_meters[flow_id]['current_gallons'] = 0
+    flow_controller.flow_meters[flow_id]['target_gallons'] = 0
+    flow_controller.flow_meters[flow_id]['status'] = 0
+
+    return jsonify({
+        'success': True,
+        'flow_id': flow_id,
+        'message': 'Flow meter counter reset'
+    })
 
 # -----------------------------------------------------------------------------
 # EC/pH SENSOR CONTROL - Using exact same patterns as simple_gui.py
@@ -1371,538 +1101,462 @@ def api_flow_reset_counter(flow_id):
 
 @app.route('/api/sensor/ecph/start', methods=['POST'])
 @app.route('/api/ecph/start', methods=['POST'])
+@api_endpoint
 def api_start_ec_ph():
     """Start EC/pH monitoring"""
-    try:
-        success = start_ec_ph()
-        
-        return jsonify({
-            'success': success,
-            'message': "EC/pH monitoring started" if success else "Failed to start EC/pH monitoring"
-        })
-    except Exception as e:
-        logger.error(f"Error starting EC/pH monitoring: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    success = start_ec_ph()
+    
+    return jsonify({
+        'success': success,
+        'message': "EC/pH monitoring started" if success else "Failed to start EC/pH monitoring"
+    })
 
 @app.route('/api/sensor/ecph/stop', methods=['POST'])
 @app.route('/api/ecph/stop', methods=['POST'])
+@api_endpoint
 def api_stop_ec_ph():
     """Stop EC/pH monitoring"""
-    try:
-        success = stop_ec_ph()
+    success = stop_ec_ph()
 
-        return jsonify({
-            'success': success,
-            'message': "EC/pH monitoring stopped" if success else "Failed to stop EC/pH monitoring"
-        })
-    except Exception as e:
-        logger.error(f"Error stopping EC/pH monitoring: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    return jsonify({
+        'success': success,
+        'message': "EC/pH monitoring stopped" if success else "Failed to stop EC/pH monitoring"
+    })
 
 @app.route('/api/sensors/ecph/read', methods=['GET'])
+@api_endpoint
 def api_read_ec_ph():
     """Read current EC and pH values"""
-    try:
-        result = read_ec_ph_sensors()
+    result = read_ec_ph_sensors()
 
-        if result.get('success'):
-            return jsonify({
-                'success': True,
-                'data': {
-                    'ph': result.get('ph'),
-                    'ec': result.get('ec'),
-                    'timestamp': result.get('timestamp')
-                }
-            })
-        else:
-            return jsonify(result), 500
-    except Exception as e:
-        logger.error(f"Error reading EC/pH sensors: {e}")
+    if result.get('success'):
         return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+            'success': True,
+            'data': {
+                'ph': result.get('ph'),
+                'ec': result.get('ec'),
+                'timestamp': result.get('timestamp')
+            }
+        })
+    else:
+        return jsonify(result), 500
 
 @app.route('/api/sensors/ph/calibrate', methods=['POST'])
+@api_endpoint
 def api_calibrate_ph():
     """
     Calibrate pH sensor
     Body: {"point": "mid"|"low"|"high"|"clear", "value": 7.0 (optional)}
     """
-    try:
-        data = request.get_json() or {}
-        point = data.get('point')
-        value = data.get('value')
+    data = request.get_json() or {}
+    point = data.get('point')
+    value = data.get('value')
 
-        if not point:
-            return jsonify({
-                'success': False,
-                'error': 'Calibration point required'
-            }), 400
-
-        success = calibrate_ph(point, value)
-
-        return jsonify({
-            'success': success,
-            'message': f"pH {point} calibration {'successful' if success else 'failed'}"
-        })
-    except Exception as e:
-        logger.error(f"Error calibrating pH: {e}")
+    if not point:
         return jsonify({
             'success': False,
-            'error': str(e)
-        }), 500
+            'error': 'Calibration point required'
+        }), 400
+
+    success = calibrate_ph(point, value)
+
+    return jsonify({
+        'success': success,
+        'message': f"pH {point} calibration {'successful' if success else 'failed'}"
+    })
 
 @app.route('/api/sensors/ec/calibrate', methods=['POST'])
+@api_endpoint
 def api_calibrate_ec():
     """
     Calibrate EC sensor
     Body: {"point": "dry"|"single"|"low"|"high"|"clear", "value": 1413 (optional)}
     """
-    try:
-        data = request.get_json() or {}
-        point = data.get('point')
-        value = data.get('value')
+    data = request.get_json() or {}
+    point = data.get('point')
+    value = data.get('value')
 
-        if not point:
-            return jsonify({
-                'success': False,
-                'error': 'Calibration point required'
-            }), 400
-
-        success = calibrate_ec(point, value)
-
-        return jsonify({
-            'success': success,
-            'message': f"EC {point} calibration {'successful' if success else 'failed'}"
-        })
-    except Exception as e:
-        logger.error(f"Error calibrating EC: {e}")
+    if not point:
         return jsonify({
             'success': False,
-            'error': str(e)
-        }), 500
+            'error': 'Calibration point required'
+        }), 400
+
+    success = calibrate_ec(point, value)
+
+    return jsonify({
+        'success': success,
+        'message': f"EC {point} calibration {'successful' if success else 'failed'}"
+    })
 
 @app.route('/api/sensors/calibration/status', methods=['GET'])
+@api_endpoint
 def api_get_calibration_status():
     """Get calibration status for both sensors"""
-    try:
-        result = get_sensor_calibration_status()
+    result = get_sensor_calibration_status()
 
-        return jsonify(result)
-    except Exception as e:
-        logger.error(f"Error getting calibration status: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    return jsonify(result)
 
 # -----------------------------------------------------------------------------
 # TANK MONITOR ENDPOINTS - Per-tank pH/EC Arduino monitors
 # -----------------------------------------------------------------------------
 
 @app.route('/api/tank-monitors', methods=['GET'])
+@api_endpoint
 def api_get_all_tank_monitors():
     """Get readings from all tank monitors"""
-    try:
-        readings = get_tank_monitor_readings()
-        return jsonify({
-            'success': True,
-            'monitors': readings
-        })
-    except Exception as e:
-        logger.error(f"Error getting tank monitor readings: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    readings = get_tank_monitor_readings()
+    return jsonify({
+        'success': True,
+        'monitors': readings
+    })
 
 @app.route('/api/tank-monitors/<int:tank_id>', methods=['GET'])
+@api_endpoint
 def api_get_tank_monitor(tank_id):
     """Get readings from a specific tank monitor"""
-    try:
-        readings = get_tank_monitor_readings(tank_id)
-        if 'error' in readings:
-            return jsonify({
-                'success': False,
-                'error': readings['error']
-            }), 404
-
-        return jsonify({
-            'success': True,
-            'data': readings
-        })
-    except Exception as e:
-        logger.error(f"Error getting tank {tank_id} monitor readings: {e}")
+    readings = get_tank_monitor_readings(tank_id)
+    if 'error' in readings:
         return jsonify({
             'success': False,
-            'error': str(e)
-        }), 500
+            'error': readings['error']
+        }), 404
+
+    return jsonify({
+        'success': True,
+        'data': readings
+    })
 
 # -----------------------------------------------------------------------------
 # HARDWARE TESTING ENDPOINTS - For debugging hardware connections
 # -----------------------------------------------------------------------------
 
 @app.route('/api/test/relay/<int:relay_id>', methods=['POST'])
+@api_endpoint
 def api_test_relay(relay_id):
     """Test relay with detailed debug info"""
+    # Get test parameters
+    data = request.get_json() or {}
+    test_type = data.get('test_type', 'basic')  # basic or advanced
+    duration = float(data.get('duration', 1.0))  # seconds
+    
+    results = {
+        'success': False,
+        'relay_id': relay_id,
+        'test_type': test_type,
+        'commands': [],
+        'responses': [],
+        'gpio_info': {},
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    # Get GPIO pin info from config
     try:
-        # Get test parameters
-        data = request.get_json() or {}
-        test_type = data.get('test_type', 'basic')  # basic or advanced
-        duration = float(data.get('duration', 1.0))  # seconds
-        
-        results = {
-            'success': False,
-            'relay_id': relay_id,
-            'test_type': test_type,
-            'commands': [],
-            'responses': [],
-            'gpio_info': {},
-            'timestamp': datetime.now().isoformat()
+        from config import RELAY_GPIO_PINS, get_relay_name
+        gpio_pin = RELAY_GPIO_PINS.get(relay_id, 'Unknown')
+        relay_name = get_relay_name(relay_id)
+        results['gpio_info'] = {
+            'pin': gpio_pin,
+            'name': relay_name
         }
-        
-        # Get GPIO pin info from config
-        try:
-            from config import RELAY_GPIO_PINS, get_relay_name
-            gpio_pin = RELAY_GPIO_PINS.get(relay_id, 'Unknown')
-            relay_name = get_relay_name(relay_id)
-            results['gpio_info'] = {
-                'pin': gpio_pin,
-                'name': relay_name
-            }
-        except Exception as e:
-            results['gpio_info'] = {'error': str(e)}
-        
-        if test_type == 'basic':
-            # Basic test: ON -> OFF -> ON -> OFF
-            test_sequence = [True, False, True, False]
-            for state in test_sequence:
-                command = f"Start;Relay;{relay_id};{'ON' if state else 'OFF'};end"
-                results['commands'].append(command)
-                
-                success = control_relay(relay_id, state)
-                results['responses'].append({
-                    'command': command,
-                    'success': success,
-                    'state': 'ON' if state else 'OFF'
-                })
-                
-                time.sleep(duration / len(test_sequence))
-                
-        elif test_type == 'advanced':
-            # Advanced test: Test relay set (for tank operations)
-            relay_set = data.get('relay_set', [relay_id])
-            
-            # Turn on all relays in set
-            for rid in relay_set:
-                command = f"Start;Relay;{rid};ON;end"
-                results['commands'].append(command)
-                success = control_relay(rid, True)
-                results['responses'].append({
-                    'command': command,
-                    'success': success,
-                    'relay_id': rid,
-                    'state': 'ON'
-                })
-            
-            time.sleep(duration)
-            
-            # Turn off all relays in set
-            for rid in relay_set:
-                command = f"Start;Relay;{rid};OFF;end"
-                results['commands'].append(command)
-                success = control_relay(rid, False)
-                results['responses'].append({
-                    'command': command,
-                    'success': success,
-                    'relay_id': rid,
-                    'state': 'OFF'
-                })
-        
-        results['success'] = all(r.get('success', False) for r in results['responses'])
-        return jsonify(results)
-        
     except Exception as e:
-        logger.error(f"Error testing relay {relay_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'relay_id': relay_id,
-            'test_type': test_type
-        }), 500
+        results['gpio_info'] = {'error': str(e)}
+    
+    if test_type == 'basic':
+        # Basic test: ON -> OFF -> ON -> OFF
+        test_sequence = [True, False, True, False]
+        for state in test_sequence:
+            command = f"Start;Relay;{relay_id};{'ON' if state else 'OFF'};end"
+            results['commands'].append(command)
+            
+            success = control_relay(relay_id, state)
+            results['responses'].append({
+                'command': command,
+                'success': success,
+                'state': 'ON' if state else 'OFF'
+            })
+            
+            time.sleep(duration / len(test_sequence))
+            
+    elif test_type == 'advanced':
+        # Advanced test: Test relay set (for tank operations)
+        relay_set = data.get('relay_set', [relay_id])
+        
+        # Turn on all relays in set
+        for rid in relay_set:
+            command = f"Start;Relay;{rid};ON;end"
+            results['commands'].append(command)
+            success = control_relay(rid, True)
+            results['responses'].append({
+                'command': command,
+                'success': success,
+                'relay_id': rid,
+                'state': 'ON'
+            })
+        
+        time.sleep(duration)
+        
+        # Turn off all relays in set
+        for rid in relay_set:
+            command = f"Start;Relay;{rid};OFF;end"
+            results['commands'].append(command)
+            success = control_relay(rid, False)
+            results['responses'].append({
+                'command': command,
+                'success': success,
+                'relay_id': rid,
+                'state': 'OFF'
+            })
+    
+    results['success'] = all(r.get('success', False) for r in results['responses'])
+    return jsonify(results)
+    
 
 @app.route('/api/test/pump/<int:pump_id>', methods=['POST'])
+@api_endpoint
 def api_test_pump(pump_id):
     """Test pump with detailed debug info"""
+    data = request.get_json() or {}
+    test_type = data.get('test_type', 'basic')  # basic or recipe
+    amount = float(data.get('amount', 1.0))  # ml
+    
+    results = {
+        'success': False,
+        'pump_id': pump_id,
+        'test_type': test_type,
+        'commands': [],
+        'responses': [],
+        'pump_info': {},
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    # Get pump info from config
     try:
-        data = request.get_json() or {}
-        test_type = data.get('test_type', 'basic')  # basic or recipe
-        amount = float(data.get('amount', 1.0))  # ml
-        
-        results = {
-            'success': False,
-            'pump_id': pump_id,
-            'test_type': test_type,
-            'commands': [],
-            'responses': [],
-            'pump_info': {},
-            'timestamp': datetime.now().isoformat()
+        from config import PUMP_ADDRESSES, get_pump_name
+        i2c_address = PUMP_ADDRESSES.get(pump_id, 'Unknown')
+        pump_name = get_pump_name(pump_id)
+        results['pump_info'] = {
+            'i2c_address': i2c_address,
+            'name': pump_name
         }
+    except Exception as e:
+        results['pump_info'] = {'error': str(e)}
+    
+    if test_type == 'basic':
+        # Basic test: dispense small amount
+        command = f"Start;Dispense;{pump_id};{amount};end"
+        results['commands'].append(command)
         
-        # Get pump info from config
-        try:
-            from config import PUMP_ADDRESSES, get_pump_name
-            i2c_address = PUMP_ADDRESSES.get(pump_id, 'Unknown')
-            pump_name = get_pump_name(pump_id)
-            results['pump_info'] = {
-                'i2c_address': i2c_address,
-                'name': pump_name
-            }
-        except Exception as e:
-            results['pump_info'] = {'error': str(e)}
+        success = dispense_pump(pump_id, amount)
+        results['responses'].append({
+            'command': command,
+            'success': success,
+            'amount': amount
+        })
         
-        if test_type == 'basic':
-            # Basic test: dispense small amount
-            command = f"Start;Dispense;{pump_id};{amount};end"
+    elif test_type == 'recipe':
+        # Recipe test: multiple pumps in sequence
+        recipe = data.get('recipe', [{'pump_id': pump_id, 'amount': amount}])
+        
+        for step in recipe:
+            step_pump_id = step.get('pump_id', pump_id)
+            step_amount = step.get('amount', 1.0)
+            
+            command = f"Start;Dispense;{step_pump_id};{step_amount};end"
             results['commands'].append(command)
             
-            success = dispense_pump(pump_id, amount)
+            success = dispense_pump(step_pump_id, step_amount)
             results['responses'].append({
                 'command': command,
                 'success': success,
-                'amount': amount
+                'pump_id': step_pump_id,
+                'amount': step_amount
             })
             
-        elif test_type == 'recipe':
-            # Recipe test: multiple pumps in sequence
-            recipe = data.get('recipe', [{'pump_id': pump_id, 'amount': amount}])
-            
-            for step in recipe:
-                step_pump_id = step.get('pump_id', pump_id)
-                step_amount = step.get('amount', 1.0)
-                
-                command = f"Start;Dispense;{step_pump_id};{step_amount};end"
-                results['commands'].append(command)
-                
-                success = dispense_pump(step_pump_id, step_amount)
-                results['responses'].append({
-                    'command': command,
-                    'success': success,
-                    'pump_id': step_pump_id,
-                    'amount': step_amount
-                })
-                
-                time.sleep(0.5)  # Brief delay between pumps
-        
-        results['success'] = all(r.get('success', False) for r in results['responses'])
-        return jsonify(results)
-        
-    except Exception as e:
-        logger.error(f"Error testing pump {pump_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'pump_id': pump_id,
-            'test_type': test_type
-        }), 500
+            time.sleep(0.5)  # Brief delay between pumps
+    
+    results['success'] = all(r.get('success', False) for r in results['responses'])
+    return jsonify(results)
+    
 
 @app.route('/api/test/flow/<int:flow_id>', methods=['POST'])
+@api_endpoint
 def api_test_flow(flow_id):
     """Test flow meter with detailed debug info"""
+    data = request.get_json() or {}
+    test_type = data.get('test_type', 'basic')  # basic or pulse_test
+    gallons = int(data.get('gallons', 1))
+    
+    results = {
+        'success': False,
+        'flow_id': flow_id,
+        'test_type': test_type,
+        'commands': [],
+        'responses': [],
+        'flow_info': {},
+        'pulse_data': {},
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    # Get flow meter info from config
     try:
-        data = request.get_json() or {}
-        test_type = data.get('test_type', 'basic')  # basic or pulse_test
-        gallons = int(data.get('gallons', 1))
+        from config import FLOW_METER_GPIO_PINS, get_flow_meter_name
+        gpio_pin = FLOW_METER_GPIO_PINS.get(flow_id, 'Unknown')
+        flow_name = get_flow_meter_name(flow_id)
+        results['flow_info'] = {
+            'gpio_pin': gpio_pin,
+            'name': flow_name
+        }
+    except Exception as e:
+        results['flow_info'] = {'error': str(e)}
+    
+    if test_type == 'basic':
+        # Basic test: start and stop flow monitoring
+        command = f"Start;StartFlow;{flow_id};{gallons};220;end"
+        results['commands'].append(command)
         
-        results = {
-            'success': False,
-            'flow_id': flow_id,
-            'test_type': test_type,
-            'commands': [],
-            'responses': [],
-            'flow_info': {},
-            'pulse_data': {},
-            'timestamp': datetime.now().isoformat()
+        success = start_flow(flow_id, gallons)
+        results['responses'].append({
+            'command': command,
+            'success': success,
+            'gallons': gallons
+        })
+        
+        # Wait a moment then stop
+        time.sleep(1.0)
+        
+        stop_command = f"Start;StartFlow;{flow_id};0;end"
+        results['commands'].append(stop_command)
+        
+        stop_success = stop_flow(flow_id)
+        results['responses'].append({
+            'command': stop_command,
+            'success': stop_success
+        })
+        
+    elif test_type == 'pulse_test':
+        # Pulse monitoring test
+        results['pulse_data'] = {
+            'calibration': 220,  # pulses per gallon
+            'target_pulses': gallons * 220,
+            'monitoring_duration': data.get('duration', 10.0)
         }
         
-        # Get flow meter info from config
-        try:
-            from config import FLOW_METER_GPIO_PINS, get_flow_meter_name
-            gpio_pin = FLOW_METER_GPIO_PINS.get(flow_id, 'Unknown')
-            flow_name = get_flow_meter_name(flow_id)
-            results['flow_info'] = {
-                'gpio_pin': gpio_pin,
-                'name': flow_name
-            }
-        except Exception as e:
-            results['flow_info'] = {'error': str(e)}
+        # Start monitoring
+        command = f"Start;StartFlow;{flow_id};{gallons};220;end"
+        results['commands'].append(command)
         
-        if test_type == 'basic':
-            # Basic test: start and stop flow monitoring
-            command = f"Start;StartFlow;{flow_id};{gallons};220;end"
-            results['commands'].append(command)
-            
-            success = start_flow(flow_id, gallons)
-            results['responses'].append({
-                'command': command,
-                'success': success,
-                'gallons': gallons
-            })
-            
-            # Wait a moment then stop
-            time.sleep(1.0)
-            
-            stop_command = f"Start;StartFlow;{flow_id};0;end"
-            results['commands'].append(stop_command)
-            
-            stop_success = stop_flow(flow_id)
-            results['responses'].append({
-                'command': stop_command,
-                'success': stop_success
-            })
-            
-        elif test_type == 'pulse_test':
-            # Pulse monitoring test
-            results['pulse_data'] = {
-                'calibration': 220,  # pulses per gallon
-                'target_pulses': gallons * 220,
-                'monitoring_duration': data.get('duration', 10.0)
-            }
-            
-            # Start monitoring
-            command = f"Start;StartFlow;{flow_id};{gallons};220;end"
-            results['commands'].append(command)
-            
-            success = start_flow(flow_id, gallons)
-            results['responses'].append({
-                'command': command,
-                'success': success,
-                'pulse_monitoring': True
-            })
-        
-        results['success'] = all(r.get('success', False) for r in results['responses'])
-        return jsonify(results)
-        
-    except Exception as e:
-        logger.error(f"Error testing flow meter {flow_id}: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'flow_id': flow_id,
-            'test_type': test_type
-        }), 500
+        success = start_flow(flow_id, gallons)
+        results['responses'].append({
+            'command': command,
+            'success': success,
+            'pulse_monitoring': True
+        })
+    
+    results['success'] = all(r.get('success', False) for r in results['responses'])
+    return jsonify(results)
+    
 
 @app.route('/api/test/sensor/ecph', methods=['POST'])
+@api_endpoint
 def api_test_sensor():
     """Test EC/pH sensors with detailed debug info"""
-    try:
-        data = request.get_json() or {}
-        test_type = data.get('test_type', 'basic')  # basic or continuous
+    data = request.get_json() or {}
+    test_type = data.get('test_type', 'basic')  # basic or continuous
+    
+    results = {
+        'success': False,
+        'test_type': test_type,
+        'commands': [],
+        'responses': [],
+        'sensor_data': {},
+        'connection_info': {
+            'interface': 'I2C',
+            'device': 'Atlas Scientific EZO pH/EC',
+            'protocol': 'EcPh commands'
+        },
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    if test_type == 'basic':
+        # Basic test: single reading
+        command = "Start;EcPh;ON;end"
+        results['commands'].append(command)
         
-        results = {
-            'success': False,
-            'test_type': test_type,
-            'commands': [],
-            'responses': [],
-            'sensor_data': {},
-            'connection_info': {
-                'interface': 'USB Serial',
-                'device': 'Arduino Uno',
-                'protocol': 'EcPh commands'
-            },
-            'timestamp': datetime.now().isoformat()
+        success = start_ec_ph()
+        results['responses'].append({
+            'command': command,
+            'success': success,
+            'action': 'start_monitoring'
+        })
+
+        # Take a REAL reading from the sensors (give monitoring a moment to
+        # produce a sample first). Never fabricate values here - a fake
+        # reading on a diagnostics/calibration screen is dangerous.
+        time.sleep(1.0)
+        reading = read_ec_ph_sensors()
+        if reading.get('success'):
+            results['sensor_data'] = {
+                'ph': reading.get('ph'),
+                'ec': reading.get('ec'),
+            }
+        else:
+            results['sensor_data'] = {
+                'ph': None,
+                'ec': None,
+                'error': reading.get('error', 'No sensor reading available'),
+            }
+
+        # Stop monitoring
+        stop_command = "Start;EcPh;OFF;end"
+        results['commands'].append(stop_command)
+        
+        stop_success = stop_ec_ph()
+        results['responses'].append({
+            'command': stop_command,
+            'success': stop_success,
+            'action': 'stop_monitoring'
+        })
+        
+    elif test_type == 'continuous':
+        # Continuous monitoring test
+        duration = float(data.get('duration', 30.0))
+        
+        command = "Start;EcPh;ON;end"
+        results['commands'].append(command)
+        
+        success = start_ec_ph()
+        results['responses'].append({
+            'command': command,
+            'success': success,
+            'monitoring_duration': duration
+        })
+        
+        # In a real implementation, this would collect readings over time
+        results['sensor_data'] = {
+            'monitoring_active': True,
+            'duration': duration,
+            'sample_rate': '1 per second'
         }
-        
-        if test_type == 'basic':
-            # Basic test: single reading
-            command = "Start;EcPh;ON;end"
-            results['commands'].append(command)
-            
-            success = start_ec_ph()
-            results['responses'].append({
-                'command': command,
-                'success': success,
-                'action': 'start_monitoring'
-            })
-            
-            # Simulate getting a reading (in real implementation, this would read from Arduino)
-            results['sensor_data'] = {
-                'ph': 7.2,
-                'ec': 1.4,
-                'temperature': 22.0,
-                'flow_rate': 2.3
-            }
-            
-            # Stop monitoring
-            stop_command = "Start;EcPh;OFF;end"
-            results['commands'].append(stop_command)
-            
-            stop_success = stop_ec_ph()
-            results['responses'].append({
-                'command': stop_command,
-                'success': stop_success,
-                'action': 'stop_monitoring'
-            })
-            
-        elif test_type == 'continuous':
-            # Continuous monitoring test
-            duration = float(data.get('duration', 30.0))
-            
-            command = "Start;EcPh;ON;end"
-            results['commands'].append(command)
-            
-            success = start_ec_ph()
-            results['responses'].append({
-                'command': command,
-                'success': success,
-                'monitoring_duration': duration
-            })
-            
-            # In a real implementation, this would collect readings over time
-            results['sensor_data'] = {
-                'monitoring_active': True,
-                'duration': duration,
-                'sample_rate': '1 per second'
-            }
-        
-        results['success'] = all(r.get('success', False) for r in results['responses'])
-        return jsonify(results)
-        
-    except Exception as e:
-        logger.error(f"Error testing sensors: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'test_type': test_type
-        }), 500
+    
+    results['success'] = all(r.get('success', False) for r in results['responses'])
+    return jsonify(results)
+    
 
 # -----------------------------------------------------------------------------
 # EMERGENCY CONTROLS - Same as simple_gui.py
 # -----------------------------------------------------------------------------
 
 @app.route('/api/emergency/stop', methods=['POST'])
+@api_endpoint
 def api_emergency_stop():
     """Emergency stop all operations"""
-    try:
-        success = emergency_stop()
-        
-        return jsonify({
-            'success': success,
-            'message': "🚨 EMERGENCY STOP ACTIVATED 🚨" if success else "Emergency stop failed"
-        })
-    except Exception as e:
-        logger.error(f"Error during emergency stop: {e}")
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+    success = emergency_stop()
+    
+    return jsonify({
+        'success': success,
+        'message': "🚨 EMERGENCY STOP ACTIVATED 🚨" if success else "Emergency stop failed"
+    })
 
 
 # =============================================================================

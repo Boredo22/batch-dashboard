@@ -1,5 +1,7 @@
 <script>
   import { onMount } from 'svelte';
+  import { apiGet, apiPost } from '$lib/api.js';
+  import { toast } from 'svelte-sonner';
   import { TabsRoot as Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs/index.js";
   import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -55,36 +57,25 @@
     loading = true;
     try {
       const [cyclesRes, reportRes, settingsRes, nutrientsRes] = await Promise.all([
-        fetch('/api/grow-cycles'),
-        fetch('/api/grow-cycles/report'),
-        fetch('/api/settings/user'),
-        fetch('/api/nutrients')
+        apiGet('/api/grow-cycles'),
+        apiGet('/api/grow-cycles/report'),
+        apiGet('/api/settings/user'),
+        apiGet('/api/nutrients')
       ]);
 
-      if (cyclesRes.ok) {
-        const data = await cyclesRes.json();
-        cycles = data.cycles || {};
+      cycles = cyclesRes.cycles || {};
+
+      reports = reportRes.reports || [];
+
+      rooms = settingsRes.rooms || {};
+      if (Object.keys(rooms).length === 0) {
+        rooms = { 1: { name: "Grow Room 1", relay: 10 } };
+      }
+      if (settingsRes.growDefaults) {
+        growDefaults = { ...growDefaults, ...settingsRes.growDefaults };
       }
 
-      if (reportRes.ok) {
-        const data = await reportRes.json();
-        reports = data.reports || [];
-      }
-
-      if (settingsRes.ok) {
-        const data = await settingsRes.json();
-        rooms = data.rooms || {};
-        if (Object.keys(rooms).length === 0) {
-          rooms = { 1: { name: "Grow Room 1", relay: 10 } };
-        }
-        if (data.growDefaults) {
-          growDefaults = { ...growDefaults, ...data.growDefaults };
-        }
-      }
-
-      if (nutrientsRes.ok) {
-        nutrientsConfig = await nutrientsRes.json();
-      }
+      nutrientsConfig = nutrientsRes;
 
       // Ensure rooms from existing cycles are visible in manage tab
       for (const [roomId, cycle] of Object.entries(cycles)) {
@@ -93,7 +84,7 @@
         }
       }
     } catch (err) {
-      console.error('Error loading grow cycle data:', err);
+      toast.error(`Error loading grow cycle data: ${err.message}`);
     } finally {
       loading = false;
     }
@@ -106,26 +97,18 @@
     saveMessage = '';
     saveError = '';
     try {
-      const response = await fetch('/api/grow-cycles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cycles })
-      });
-
-      const result = await response.json();
-      if (response.ok && result.success) {
+      const result = await apiPost('/api/grow-cycles', { cycles });
+      if (result.success) {
         saveMessage = 'Grow cycles saved successfully';
         // Reload reports
-        const reportRes = await fetch('/api/grow-cycles/report');
-        if (reportRes.ok) {
-          const data = await reportRes.json();
-          reports = data.reports || [];
-        }
+        const data = await apiGet('/api/grow-cycles/report');
+        reports = data.reports || [];
       } else {
         saveError = result.error || 'Failed to save grow cycles';
       }
     } catch (err) {
       saveError = 'Network error saving grow cycles';
+      toast.error(`Error saving grow cycles: ${err.message}`);
     } finally {
       saving = false;
       setTimeout(() => { saveMessage = ''; saveError = ''; }, 4000);

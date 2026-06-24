@@ -9,6 +9,7 @@
   import Knowledge from './Knowledge.svelte';
   import GrowCycles from './GrowCycles.svelte';
   import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
+  import { Toaster } from 'svelte-sonner';
 
   let currentPage = $state('headgrower');
 
@@ -89,7 +90,8 @@
 </script>
 
 <div class="min-h-screen bg-background text-foreground">
-  <DashboardLayout 
+  <Toaster richColors position="top-right" theme="dark" />
+  <DashboardLayout
     title={pageConfig.title}
     subtitle={pageConfig.subtitle}
     {systemStatus}

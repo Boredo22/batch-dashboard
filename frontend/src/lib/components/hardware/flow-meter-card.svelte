@@ -13,7 +13,7 @@
   let safeFlowMeters = $derived(Array.isArray(flowMeters) ? flowMeters : []);
   let selectedFlowMeterData = $derived(selectedFlowMeter && selectedFlowMeter !== "" ? safeFlowMeters.find(f => f.id === selectedFlowMeter) : null);
   let isFlowing = $derived(selectedFlowMeterData?.status === 'flowing');
-  let progress = $derived(() => {
+  let progress = $derived.by(() => {
     if (!selectedFlowMeterData || !isFlowing) return 0;
     return (selectedFlowMeterData.current_gallons / selectedFlowMeterData.target_gallons) * 100;
   });

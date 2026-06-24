@@ -1,5 +1,7 @@
 <script>
   import { onMount } from 'svelte';
+  import { apiGet, apiPost } from '$lib/api.js';
+  import { toast } from 'svelte-sonner';
   import { TabsRoot as Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs/index.js";
   import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -129,91 +131,70 @@
 
   // ==================== API FUNCTIONS ====================
 
-  const FETCH_TIMEOUT = 8000; // 8 seconds — enough for the Pi, fast enough to not hang
-
-  function fetchWithTimeout(url, options = {}) {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
-    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
-  }
-
   async function loadSettings() {
     loading = true;
     loadError = '';
     try {
-      const [userResponse, devResponse, nutrientsResponse] = await Promise.all([
-        fetchWithTimeout('/api/settings/user'),
-        fetchWithTimeout('/api/settings/developer'),
-        fetchWithTimeout('/api/nutrients')
+      const [userData, devData, nutrientsData] = await Promise.all([
+        apiGet('/api/settings/user'),
+        apiGet('/api/settings/developer'),
+        apiGet('/api/nutrients')
       ]);
 
-      if (userResponse.ok) {
-        const userData = await userResponse.json();
-        userSettings = { ...userSettings, ...userData };
-        // Initialize rooms if not present
-        if (!userSettings.rooms || Object.keys(userSettings.rooms).length === 0) {
-          userSettings.rooms = {
-            1: { name: "Grow Room 1", relay: 10 }
-          };
-        }
-        // Initialize flow meter calibration
-        if (!userSettings.flowMeters) {
-          userSettings.flowMeters = { calibration: { 1: 220, 2: 220 } };
-        }
-        // Initialize EC/pH defaults
-        if (!userSettings.ecphDefaults) {
-          userSettings.ecphDefaults = {
-            ec: { min: 1.0, max: 2.0 },
-            ph: { min: 5.5, max: 6.5 }
-          };
-        }
-        // Initialize grow cycle defaults
-        if (!userSettings.growDefaults) {
-          userSettings.growDefaults = {
-            veg_days: 28,
-            flower_days: 50,
-            flush_days: 14,
-            flower_veg_nute_days: 21,
-            feedings_per_day: 2,
-            default_watering_volume: 50
-          };
-        }
+      userSettings = { ...userSettings, ...userData };
+      // Initialize rooms if not present
+      if (!userSettings.rooms || Object.keys(userSettings.rooms).length === 0) {
+        userSettings.rooms = {
+          1: { name: "Grow Room 1", relay: 10 }
+        };
+      }
+      // Initialize flow meter calibration
+      if (!userSettings.flowMeters) {
+        userSettings.flowMeters = { calibration: { 1: 220, 2: 220 } };
+      }
+      // Initialize EC/pH defaults
+      if (!userSettings.ecphDefaults) {
+        userSettings.ecphDefaults = {
+          ec: { min: 1.0, max: 2.0 },
+          ph: { min: 5.5, max: 6.5 }
+        };
+      }
+      // Initialize grow cycle defaults
+      if (!userSettings.growDefaults) {
+        userSettings.growDefaults = {
+          veg_days: 28,
+          flower_days: 50,
+          flush_days: 14,
+          flower_veg_nute_days: 21,
+          feedings_per_day: 2,
+          default_watering_volume: 50
+        };
       }
 
-      if (devResponse.ok) {
-        const devData = await devResponse.json();
-        // Deep merge to preserve nested defaults (backend keys may differ)
-        for (const [key, value] of Object.entries(devData)) {
-          if (typeof value === 'object' && value !== null && !Array.isArray(value) && devSettings[key]) {
-            devSettings[key] = { ...devSettings[key], ...value };
-          } else {
-            devSettings[key] = value;
-          }
+      // Deep merge to preserve nested defaults (backend keys may differ)
+      for (const [key, value] of Object.entries(devData)) {
+        if (typeof value === 'object' && value !== null && !Array.isArray(value) && devSettings[key]) {
+          devSettings[key] = { ...devSettings[key], ...value };
+        } else {
+          devSettings[key] = value;
         }
-        // Map backend mock keys to frontend expected keys
-        if (devData.mock) {
-          const m = devData.mock;
-          devSettings.mock = {
-            mock_mode: m.mock_mode ?? false,
-            mock_pumps: m.mock_pumps ?? m.pumps ?? false,
-            mock_relays: m.mock_relays ?? m.relays ?? false,
-            mock_flow_meters: m.mock_flow_meters ?? m.flow_meters ?? false,
-            mock_ecph: m.mock_ecph ?? m.ecph ?? false
-          };
-        }
+      }
+      // Map backend mock keys to frontend expected keys
+      if (devData.mock) {
+        const m = devData.mock;
+        devSettings.mock = {
+          mock_mode: m.mock_mode ?? false,
+          mock_pumps: m.mock_pumps ?? m.pumps ?? false,
+          mock_relays: m.mock_relays ?? m.relays ?? false,
+          mock_flow_meters: m.mock_flow_meters ?? m.flow_meters ?? false,
+          mock_ecph: m.mock_ecph ?? m.ecph ?? false
+        };
       }
 
-      if (nutrientsResponse.ok) {
-        const nutrientsData = await nutrientsResponse.json();
-        nutrientsConfig = { ...nutrientsConfig, ...nutrientsData };
-      }
+      nutrientsConfig = { ...nutrientsConfig, ...nutrientsData };
     } catch (error) {
-      console.error('Error loading settings:', error);
-      if (error.name === 'AbortError') {
-        loadError = 'Request timed out. Is the backend running?';
-      } else {
-        loadError = 'Unable to connect to backend. Make sure the server is running.';
-      }
+      loadError = 'Unable to connect to backend. Make sure the server is running.';
+      toast.error(`Load settings: ${error.message}`);
     } finally {
       loading = false;
     }
@@ -223,36 +204,17 @@
     saving = true;
     saveMessage = '';
     try {
-      const [userResponse, devResponse, nutrientsResponse] = await Promise.all([
-        fetchWithTimeout('/api/settings/user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(userSettings)
-        }),
-        fetchWithTimeout('/api/settings/developer', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(devSettings)
-        }),
-        fetchWithTimeout('/api/nutrients', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(nutrientsConfig)
-        })
+      await Promise.all([
+        apiPost('/api/settings/user', userSettings),
+        apiPost('/api/settings/developer', devSettings),
+        apiPost('/api/nutrients', nutrientsConfig)
       ]);
 
-      if (userResponse.ok && devResponse.ok && nutrientsResponse.ok) {
-        saveMessage = 'Settings saved successfully!';
-      } else {
-        saveMessage = 'Error saving some settings. Please try again.';
-      }
+      saveMessage = 'Settings saved successfully!';
+      toast.success('Settings saved successfully!');
     } catch (error) {
-      console.error('Error saving settings:', error);
-      if (error.name === 'AbortError') {
-        saveMessage = 'Save timed out. Is the backend running?';
-      } else {
-        saveMessage = 'Error connecting to server. Please check connection.';
-      }
+      saveMessage = 'Error connecting to server. Please check connection.';
+      toast.error(`Save settings: ${error.message}`);
     } finally {
       saving = false;
       setTimeout(() => saveMessage = '', 4000);
@@ -262,22 +224,17 @@
   async function loadSystemStatus() {
     statusLoading = true;
     try {
-      const response = await fetchWithTimeout('/api/system/status');
-      if (response.ok) {
-        const data = await response.json();
-        systemStatus = {
-          connected: true,
-          relays: data.relays || [],
-          pumps: data.pumps || [],
-          flowMeters: data.flow_meters || [],
-          ecph: data.ecph || { ec: 0, ph: 0, monitoring: false }
-        };
-      } else {
-        systemStatus.connected = false;
-      }
+      const result = await apiGet('/api/system/status');
+      systemStatus = {
+        connected: true,
+        relays: result.relays || [],
+        pumps: result.pumps || [],
+        flowMeters: result.flow_meters || [],
+        ecph: result.ecph || { ec: 0, ph: 0, monitoring: false }
+      };
     } catch (error) {
-      console.error('Error loading system status:', error);
       systemStatus.connected = false;
+      toast.error(`System status: ${error.message}`);
     } finally {
       statusLoading = false;
     }

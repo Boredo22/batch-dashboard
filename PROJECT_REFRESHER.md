@@ -1,8 +1,8 @@
 # Batch Dashboard - Project Refresher
 
-**Last Updated**: November 14, 2025
-**Current Branch**: newUI
-**Status**: Active Development - UI Redesign Phase
+**Last Updated**: June 24, 2026
+**Current Branch**: newTablet
+**Status**: Active Development - post dead-code cleanup, tablet UI phase
 
 ---
 
@@ -13,7 +13,7 @@ This is a **Nutrient Mixing System** for commercial hydroponics/agriculture oper
 ### What It Does
 - **Mixes nutrient solutions** by precisely dispensing liquid nutrients into water tanks
 - **Controls tank operations**: fill with water, mix nutrients, send to grow rooms
-- **Monitors water quality**: EC (electrical conductivity) and pH sensors via Arduino
+- **Monitors water quality**: EC (electrical conductivity) and pH via direct-I2C Atlas Scientific EZO circuits
 - **Manages multiple tanks**: 3 tanks with different capacities (100, 100, 35 gallons)
 - **Tracks flow**: 2 flow meters for water fill and send operations
 - **8 peristaltic pumps**: Each pump dispenses a specific nutrient (Veg A/B, Bloom A/B, Cake, PK Synergy, Runclean, pH Down)
@@ -26,7 +26,8 @@ This is a **Nutrient Mixing System** for commercial hydroponics/agriculture oper
 
 **Backend (Python/Flask)**
 - REST API server exposing hardware control endpoints
-- Direct hardware communication (I2C for pumps, GPIO for relays/flow meters, Serial for Arduino)
+- Direct hardware communication (I2C for pumps and EC/pH EZO sensors, GPIO for relays/flow meters, USB serial for per-tank Arduino tank monitors)
+- Route handlers wrapped with the `@api_endpoint` decorator (standard JSON error envelope)
 - Runs on Raspberry Pi 4B
 - Port: 5000
 
@@ -43,10 +44,11 @@ This is a **Nutrient Mixing System** for commercial hydroponics/agriculture oper
 
 ```
 /home/pi/batch-dashboard/
-├── app.py                      # Flask REST API server (MAIN BACKEND)
-├── main.py                     # Core FeedControlSystem class
-├── config.py                   # Centralized configuration (ALL hardware mappings)
-├── hardware_safety.py          # Safety lockfile system
+├── app.py                      # Flask REST API server (MAIN BACKEND); @api_endpoint decorator
+├── main.py                     # Core FeedControlSystem class; owns shared I2C lock
+├── config.py                   # Centralized configuration (ALL hardware mappings); validates relay refs at import
+├── grow_cycles.py              # Pure grow-cycle report logic (build_reports)
+├── hardware_safety.py          # Safety lockfile system (atomic O_CREAT|O_EXCL)
 ├── nutrients.json              # Nutrient formulas and recipes
 ├── simple_gui.py               # REFERENCE: Original working GUI (DON'T MODIFY)
 │
@@ -55,30 +57,36 @@ This is a **Nutrient Mixing System** for commercial hydroponics/agriculture oper
 │   ├── rpi_pumps.py           # EZO pump I2C controller
 │   ├── rpi_relays.py          # ULN2803A relay GPIO controller
 │   ├── rpi_flow.py            # Flow meter pulse counter
-│   ├── rpi_unoComm.py         # Arduino serial communication
+│   ├── rpi_ezo_sensors.py     # EC/pH via direct I2C EZO circuits (EZOSensorController, MockEZOSensorController)
+│   ├── tank_monitor.py        # Per-tank Arduino tank monitors (USB serial)
 │   └── mock_controllers.py    # Mock hardware for development
 │
 └── frontend/                   # Svelte 5 application
     ├── src/
     │   ├── main.js            # Entry point
-    │   ├── App.svelte         # Main app with page navigation
+    │   ├── App.svelte         # Router (globalThis.navigateTo) + svelte-sonner Toaster
     │   ├── Dashboard.svelte   # Stage 1: Individual hardware testing
-    │   ├── Stage2Testing.svelte # Stage 2: Job process testing
+    │   ├── FillTank.svelte    # Stage 2: Job process (fill/mix/send)
     │   ├── Settings.svelte    # System configuration
-    │   ├── HeadGrower.svelte  # Main operations page (NEW REDESIGN)
+    │   ├── HeadGrower.svelte  # Main operations page (-> lib/components/growers/growers-dashboard.svelte)
     │   ├── Nutrients.svelte   # Manual nutrient dispensing
+    │   ├── GrowCycles.svelte  # Grow-cycle reports
+    │   ├── Knowledge.svelte   # Knowledge / reference page
     │   │
-    │   ├── components/        # OLD component library
-    │   │   ├── PumpControl.svelte
-    │   │   ├── RelayGrid.svelte
-    │   │   ├── FlowMeterControl.svelte
-    │   │   └── ...
+    │   ├── lib/
+    │   │   ├── api.js                        # Shared API client (apiGet, apiPost, ApiError, 15s timeout)
+    │   │   ├── stores/systemStatus.svelte.js # SSE store (EventSource + polling fallback)
+    │   │   └── components/                   # Modern component library
+    │   │       ├── growers/                  # Redesigned growers dashboard
+    │   │       ├── hardware/                 # Hardware control cards
+    │   │       ├── layout/                   # Layout components
+    │   │       └── ui/                       # Shadcn-style UI primitives
     │   │
-    │   └── lib/components/    # NEW component library
-    │       ├── growers/       # Redesigned growers dashboard
-    │       ├── hardware/      # Hardware control cards
-    │       ├── layout/        # Layout components
-    │       └── ui/            # Shadcn-style UI primitives
+    │   └── components/filltank/  # Components used by FillTank.svelte
+    │       ├── ConfigPanel.svelte
+    │       ├── DiagnosticsPanel.svelte
+    │       ├── SystemLog.svelte
+    │       └── WorkflowFlowchart.svelte
     │
     ├── package.json
     └── vite.config.js
@@ -123,9 +131,13 @@ Key relays:
 - Commands: `Start;StartFlow;{id};{gallons};220;end`
 - Stop: `Start;StartFlow;{id};0;end`
 
-### EC/pH Sensors (Arduino Uno)
-- Serial communication (115200 baud, /dev/ttyACM0)
-- Commands: `Start;EcPh;ON;end`, `Start;EcPh;OFF;end`
+### EC/pH Sensors (Atlas Scientific EZO, direct I2C)
+- EZO pH at I2C `0x63`, EZO EC at I2C `0x64`
+- Read directly over I2C via `hardware/rpi_ezo_sensors.py` (`EZOSensorController`; `MockEZOSensorController` for mock mode)
+- NOT Arduino/serial. The `Start;EcPh;ON/OFF;end` strings remain only as the frozen `simple_gui.py` reference protocol.
+
+### Tank Monitors (per-tank Arduino, USB serial)
+- Separate from EC/pH: per-tank Arduino "tank monitors" over USB serial via `hardware/tank_monitor.py`
 
 ---
 
@@ -172,7 +184,7 @@ MOCK_SETTINGS = {
     "pumps": True,        # Use mock pumps
     "relays": False,      # Use real relays
     "flow_meters": True,  # Use mock flow meters
-    "arduino": True       # Use mock Arduino
+    "ezo_sensors": True   # Use mock EC/pH (MockEZOSensorController)
 }
 ```
 
@@ -180,7 +192,15 @@ MOCK_SETTINGS = {
 
 ## 🎨 Recent Major Changes (Last 2 Months)
 
-### UI Redesign (Current Branch: newUI)
+### Recent cleanup (June 2026)
+1. **Dead-code purge (~8k lines)** - removed the legacy single-component set under `frontend/src/components/` (ECPHMonitor, FlowMeterControl, RelayGrid, PumpControl, NuteDispenseProgress, Nutrients, PumpCalibration, FillJobTesting, SendJobTesting, MixJobTesting, SystemLog), `Stage2Testing.svelte` (replaced by `FillTank.svelte`), and three dead backend EC/pH modules (`hardware/rpi_unoComm.py`, `hardware/rpi_sensors.py`, `ezo_ph_ec_controller.py`).
+2. **Shared frontend API client** - `frontend/src/lib/api.js` (`apiGet`/`apiPost`/`ApiError`, 15s timeout); all backend calls go through it (no raw `fetch()` in pages); errors surface as svelte-sonner toasts. Live status via the SSE store `lib/stores/systemStatus.svelte.js`.
+3. **`@api_endpoint` decorator** - in `app.py`, wraps handlers with the standard try/except JSON error envelope; new handlers should use it.
+4. **`grow_cycles.py` extraction** - pure/testable grow-cycle logic (stage detection, recipe selection, EC/pH targets, dose scaling); `/api/grow-cycles/report` calls `build_reports()`.
+5. **Hardware safety** - pump + sensor controllers share one I2C lock (created in `main.py`'s `FeedControlSystem`) to serialize the bus; the instance lockfile in `hardware_safety.py` is now atomic (`O_CREAT|O_EXCL`); `config.py` validates relay references at import.
+6. **Mock EC/pH** - `MockEZOSensorController` in `hardware/rpi_ezo_sensors.py` for mock-mode EC/pH.
+
+### UI Redesign (Branch: newTablet)
 1. **New Head Grower Page** - Complete redesign with modern dashboard
    - `HeadGrower.svelte` - Main operations interface
    - Uses `growers-dashboard.svelte` component (comprehensive redesign)
@@ -189,9 +209,9 @@ MOCK_SETTINGS = {
    - Enhanced nutrient dosing interface
    - Responsive design (mobile/tablet/desktop)
 
-2. **Component Library Migration**
-   - OLD: `frontend/src/components/` (legacy components)
-   - NEW: `frontend/src/lib/components/` (modern architecture)
+2. **Component Library Migration** (now complete)
+   - Modern library lives in `frontend/src/lib/components/` (`growers/`, `hardware/`, `layout/`, `ui/`)
+   - Legacy single-component set under `frontend/src/components/` has been deleted; only the `filltank/` subdir remains
    - Using Tailwind CSS + custom design system
    - Lucide icons for professional UI
 
@@ -248,15 +268,17 @@ MOCK_SETTINGS = {
   - EC/pH monitoring toggle
   - System logs
 
-### 4. Stage 2 Testing (Job Testing)
+### 4. Stage 2 (Job Process)
 - **Path**: `currentPage = 'stage2'`
-- **File**: `Stage2Testing.svelte`
-- **Purpose**: Complete job process testing
+- **File**: `FillTank.svelte` (components under `frontend/src/components/filltank/`)
+- **Purpose**: Complete job process (fill/mix/send)
 - **Features**:
-  - Fill job testing
-  - Mix job testing
-  - Send job testing
+  - Fill job
+  - Mix job
+  - Send job
   - Multi-step process validation
+
+> Note: additional pages exist — `GrowCycles.svelte` (grow-cycle reports) and `Knowledge.svelte` (reference).
 
 ### 5. Settings
 - **Path**: `currentPage = 'settings'`
@@ -453,10 +475,16 @@ IDLE → DISPENSING → PAUSED → DISPENSING → COMPLETE → IDLE
 
 See [ToDo.md](ToDo.md) for detailed implementation notes.
 
-**Current Focus**: UI redesign phase (newUI branch)
+**Current Focus**: tablet UI phase (newTablet branch)
 - Head Grower page complete
 - Settings integration in progress
-- Mobile responsiveness improvements
+- Mobile/tablet responsiveness improvements
+
+**Known Open Items**:
+- Relay 11 has no GPIO pin but is referenced by Tank 2 send (startup logs a warning)
+- No dispense watchdog yet
+- The frontend SSE-sync `$effect` is still duplicated across pages
+- `growers-dashboard.svelte` and `Settings.svelte` are very large
 
 **Future Enhancements**:
 - Database for recipe storage (currently JSON file)
@@ -470,10 +498,10 @@ See [ToDo.md](ToDo.md) for detailed implementation notes.
 ## 🔗 Quick Reference Links
 
 - **Working GUI Reference**: `simple_gui.py` (DON'T MODIFY - reference only)
-- **Hardware Commands**: See `.claude/CLAUDE.md` → Hardware Communication Protocols
+- **Hardware Commands**: `.docs/HARDWARE_COMMANDS.md` (also `.claude/CLAUDE.md` → Hardware Communication Protocols)
 - **Component Examples**: `frontend/src/lib/components/`
-- **API Examples**: `app.py` (lines 100-800)
-- **Svelte 5 Guide**: `.claude/SVELTE_REFERENCE.md`
+- **Frontend API client**: `frontend/src/lib/api.js`
+- **API Examples**: `app.py`
 
 ---
 
@@ -487,4 +515,4 @@ See [ToDo.md](ToDo.md) for detailed implementation notes.
 
 ---
 
-**Welcome back! The system is operational and the UI redesign is looking great. The Head Grower page has been completely modernized with professional UI components and responsive design. Ready to continue development!**
+**Welcome back! The system is operational. A big dead-code cleanup just landed (shared `api.js` client, `@api_endpoint` decorator, `grow_cycles.py`, direct-I2C EC/pH, shared I2C lock + atomic lockfile), and the tablet UI work continues on the `newTablet` branch. Ready to continue development!**

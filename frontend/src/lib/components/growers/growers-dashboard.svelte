@@ -7,6 +7,8 @@
   import { Alert, AlertDescription } from '$lib/components/ui/alert';
   import { Separator } from '$lib/components/ui/separator';
   import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
+  import { apiGet, apiPost } from '$lib/api.js';
+  import { toast } from 'svelte-sonner';
 
   // Get reactive system status from SSE store
   const sseStatus = getSystemStatus();
@@ -67,26 +69,22 @@
   async function fetchPumpConfig() {
     try {
       // Try to fetch pump config from dedicated endpoint
-      let response = await fetch('/api/config/pumps');
       let config = null;
-      
-      if (response.ok) {
-        config = await response.json();
-      } else {
+
+      try {
+        config = await apiGet('/api/config/pumps');
+      } catch (primaryError) {
         // Fallback: try to get pump info from hardware status
-        response = await fetch('/api/hardware/pumps');
-        if (response.ok) {
-          const pumpsData = await response.json();
-          config = { pump_names: {} };
-          // Extract names from pump data if available
-          if (pumpsData.pumps) {
-            pumpsData.pumps.forEach(pump => {
-              if (pump.name) config.pump_names[pump.id] = pump.name;
-            });
-          }
+        const pumpsData = await apiGet('/api/hardware/pumps');
+        config = { pump_names: {} };
+        // Extract names from pump data if available
+        if (pumpsData.pumps) {
+          pumpsData.pumps.forEach(pump => {
+            if (pump.name) config.pump_names[pump.id] = pump.name;
+          });
         }
       }
-      
+
       if (config && config.pump_names) {
         pumpConfig = config;
         // Initialize pumps array with config names
@@ -111,7 +109,7 @@
         ];
       }
     } catch (error) {
-      console.error('Error fetching pump config:', error);
+      toast.error(`Pump config: ${error.message}`);
       // Error fallback using config.py names
       pumps = [
         { id: 1, name: 'Veg A', status: 'idle', progress: 0, target_volume: 0 },
@@ -192,18 +190,13 @@
       await controlRelay(config.fillRelay, 'on');
       
       // Start flow meter for 25 gallons (default)
-      const response = await fetch(`/api/flow/${flowMeters[0].id}/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gallons: 25 })
-      });
+      const result = await apiPost(`/api/flow/${flowMeters[0].id}/start`, { gallons: 25 });
 
-      if (response.ok) {
-        tankStatus[tankId] = { ...tankStatus[tankId], status: 'filling' };
-        addLog(`Tank ${tankId} filling started - 25 gallons`);
-      }
+      tankStatus[tankId] = { ...tankStatus[tankId], status: 'filling' };
+      addLog(`Tank ${tankId} filling started - 25 gallons`);
     } catch (error) {
       addLog(`Error filling Tank ${tankId}: ${error.message}`);
+      toast.error(`Fill Tank ${tankId}: ${error.message}`);
     } finally {
       isProcessing = false;
     }
@@ -272,24 +265,17 @@
   // Relay Control
   async function controlRelay(relayId, action) {
     try {
-      const response = await fetch(`/api/relay/${relayId}/${action}`, {
-        method: 'POST'
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        addLog(`Relay ${relayId} ${action.toUpperCase()}: ${result.message || 'Success'}`);
-        
-        // Update local state
-        relays = relays.map(relay => 
-          relay.id === relayId ? { ...relay, status: action } : relay
-        );
-      } else {
-        const error = await response.json();
-        addLog(`Relay ${relayId} error: ${error.error}`);
-      }
+      const result = await apiPost(`/api/relay/${relayId}/${action}`);
+
+      addLog(`Relay ${relayId} ${action.toUpperCase()}: ${result.message || 'Success'}`);
+
+      // Update local state
+      relays = relays.map(relay =>
+        relay.id === relayId ? { ...relay, status: action } : relay
+      );
     } catch (error) {
       addLog(`Relay ${relayId} error: ${error.message}`);
+      toast.error(`Relay ${relayId}: ${error.message}`);
     }
   }
 
@@ -307,68 +293,53 @@
     }
 
     try {
-      const response = await fetch(`/api/pump/${pumpId}/dispense`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: amount })
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        addLog(`Dispensing ${amount}ml from ${pumps.find(p => p.id === pumpId)?.name}`);
-        
-        // Update pump status
-        pumps = pumps.map(pump => 
-          pump.id === pumpId 
-            ? { ...pump, status: 'dispensing', target_volume: amount, progress: 0 }
-            : pump
-        );
-      } else {
-        const error = await response.json();
-        addLog(`Pump ${pumpId} error: ${error.error}`);
-      }
+      const result = await apiPost(`/api/pump/${pumpId}/dispense`, { amount: amount });
+
+      addLog(`Dispensing ${amount}ml from ${pumps.find(p => p.id === pumpId)?.name}`);
+
+      // Update pump status
+      pumps = pumps.map(pump =>
+        pump.id === pumpId
+          ? { ...pump, status: 'dispensing', target_volume: amount, progress: 0 }
+          : pump
+      );
     } catch (error) {
       addLog(`Pump ${pumpId} error: ${error.message}`);
+      toast.error(`Pump ${pumpId}: ${error.message}`);
     }
   }
 
   async function stopPump(pumpId) {
     try {
-      const response = await fetch(`/api/pump/${pumpId}/stop`, {
-        method: 'POST'
-      });
-      
-      if (response.ok) {
-        addLog(`Stopped pump ${pumpId}`);
-        pumps = pumps.map(pump => 
-          pump.id === pumpId 
-            ? { ...pump, status: 'idle', progress: 0, target_volume: 0 }
-            : pump
-        );
-      }
+      const result = await apiPost(`/api/pump/${pumpId}/stop`);
+
+      addLog(`Stopped pump ${pumpId}`);
+      pumps = pumps.map(pump =>
+        pump.id === pumpId
+          ? { ...pump, status: 'idle', progress: 0, target_volume: 0 }
+          : pump
+      );
     } catch (error) {
       addLog(`Error stopping pump ${pumpId}: ${error.message}`);
+      toast.error(`Stop pump ${pumpId}: ${error.message}`);
     }
   }
 
   // Emergency Stop
   async function emergencyStop() {
     try {
-      const response = await fetch('/api/relay/all/off', {
-        method: 'POST'
-      });
-      
-      if (response.ok) {
-        addLog('🛑 EMERGENCY STOP - All relays turned off');
-        relays = relays.map(relay => ({ ...relay, status: 'off' }));
-        
-        // Reset tank statuses
-        tankStatus[1].status = 'idle';
-        tankStatus[2].status = 'idle';
-        tankStatus[3].status = 'idle';
-      }
+      const result = await apiPost('/api/relay/all/off');
+
+      addLog('🛑 EMERGENCY STOP - All relays turned off');
+      relays = relays.map(relay => ({ ...relay, status: 'off' }));
+
+      // Reset tank statuses
+      tankStatus[1].status = 'idle';
+      tankStatus[2].status = 'idle';
+      tankStatus[3].status = 'idle';
     } catch (error) {
       addLog(`Emergency stop error: ${error.message}`);
+      toast.error(`Emergency stop: ${error.message}`);
     }
   }
 

@@ -34,7 +34,7 @@
   let currentRecipeNutrients = $derived(recipes[selectedRecipe] || {});
 
   // Calculate nutrient doses based on volume
-  let calculatedDoses = $derived(() => {
+  let calculatedDoses = $derived.by(() => {
     const doses = {};
     for (const [nutrient, mlPerGallon] of Object.entries(currentRecipeNutrients)) {
       const override = nutrientOverrides[nutrient];
@@ -185,7 +185,7 @@
 
     {#if showOverrides}
       <div class="nutrients-list">
-        {#each Object.entries(calculatedDoses()) as [nutrient, dose]}
+        {#each Object.entries(calculatedDoses) as [nutrient, dose]}
           <div class="nutrient-row">
             <span class="nutrient-name">{nutrient}</span>
             <div class="nutrient-input-group">
@@ -216,7 +216,7 @@
       </div>
     {:else}
       <div class="nutrients-summary">
-        {Object.keys(calculatedDoses()).length} nutrients configured
+        {Object.keys(calculatedDoses).length} nutrients configured
       </div>
     {/if}
   </div>

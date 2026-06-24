@@ -1,5 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { apiGet, apiPost } from '$lib/api.js';
+  import { toast } from 'svelte-sonner';
   import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
   import WorkflowFlowchart from './components/filltank/WorkflowFlowchart.svelte';
   import ConfigPanel from './components/filltank/ConfigPanel.svelte';
@@ -78,7 +80,7 @@
   let isRunning = $derived(workflowPhase !== 'idle' && workflowPhase !== 'complete' && workflowPhase !== 'error');
 
   // Calculate nutrient doses
-  let calculatedDoses = $derived(() => {
+  let calculatedDoses = $derived.by(() => {
     const recipe = recipes[selectedRecipe] || {};
     const doses = {};
     for (const [nutrient, mlPerGallon] of Object.entries(recipe)) {
@@ -89,7 +91,7 @@
   });
 
   // Generate workflow steps based on configuration
-  let workflowSteps = $derived(() => {
+  let workflowSteps = $derived.by(() => {
     const steps = [];
     const tank = currentTank;
     const room = currentRoom;
@@ -111,7 +113,7 @@
     if (enabledPhases.mix) {
       const mixRelayCommands = tank.mix_relays.map(id => `Start;Relay;${id};ON;end`);
       const mixRelayOffCommands = tank.mix_relays.map(id => `Start;Relay;${id};OFF;end`);
-      const doses = calculatedDoses();
+      const doses = calculatedDoses;
       const dosingCommands = Object.entries(doses)
         .filter(([_, dose]) => dose > 0)
         .map(([nutrient, dose]) => `Start;Dispense;${pumpNameToId[nutrient]};${Math.round(dose)};end`);
@@ -190,56 +192,46 @@
   async function executeCommand(cmdString) {
     const parts = cmdString.split(';');
     const type = parts[1];
-    const stepName = workflowSteps()[currentStepIndex]?.name || '';
+    const stepName = workflowSteps[currentStepIndex]?.name || '';
 
     addLog(cmdString, 'cmd', stepName);
 
     try {
-      let response;
-      const headers = { 'Content-Type': 'application/json' };
+      let result;
 
       switch (type) {
         case 'Relay': {
           const relayId = parseInt(parts[2]);
           const state = parts[3].toLowerCase();
-          response = await fetch(`/api/relay/${relayId}/${state}`, { method: 'POST' });
+          result = await apiPost(`/api/relay/${relayId}/${state}`);
           break;
         }
         case 'StartFlow': {
           const flowId = parseInt(parts[2]);
           const gallons = parseInt(parts[3]);
           if (gallons === 0) {
-            response = await fetch(`/api/flow/${flowId}/stop`, { method: 'POST' });
+            result = await apiPost(`/api/flow/${flowId}/stop`);
           } else {
-            response = await fetch(`/api/flow/${flowId}/start`, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({ gallons })
-            });
+            result = await apiPost(`/api/flow/${flowId}/start`, { gallons });
           }
           break;
         }
         case 'Dispense': {
           const pumpId = parseInt(parts[2]);
           const amount = parseFloat(parts[3]);
-          response = await fetch(`/api/pump/${pumpId}/dispense`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ amount })
-          });
+          result = await apiPost(`/api/pump/${pumpId}/dispense`, { amount });
           break;
         }
         case 'EcPh': {
           const state = parts[2];
           const endpoint = state === 'ON' ? '/api/ecph/start' : '/api/ecph/stop';
-          response = await fetch(endpoint, { method: 'POST' });
+          result = await apiPost(endpoint);
           break;
         }
         default:
           throw new Error(`Unknown command type: ${type}`);
       }
 
-      const result = await response.json();
       if (result.success) {
         addLog(`Response: ${result.message || 'OK'}`, 'rsp', stepName);
       } else {
@@ -249,13 +241,14 @@
       return result;
     } catch (error) {
       addLog(`Failed: ${error.message}`, 'err', stepName);
+      toast.error(`Command failed: ${error.message}`);
       throw error;
     }
   }
 
   // ============ WAIT CONDITIONS ============
   async function waitForCondition(condition) {
-    const stepName = workflowSteps()[currentStepIndex]?.name || '';
+    const stepName = workflowSteps[currentStepIndex]?.name || '';
 
     switch (condition.type) {
       case 'delay': {
@@ -326,7 +319,7 @@
     currentStepIndex = 0;
     isPaused = false;
 
-    const steps = workflowSteps();
+    const steps = workflowSteps;
 
     for (let i = 0; i < steps.length; i++) {
       // Check for pause
@@ -398,7 +391,7 @@
   function resumeWorkflow() {
     if (workflowPhase !== 'paused') return;
     isPaused = false;
-    const step = workflowSteps()[currentStepIndex];
+    const step = workflowSteps[currentStepIndex];
     workflowPhase = step?.phase === 'fill' ? 'filling' : step?.phase === 'mix' ? 'mixing' : 'sending';
     addLog('Workflow resumed', 'info');
   }
@@ -421,10 +414,11 @@
     timerRemaining = null;
 
     try {
-      await fetch('/api/emergency/stop', { method: 'POST' });
+      await apiPost('/api/emergency/stop');
       addLog('Emergency stop executed - all hardware stopped', 'err');
     } catch (error) {
       addLog(`Emergency stop error: ${error.message}`, 'err');
+      toast.error(`Emergency stop error: ${error.message}`);
     }
   }
 
@@ -437,7 +431,7 @@
 
     for (const relayId of relaysToOff) {
       try {
-        await fetch(`/api/relay/${relayId}/off`, { method: 'POST' });
+        await apiPost(`/api/relay/${relayId}/off`);
       } catch (e) {
         // Ignore errors during cleanup
       }
@@ -445,20 +439,20 @@
 
     // Stop flow meters
     try {
-      await fetch('/api/flow/1/stop', { method: 'POST' });
-      await fetch('/api/flow/2/stop', { method: 'POST' });
+      await apiPost('/api/flow/1/stop');
+      await apiPost('/api/flow/2/stop');
     } catch (e) {}
 
     // Stop EC/pH monitoring
     try {
-      await fetch('/api/ecph/stop', { method: 'POST' });
+      await apiPost('/api/ecph/stop');
     } catch (e) {}
   }
 
   // Skip step (testing mode only)
   function skipStep() {
     if (!isTestingMode || !isRunning) return;
-    const step = workflowSteps()[currentStepIndex];
+    const step = workflowSteps[currentStepIndex];
     if (step) {
       addLog(`[TEST] Skipping step: ${step.name}`, 'warn', step.name);
       completedSteps = [...completedSteps, step.id];
@@ -478,15 +472,13 @@
 
     // Load nutrients config
     try {
-      const response = await fetch('/api/nutrients');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.veg_formula) recipes.veg_formula = data.veg_formula;
-        if (data.bloom_formula) recipes.bloom_formula = data.bloom_formula;
-        addLog('Loaded nutrient recipes', 'info');
-      }
+      const data = await apiGet('/api/nutrients');
+      if (data.veg_formula) recipes.veg_formula = data.veg_formula;
+      if (data.bloom_formula) recipes.bloom_formula = data.bloom_formula;
+      addLog('Loaded nutrient recipes', 'info');
     } catch (error) {
       addLog(`Failed to load recipes: ${error.message}`, 'warn');
+      toast.error(`Failed to load recipes: ${error.message}`);
     }
   });
 
@@ -527,7 +519,7 @@
 
       {#if isRunning}
         <div class="progress-indicator">
-          {completedSteps.length}/{workflowSteps().length} steps
+          {completedSteps.length}/{workflowSteps.length} steps
         </div>
       {/if}
     </div>
@@ -564,7 +556,7 @@
     <!-- Center Panel: Workflow Flowchart -->
     <section class="flowchart-container">
       <WorkflowFlowchart
-        steps={workflowSteps()}
+        steps={workflowSteps}
         {currentStepIndex}
         {completedSteps}
         {workflowPhase}

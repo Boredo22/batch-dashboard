@@ -7,6 +7,8 @@
   import TankMonitorCard from '$lib/components/hardware/tank-monitor-card.svelte';
   import SystemLogCard from '$lib/components/hardware/system-log-card.svelte';
   import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
+  import { apiPost } from '$lib/api.js';
+  import { toast } from 'svelte-sonner';
 
   // Get reactive system status from SSE store
   const sseStatus = getSystemStatus();
@@ -152,57 +154,29 @@
     }
 
     try {
-      const response = await fetch(`/api/relay/${relayId}/${action}`, {
-        method: 'POST'
-      });
+      const result = await apiPost(`/api/relay/${relayId}/${action}`);
+      addLog(result.message || `Relay ${relayId} ${action.toUpperCase()}`);
 
-      if (response.ok) {
-        const result = await response.json();
-        const userMessage = result.message || `Relay ${relayId} ${action.toUpperCase()}`;
-        const rawMessage = `Raw: ${JSON.stringify(result)}`;
-
-        addLog(userMessage);
-        addLog(rawMessage);
-
-        // Update local state for responsive UI
-        relays = relays.map(relay =>
-          relay.id === relayId ? { ...relay, status: action } : relay
-        );
-      } else {
-        const error = await response.json();
-        addLog(`Error: ${error.error}`);
-        addLog(`Raw Error: ${JSON.stringify(error)}`);
-      }
+      // Update local state for responsive UI
+      relays = relays.map(relay =>
+        relay.id === relayId ? { ...relay, status: action } : relay
+      );
     } catch (error) {
-      console.error('Error controlling relay:', error);
       addLog(`Error controlling relay: ${error.message}`);
+      toast.error(`Relay ${relayId}: ${error.message}`);
     }
   }
 
   async function allRelaysOff() {
     try {
-      const response = await fetch('/api/relay/all/off', {
-        method: 'POST'
-      });
+      const result = await apiPost('/api/relay/all/off');
+      addLog(result.message || 'All relays turned off');
 
-      if (response.ok) {
-        const result = await response.json();
-        const userMessage = result.message || 'All relays turned off';
-        const rawMessage = `Raw: ${JSON.stringify(result)}`;
-
-        addLog(userMessage);
-        addLog(rawMessage);
-
-        // Update local state to turn all relays off
-        relays = relays.map(relay => ({ ...relay, status: 'off' }));
-      } else {
-        const error = await response.json();
-        addLog(`Error: ${error.error}`);
-        addLog(`Raw Error: ${JSON.stringify(error)}`);
-      }
+      // Update local state to turn all relays off
+      relays = relays.map(relay => ({ ...relay, status: 'off' }));
     } catch (error) {
-      console.error('Error turning off all relays:', error);
       addLog(`Error turning off all relays: ${error.message}`);
+      toast.error(`All relays off: ${error.message}`);
     }
   }
 
@@ -213,30 +187,14 @@
     }
 
     try {
-      const response = await fetch(`/api/pump/${pumpId}/dispense`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: amount })
-      });
+      const result = await apiPost(`/api/pump/${pumpId}/dispense`, { amount });
+      addLog(result.message || `Dispensing ${amount}ml from pump ${pumpId}`);
 
-      if (response.ok) {
-        const result = await response.json();
-        const userMessage = result.message || `Dispensing ${amount}ml from pump ${pumpId}`;
-        const rawMessage = `Raw: ${JSON.stringify(result)}`;
-
-        addLog(userMessage);
-        addLog(rawMessage);
-
-        // Reset progress tracking for this pump
-        lastProgressReported.set(parseInt(pumpId), -10);
-      } else {
-        const error = await response.json();
-        addLog(`Error: ${error.error}`);
-        addLog(`Raw Error: ${JSON.stringify(error)}`);
-      }
+      // Reset progress tracking for this pump
+      lastProgressReported.set(parseInt(pumpId), -10);
     } catch (error) {
-      console.error('Error dispensing pump:', error);
       addLog(`Error dispensing pump: ${error.message}`);
+      toast.error(`Pump ${pumpId}: ${error.message}`);
     }
   }
 
@@ -247,25 +205,11 @@
     }
 
     try {
-      const response = await fetch(`/api/pump/${pumpId}/stop`, {
-        method: 'POST'
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        const userMessage = result.message || `Stopped pump ${pumpId}`;
-        const rawMessage = `Raw: ${JSON.stringify(result)}`;
-
-        addLog(userMessage);
-        addLog(rawMessage);
-      } else {
-        const error = await response.json();
-        addLog(`Error: ${error.error}`);
-        addLog(`Raw Error: ${JSON.stringify(error)}`);
-      }
+      const result = await apiPost(`/api/pump/${pumpId}/stop`);
+      addLog(result.message || `Stopped pump ${pumpId}`);
     } catch (error) {
-      console.error('Error stopping pump:', error);
       addLog(`Error stopping pump: ${error.message}`);
+      toast.error(`Stop pump ${pumpId}: ${error.message}`);
     }
   }
 
@@ -276,27 +220,11 @@
     }
 
     try {
-      const response = await fetch(`/api/flow/${flowMeterId}/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gallons: gallons })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        const userMessage = result.message || `Started flow meter ${flowMeterId} for ${gallons} gallons`;
-        const rawMessage = `Raw: ${JSON.stringify(result)}`;
-
-        addLog(userMessage);
-        addLog(rawMessage);
-      } else {
-        const error = await response.json();
-        addLog(`Error: ${error.error}`);
-        addLog(`Raw Error: ${JSON.stringify(error)}`);
-      }
+      const result = await apiPost(`/api/flow/${flowMeterId}/start`, { gallons });
+      addLog(result.message || `Started flow meter ${flowMeterId} for ${gallons} gallons`);
     } catch (error) {
-      console.error('Error starting flow meter:', error);
       addLog(`Error starting flow meter: ${error.message}`);
+      toast.error(`Flow ${flowMeterId}: ${error.message}`);
     }
   }
 
@@ -307,71 +235,33 @@
     }
 
     try {
-      const response = await fetch(`/api/flow/${flowMeterId}/stop`, {
-        method: 'POST'
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        const userMessage = result.message || `Stopped flow meter ${flowMeterId}`;
-        const rawMessage = `Raw: ${JSON.stringify(result)}`;
-
-        addLog(userMessage);
-        addLog(rawMessage);
-      } else {
-        const error = await response.json();
-        addLog(`Error: ${error.error}`);
-        addLog(`Raw Error: ${JSON.stringify(error)}`);
-      }
+      const result = await apiPost(`/api/flow/${flowMeterId}/stop`);
+      addLog(result.message || `Stopped flow meter ${flowMeterId}`);
     } catch (error) {
-      console.error('Error stopping flow meter:', error);
       addLog(`Error stopping flow meter: ${error.message}`);
+      toast.error(`Stop flow ${flowMeterId}: ${error.message}`);
     }
   }
 
   async function startEcPhMonitoring() {
     try {
-      const response = await fetch('/api/ecph/start', { method: 'POST' });
-
-      if (response.ok) {
-        const result = await response.json();
-        const userMessage = result.message || 'Started EC/pH monitoring';
-        const rawMessage = `Raw: ${JSON.stringify(result)}`;
-
-        addLog(userMessage);
-        addLog(rawMessage);
-        ecPhMonitoring = true;
-      } else {
-        const error = await response.json();
-        addLog(`Error: ${error.error}`);
-        addLog(`Raw Error: ${JSON.stringify(error)}`);
-      }
+      const result = await apiPost('/api/ecph/start');
+      addLog(result.message || 'Started EC/pH monitoring');
+      ecPhMonitoring = true;
     } catch (error) {
-      console.error('Error starting EC/pH monitoring:', error);
       addLog(`Error starting EC/pH monitoring: ${error.message}`);
+      toast.error(`EC/pH monitoring: ${error.message}`);
     }
   }
 
   async function stopEcPhMonitoring() {
     try {
-      const response = await fetch('/api/ecph/stop', { method: 'POST' });
-
-      if (response.ok) {
-        const result = await response.json();
-        const userMessage = result.message || 'Stopped EC/pH monitoring';
-        const rawMessage = `Raw: ${JSON.stringify(result)}`;
-
-        addLog(userMessage);
-        addLog(rawMessage);
-        ecPhMonitoring = false;
-      } else {
-        const error = await response.json();
-        addLog(`Error: ${error.error}`);
-        addLog(`Raw Error: ${JSON.stringify(error)}`);
-      }
+      const result = await apiPost('/api/ecph/stop');
+      addLog(result.message || 'Stopped EC/pH monitoring');
+      ecPhMonitoring = false;
     } catch (error) {
-      console.error('Error stopping EC/pH monitoring:', error);
       addLog(`Error stopping EC/pH monitoring: ${error.message}`);
+      toast.error(`EC/pH monitoring: ${error.message}`);
     }
   }
 
