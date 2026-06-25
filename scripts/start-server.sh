@@ -1,13 +1,13 @@
+cat > /home/pi/batch-dashboard/scripts/start-server.sh <<'EOF'
 #!/bin/bash
 # start-server.sh - Auto-update and start the batch-dashboard Flask server
-# Place this file on your Raspberry Pi and reference it from the systemd service
 
 set -eo pipefail
 
 # === CONFIGURATION ===
-APP_DIR="/home/pi/batch-dashboard"       # Adjust to your actual project path on the Pi
-BRANCH="newTablet"                            # Git branch to track for updates
-PYTHON="/home/pi/batch-dashboard/.venv/bin/python"  # Path to your virtualenv python
+APP_DIR="/home/pi/batch-dashboard"
+BRANCH="newTablet"
+PYTHON="/home/pi/batch-dashboard/.venv/bin/python"
 LOG_FILE="/var/log/batch-dashboard.log"
 
 # === FUNCTIONS ===
@@ -28,7 +28,6 @@ if [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
 fi
 
 # Discard any local changes so pull never conflicts
-# (the repo is the source of truth — local edits on the Pi get overwritten)
 git reset --hard HEAD 2>&1 | tee -a "$LOG_FILE"
 
 # Fetch and check for updates
@@ -59,5 +58,19 @@ else
     log "Already up to date at commit: $LOCAL"
 fi
 
+# Ensure a built frontend exists (fresh Pi, or dist was never built / got wiped)
+if [ ! -f "$APP_DIR/static/dist/dashboard.html" ]; then
+    log "No built frontend found - building now..."
+    cd "$APP_DIR/frontend"
+    npm install 2>&1 | tee -a "$LOG_FILE"
+    npm run build 2>&1 | tee -a "$LOG_FILE"
+    cd "$APP_DIR"
+fi
+
 log "Starting Flask server..."
 exec "$PYTHON" app.py
+EOF
+
+chmod +x /home/pi/batch-dashboard/scripts/start-server.sh
+sudo systemctl restart batch-dashboard.service
+journalctl -u batch-dashboard.service -f
