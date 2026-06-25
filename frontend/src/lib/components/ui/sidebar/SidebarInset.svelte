@@ -28,7 +28,7 @@
     flex-direction: column;
     min-height: 100vh;
     min-width: 0;
-    background: hsl(222.2 84% 4.9%);
+    background: transparent;
     transition: margin-left 0.2s ease, width 0.2s ease;
   }
 
@@ -93,15 +93,15 @@
     align-items: center;
     gap: 1rem;
     padding: 1rem;
-    border-bottom: 1px solid var(--sidebar-border);
-    background: var(--sidebar-background);
+    border-bottom: 1px solid hsl(var(--border));
+    background: hsl(var(--background) / 0.8);
     min-height: 3.5rem;
   }
 
   .sidebar-inset :global(.sidebar-inset-header h1) {
     font-size: 1.5rem;
     font-weight: 600;
-    color: var(--sidebar-foreground);
+    color: hsl(var(--foreground));
     margin: 0;
   }
 
@@ -111,11 +111,11 @@
     align-items: center;
     gap: 0.5rem;
     font-size: 0.875rem;
-    color: hsl(215.4 16.3% 46.9%);
+    color: hsl(var(--muted-foreground));
   }
 
   .sidebar-inset :global(.sidebar-breadcrumb-separator) {
-    color: hsl(215.4 16.3% 35%);
+    color: hsl(var(--muted-foreground) / 0.6);
   }
 
   .sidebar-inset :global(.sidebar-breadcrumb-item) {
@@ -125,11 +125,11 @@
   }
 
   .sidebar-inset :global(.sidebar-breadcrumb-item:hover) {
-    color: var(--sidebar-foreground);
+    color: hsl(var(--foreground));
   }
 
   .sidebar-inset :global(.sidebar-breadcrumb-item[aria-current="page"]) {
-    color: var(--sidebar-foreground);
+    color: hsl(var(--foreground));
     font-weight: 500;
   }
 
@@ -155,25 +155,6 @@
   /* Scroll behavior */
   .sidebar-inset {
     overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: hsl(217.2 32.6% 17.5%) transparent;
-  }
-
-  .sidebar-inset::-webkit-scrollbar {
-    width: 0.5rem;
-  }
-
-  .sidebar-inset::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .sidebar-inset::-webkit-scrollbar-thumb {
-    background: hsl(217.2 32.6% 17.5%);
-    border-radius: 0.25rem;
-  }
-
-  .sidebar-inset::-webkit-scrollbar-thumb:hover {
-    background: hsl(217.2 32.6% 25%);
   }
 
   /* Focus management */

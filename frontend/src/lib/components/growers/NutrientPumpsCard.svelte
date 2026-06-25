@@ -5,7 +5,7 @@
   let { pumps = [], dosingAmount = 50, onDispense, onSliderInput } = $props();
 </script>
 
-<Card class="nute-pumps-card compact-card">
+<Card class="nute-pumps-card compact-card card-elevated h-full">
   <CardHeader>
     <CardTitle class="section-title-compact">Nutrient Pumps</CardTitle>
   </CardHeader>
@@ -127,8 +127,9 @@
     appearance: none;
     width: 16px;
     height: 16px;
-    background: var(--accent-steel);
-    border: 2px solid var(--border-emphasis);
+    background: hsl(var(--brand));
+    border: 2px solid hsl(var(--brand) / 0.4);
+    box-shadow: 0 0 8px hsl(var(--brand) / 0.5);
     border-radius: 50%;
     cursor: pointer;
   }
@@ -136,8 +137,9 @@
   .dosing-slider-compact::-moz-range-thumb {
     width: 16px;
     height: 16px;
-    background: var(--accent-steel);
-    border: 2px solid var(--border-emphasis);
+    background: hsl(var(--brand));
+    border: 2px solid hsl(var(--brand) / 0.4);
+    box-shadow: 0 0 8px hsl(var(--brand) / 0.5);
     border-radius: 50%;
     cursor: pointer;
   }

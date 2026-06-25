@@ -5,7 +5,7 @@
   let { logs = [], onClear } = $props();
 </script>
 
-<Card class="log-card">
+<Card class="log-card card-elevated">
   <CardHeader class="log-header">
     <CardTitle class="section-title">
       <svg class="section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -92,7 +92,7 @@
     padding: var(--space-sm) var(--space-md);
     background: var(--bg-secondary);
     border-radius: var(--radius-sm);
-    border-left: 2px solid var(--accent-steel);
+    border-left: 2px solid hsl(var(--brand) / 0.7);
   }
 
   .log-time {

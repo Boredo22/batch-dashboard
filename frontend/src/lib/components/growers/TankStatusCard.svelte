@@ -15,7 +15,7 @@
   } = $props();
 </script>
 
-<Card class="tank-status-card compact-card">
+<Card class="tank-status-card compact-card card-elevated h-full">
   <CardHeader>
     <CardTitle class="section-title-compact">Tank Status</CardTitle>
   </CardHeader>

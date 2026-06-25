@@ -80,16 +80,10 @@
   :global(.sidebar-provider) {
     --sidebar-width: 16rem;
     --sidebar-width-mobile: 18rem;
-    --sidebar-width-icon: 3rem;
-    --sidebar-border: hsl(217.2 32.6% 17.5%);
-    --sidebar-background: hsl(222.2 84% 4.9%);
-    --sidebar-foreground: hsl(210 40% 98%);
-    --sidebar-primary: hsl(263.4 70% 50.4%);
-    --sidebar-primary-foreground: hsl(210 40% 98%);
-    --sidebar-accent: hsl(217.2 32.6% 17.5%);
-    --sidebar-accent-foreground: hsl(210 40% 98%);
-    --sidebar-ring: hsl(263.4 70% 50.4%);
-    
+    --sidebar-width-icon: 3.25rem;
+    /* Color tokens (--sidebar-*) are HSL channels defined globally in
+       src/app.css; sidebar components wrap them with hsl(). */
+
     display: flex;
     min-height: 100vh;
     width: 100%;

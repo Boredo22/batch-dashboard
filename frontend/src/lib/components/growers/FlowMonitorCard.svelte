@@ -5,7 +5,7 @@
   let { flowMeters = [] } = $props();
 </script>
 
-<Card class="monitoring-card">
+<Card class="monitoring-card card-elevated">
   <CardHeader>
     <CardTitle class="section-title">
       <svg class="section-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

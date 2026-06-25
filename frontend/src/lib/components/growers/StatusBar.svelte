@@ -66,14 +66,16 @@
 <style>
   /* Compact Status Bar */
   .compact-status-bar {
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-subtle);
+    background: hsl(var(--card));
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
     padding: var(--space-sm) var(--space-md);
     margin-bottom: var(--space-md);
     display: flex;
     align-items: center;
     gap: var(--space-md);
-    height: 48px;
+    min-height: 52px;
   }
 
   .status-section {
@@ -105,9 +107,9 @@
   }
 
   .relay-on {
-    background: var(--text-primary);
-    border-color: var(--text-primary);
-    box-shadow: 0 0 8px rgba(241, 245, 249, 0.4);
+    background: hsl(var(--brand));
+    border-color: hsl(var(--brand));
+    box-shadow: 0 0 8px hsl(var(--brand) / 0.6);
   }
 
   .relay-off {
@@ -177,27 +179,32 @@
     flex: 1;
   }
 
-  .emergency-stop-btn {
+  /* :global because the class is applied to the <Button> child component */
+  :global(.emergency-stop-btn) {
     background: var(--status-error) !important;
-    color: var(--text-button) !important;
-    border: 1px solid rgba(220, 38, 38, 0.4) !important;
-    font-weight: 600 !important;
+    color: #fff !important;
+    border: 1px solid hsl(0 72% 60% / 0.5) !important;
+    font-weight: 700 !important;
     font-size: var(--text-xs) !important;
-    padding: var(--space-xs) var(--space-sm) !important;
-    border-radius: var(--radius-sm) !important;
-    transition: all 0.2s ease !important;
-    letter-spacing: 0.025em;
+    height: auto !important;
+    padding: var(--space-sm) var(--space-md) !important;
+    border-radius: var(--radius-md) !important;
+    transition: all 0.18s ease !important;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     white-space: nowrap;
+    box-shadow: 0 0 0 1px hsl(0 72% 48% / 0.3), 0 4px 14px hsl(0 72% 48% / 0.25) !important;
   }
 
-  .emergency-stop-btn:active {
-    background: #b91c1c !important;
-    opacity: 0.9;
+  :global(.emergency-stop-btn:hover) {
+    background: #dc2626 !important;
+    border-color: hsl(0 72% 60% / 0.8) !important;
+    box-shadow: 0 0 0 1px hsl(0 72% 55% / 0.5), 0 6px 20px hsl(0 72% 48% / 0.4) !important;
   }
 
-  .emergency-stop-btn:hover {
+  :global(.emergency-stop-btn:active) {
     background: #b91c1c !important;
-    border-color: rgba(220, 38, 38, 0.6) !important;
+    transform: translateY(1px);
   }
 
   .emergency-icon {
@@ -206,7 +213,7 @@
   }
 
   @media (max-width: 768px) {
-    .emergency-stop-btn {
+    :global(.emergency-stop-btn) {
       width: 100% !important;
       justify-content: center !important;
     }

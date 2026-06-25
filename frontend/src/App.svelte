@@ -89,12 +89,13 @@
   globalThis.navigateTo = navigateTo;
 </script>
 
-<div class="min-h-screen bg-background text-foreground">
+<div class="min-h-screen text-foreground">
   <Toaster richColors position="top-right" theme="dark" />
   <DashboardLayout
     title={pageConfig.title}
     subtitle={pageConfig.subtitle}
     {systemStatus}
+    {currentPage}
     breadcrumbs={pageConfig.breadcrumbs}
   >
     {#snippet children()}

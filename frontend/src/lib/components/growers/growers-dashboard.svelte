@@ -481,64 +481,7 @@
 
 
 <style>
-  :root {
-    /* Professional Industrial Color Palette */
-    --bg-primary: #0f172a;
-    --bg-secondary: #1e293b;
-    --bg-tertiary: #334155;
-    --bg-card: #1e293b;
-    --bg-card-hover: #334155;
-
-    /* Muted Accent Colors */
-    --accent-steel: #64748b;
-    --accent-slate: #475569;
-    --accent-blue-muted: #3b82f6;
-
-    /* Professional Status Colors (Muted) */
-    --status-success: #059669;
-    --status-warning: #d97706;
-    --status-error: #dc2626;
-    --status-info: #0284c7;
-    --status-development: #ca8a04;
-
-    /* Text Colors */
-    --text-primary: #f1f5f9;
-    --text-secondary: #e2e8f0;
-    --text-muted: #94a3b8;
-    --text-disabled: #64748b;
-    --text-button: #f8fafc;
-
-    /* Borders */
-    --border-subtle: #334155;
-    --border-emphasis: #475569;
-
-    /* Spacing Scale */
-    --space-xs: 0.25rem;
-    --space-sm: 0.5rem;
-    --space-md: 1rem;
-    --space-lg: 1.5rem;
-    --space-xl: 2rem;
-    --space-2xl: 3rem;
-
-    /* Typography Scale */
-    --text-3xl: 1.875rem;
-    --text-2xl: 1.5rem;
-    --text-xl: 1.25rem;
-    --text-lg: 1.125rem;
-    --text-base: 1rem;
-    --text-sm: 0.875rem;
-    --text-xs: 0.75rem;
-
-    /* Shadows - Subtle */
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.5);
-
-    /* Border Radius - Professional */
-    --radius-sm: 0.25rem;
-    --radius-md: 0.375rem;
-    --radius-lg: 0.5rem;
-  }
+  /* Design tokens are defined globally in src/app.css */
 
   /* Main Dashboard Layout - Optimized for 10" Tablet */
   .dashboard-grid {

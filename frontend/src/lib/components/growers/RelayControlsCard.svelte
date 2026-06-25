@@ -5,7 +5,7 @@
   let { relays = [], onToggleRelay } = $props();
 </script>
 
-<Card class="relay-control-card compact-card">
+<Card class="relay-control-card compact-card card-elevated h-full">
   <CardHeader>
     <CardTitle class="section-title-compact">Relay Controls</CardTitle>
   </CardHeader>
@@ -167,11 +167,17 @@
     opacity: 0.85;
   }
 
-  /* Unified Relay Styling - No Color Coding */
+  /* Active relays glow cyan (live) */
   :global(.relay-btn.relay-active) {
-    background: var(--accent-steel) !important;
-    border-color: var(--border-emphasis) !important;
+    background: hsl(var(--brand) / 0.16) !important;
+    border-color: hsl(var(--brand) / 0.55) !important;
     color: var(--text-primary) !important;
+    box-shadow: 0 0 0 1px hsl(var(--brand) / 0.25), 0 0 16px hsl(var(--brand) / 0.18) !important;
+  }
+
+  :global(.relay-btn.relay-active .relay-status) {
+    background: hsl(var(--brand) / 0.85);
+    color: hsl(var(--brand-foreground));
   }
 
   :global(.relay-btn.relay-inactive) {
