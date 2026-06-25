@@ -13,6 +13,9 @@ import json
 import logging
 import threading
 
+# Allow running from anywhere: add project root (parent of tools/) to sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Setup logging - show INFO level for test output
 logging.basicConfig(
     level=logging.INFO,

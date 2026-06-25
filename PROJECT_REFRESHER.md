@@ -417,7 +417,7 @@ Every Svelte component is a SINGLE `.svelte` file:
 
 ### 3. GPIO Errors (Relays/Flow Meters)
 - Run with sudo if permission errors
-- Check pin availability: `/hardware/gpio_monitor.py`
+- Check pin availability: `tools/gpio_monitor.py`
 
 ### 4. Frontend Build Issues
 ```bash

@@ -8,7 +8,10 @@ Centralized configuration for all hardware mappings, constants, and settings
 # RELAY CONFIGURATION (ULN2803A Darlington Array)
 # =============================================================================
 
-# GPIO pin mappings for relays (from relay_mapping.json)
+# GPIO pin mappings for relays. THIS is the canonical source of truth for the
+# live system. (hardware/utilities/relay_mapping.json is a snapshot produced by
+# the interactive relayMap.py tool and is currently stale - it predates relay 1;
+# do not treat it as authoritative. Re-export from here if you regenerate it.)
 # Format: {relay_id: gpio_pin}
 RELAY_GPIO_PINS = {
     1: 22,   # Tank 1 Fill,
@@ -180,10 +183,12 @@ TANK_MONITOR_PORTS = {
 }
 
 # =============================================================================
-# LEGACY ARDUINO UNO CONFIGURATION (DEPRECATED - replaced by direct I2C)
+# LEGACY ARDUINO UNO CONFIGURATION (DEAD on the live Pi system)
 # =============================================================================
-
-# Arduino Uno serial communication (DEPRECATED - keeping for reference)
+# EC/pH is now read by the Pi over direct I2C (see EZO_*_ADDRESS above and
+# hardware/rpi_ezo_sensors.py). These constants are NOT used by app.py / main.py
+# anymore; they are retained ONLY because the frozen reference GUI simple_gui.py
+# still imports them. If/when simple_gui.py is retired, delete this whole block.
 ARDUINO_UNO_PORTS = [
     "/dev/ttyACM0",
     "/dev/ttyACM1",
@@ -425,8 +430,8 @@ MOCK_SETTINGS = {
     "pumps": False,         # Use mock pumps
     "relays": False,        # Use real relays
     "flow_meters": False,   # Use mock flow meters
-    "arduino": False,       # Use mock Arduino
-    "tank_monitors": False  # Use mock tank monitors
+    "arduino": False,       # Use mock EC/pH sensors (legacy key name; now the EZO I2C sensor)
+    "tank_monitors": False  # Use mock per-tank pH/EC monitors
 }
 
 # Test configuration
@@ -459,6 +464,7 @@ if __name__ == "__main__":
     
     print(f"\nSystem Settings:")
     print(f"  I2C Bus: {I2C_BUS_NUMBER}")
-    print(f"  Arduino Baudrate: {ARDUINO_UNO_BAUDRATE}")
+    print(f"  EZO pH/EC I2C: 0x{EZO_PH_ADDRESS:02X} / 0x{EZO_EC_ADDRESS:02X}")
+    print(f"  Tank Monitor Baudrate: {TANK_MONITOR_BAUDRATE}")
     print(f"  Status Interval: {STATUS_UPDATE_INTERVAL}s")
     print(f"  Debug Mode: {DEBUG_MODE}")

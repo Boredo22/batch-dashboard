@@ -51,7 +51,7 @@ for component, level in LOG_LEVELS.items():
     component_logger.setLevel(getattr(logging, level))
 
 class FeedControlSystem:
-    def __init__(self, uno_port=None, use_mock_flow=None):
+    def __init__(self, use_mock_flow=None):
         """Initialize the complete feed control system"""
         self.running = False
         self.command_queue = queue.Queue()
@@ -449,7 +449,7 @@ class FeedControlSystem:
         self.send_message(f"- EZO Pumps: {len(pumps)} units (I2C)")
         self.send_message(f"- Control Relays: {len(relays)} units (GPIO)")
         self.send_message(f"- Flow Meters: {len(flow_meters)} units (GPIO interrupts)")
-        self.send_message("- EC/pH Sensors: Arduino Uno (Serial)")
+        self.send_message("- EC/pH Sensors: Atlas EZO pH/EC (direct I2C)")
         self.send_message("")
         self.send_message("System Status:")
         
@@ -561,14 +561,9 @@ def main():
     
     # Check command line arguments
     use_mock_flow = "--mock-flow" in sys.argv
-    uno_port = None
-    
-    for i, arg in enumerate(sys.argv):
-        if arg == "--uno-port" and i + 1 < len(sys.argv):
-            uno_port = sys.argv[i + 1]
-    
+
     # Create and start system
-    system = FeedControlSystem(uno_port=uno_port, use_mock_flow=use_mock_flow)
+    system = FeedControlSystem(use_mock_flow=use_mock_flow)
     system.start()
     
     # Interactive command loop
