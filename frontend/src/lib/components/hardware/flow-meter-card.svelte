@@ -1,13 +1,22 @@
 <script>
-  import { Activity, Play, Square } from "@lucide/svelte/icons";
+  import { Activity, Play, Square, Cpu, Timer, RotateCcw } from "@lucide/svelte/icons";
 
   let {
     flowMeters = [],
     selectedFlowMeter = $bindable(""),
     flowGallons = $bindable(1.0),
     onStartFlow,
-    onStopFlow
+    onStopFlow,
+    onGpioCheck,
+    onPulseTest,
+    onResetCounter,
+    diagnostics = null
   } = $props();
+
+  // Only show the diagnostics result block when it matches the selected meter
+  let selectedDiagnostics = $derived(
+    diagnostics && diagnostics.flow_id === selectedFlowMeter ? diagnostics : null
+  );
 
   // Ensure flowMeters is always an array to prevent null reference errors
   let safeFlowMeters = $derived(Array.isArray(flowMeters) ? flowMeters : []);
@@ -28,6 +37,16 @@
     if (selectedFlowMeter) {
       onStopFlow?.(selectedFlowMeter);
     }
+  }
+
+  function handleGpioCheck() {
+    if (selectedFlowMeter) onGpioCheck?.(selectedFlowMeter);
+  }
+  function handlePulseTest() {
+    if (selectedFlowMeter) onPulseTest?.(selectedFlowMeter);
+  }
+  function handleResetCounter() {
+    if (selectedFlowMeter) onResetCounter?.(selectedFlowMeter);
   }
 </script>
 
@@ -110,6 +129,42 @@
             Stop
           </button>
         </div>
+
+        {#if onGpioCheck || onPulseTest || onResetCounter}
+          <div class="diagnostics">
+            <span class="label">Diagnostics</span>
+            <div class="diag-buttons">
+              {#if onGpioCheck}
+                <button onclick={handleGpioCheck} disabled={!selectedFlowMeter} class="btn-diag" title="Read the GPIO pin level">
+                  <Cpu class="btn-icon" /> GPIO
+                </button>
+              {/if}
+              {#if onPulseTest}
+                <button onclick={handlePulseTest} disabled={!selectedFlowMeter} class="btn-diag" title="Start a pulse-counting test">
+                  <Timer class="btn-icon" /> Pulse test
+                </button>
+              {/if}
+              {#if onResetCounter}
+                <button onclick={handleResetCounter} disabled={!selectedFlowMeter} class="btn-diag" title="Reset the pulse counter">
+                  <RotateCcw class="btn-icon" /> Reset
+                </button>
+              {/if}
+            </div>
+
+            {#if selectedDiagnostics}
+              <div class="diag-result">
+                <div class="diag-row"><span>GPIO pin</span><span>{selectedDiagnostics.gpio_pin ?? '—'}</span></div>
+                <div class="diag-row">
+                  <span>Level</span>
+                  <span class:level-high={selectedDiagnostics.gpio_level === 'HIGH'} class:level-low={selectedDiagnostics.gpio_level === 'LOW'}>
+                    {selectedDiagnostics.gpio_level ?? 'n/a'}{selectedDiagnostics.gpio_voltage ? ` (${selectedDiagnostics.gpio_voltage})` : ''}
+                  </span>
+                </div>
+                <div class="diag-row"><span>Calibration</span><span>{selectedDiagnostics.calibration_ppg ?? '—'} ppg</span></div>
+              </div>
+            {/if}
+          </div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -365,6 +420,76 @@
   .btn-icon {
     width: 0.875rem;
     height: 0.875rem;
+  }
+
+  .diagnostics {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .diag-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .btn-diag {
+    height: 2rem;
+    padding: 0 0.625rem;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-emphasis);
+    color: var(--text-secondary);
+  }
+
+  .btn-diag:hover:not(:disabled) {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .btn-diag:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .diag-result {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 0.25rem;
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .diag-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+  }
+
+  .diag-row span:last-child {
+    font-family: ui-monospace, monospace;
+    color: var(--text-secondary);
+  }
+
+  .diag-row .level-high {
+    color: var(--status-success);
+  }
+
+  .diag-row .level-low {
+    color: var(--text-muted);
   }
 
   .flex {

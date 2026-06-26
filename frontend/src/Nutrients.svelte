@@ -53,6 +53,8 @@
   let calibrationStep = $state('idle'); // idle, dispensing, measuring, saving
   let calibrationTarget = $state(10);
   let actualVolume = $state('');
+  let refreshingCalibration = $state(false); // global re-read of calibration from hardware
+  let checkingPump = $state(null);           // pump id currently being re-checked
   let statusMessage = $state('');
   let activeTab = $state('pumps');
   let lastUpdate = $state(new Date());
@@ -242,6 +244,33 @@
     actualVolume = '';
   }
 
+  // Force the backend to re-read every pump's calibration from the EZO hardware
+  // and refresh its cache (which then flows back through the SSE status stream).
+  async function refreshCalibration() {
+    refreshingCalibration = true;
+    try {
+      const result = await apiPost('/api/pumps/refresh-calibration');
+      toast.success(result.message || 'Calibration status refreshed');
+    } catch (error) {
+      toast.error(`Refresh calibration: ${error.message}`);
+    } finally {
+      refreshingCalibration = false;
+    }
+  }
+
+  // Re-check a single pump's calibration live ("Cal,?") and report the result.
+  async function checkPumpCalibration(pumpId) {
+    checkingPump = pumpId;
+    try {
+      const result = await apiGet(`/api/pumps/${pumpId}/calibration/status`);
+      toast.success(`Pump ${pumpId}: ${formatCalibrationStatus(result.calibration_status)}`);
+    } catch (error) {
+      toast.error(`Calibration status pump ${pumpId}: ${error.message}`);
+    } finally {
+      checkingPump = null;
+    }
+  }
+
   function updatePumpNutrient(pumpId, nutrientValue) {
     const nutrient = availableNutrients.find(n => n.value === nutrientValue);
     if (nutrient) {
@@ -354,6 +383,7 @@
       'calibrated': 'Calibrated',
       'single_point': 'Calibrated',
       'volume_calibrated': 'Calibrated',
+      'fully_calibrated': 'Calibrated',
       'uncalibrated': 'Uncalibrated',
       'unknown': 'Unknown'
     };
@@ -403,10 +433,23 @@
     <!-- Pump Health Overview -->
     <Card class="col-span-1 md:col-span-2">
       <CardHeader class="pb-2">
-        <CardTitle class="text-sm font-medium flex items-center gap-2">
-          <Activity class="h-4 w-4 text-primary" />
-          Pump Status Overview
-        </CardTitle>
+        <div class="flex items-center justify-between">
+          <CardTitle class="text-sm font-medium flex items-center gap-2">
+            <Activity class="h-4 w-4 text-primary" />
+            Pump Status Overview
+          </CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-7 gap-1.5"
+            onclick={refreshCalibration}
+            disabled={refreshingCalibration}
+            title="Re-read calibration from the pump hardware"
+          >
+            <RotateCcw class={`h-3.5 w-3.5 ${refreshingCalibration ? 'animate-spin' : ''}`} />
+            {refreshingCalibration ? 'Refreshing…' : 'Refresh'}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div class="flex items-center gap-6">
@@ -610,7 +653,16 @@
                 <span class="text-xs text-muted-foreground">Pump {pumpId}</span>
               </div>
               <CardDescription>
-                {pump.voltage?.toFixed(1) || '0.0'}V · {pump.calibrated ? 'Calibrated' : 'Uncalibrated'}
+                {pump.voltage?.toFixed(1) || '0.0'}V ·
+                <button
+                  type="button"
+                  class="underline-offset-2 hover:underline disabled:no-underline disabled:opacity-60"
+                  onclick={() => checkPumpCalibration(pumpId)}
+                  disabled={checkingPump === pumpId}
+                  title="Re-check this pump's calibration from hardware"
+                >
+                  {checkingPump === pumpId ? 'Checking…' : (pump.calibrated ? 'Calibrated' : 'Uncalibrated')}
+                </button>
               </CardDescription>
             </CardHeader>
             <CardContent class="space-y-4">

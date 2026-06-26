@@ -243,6 +243,44 @@
     }
   }
 
+  // --- Flow meter diagnostics (GPIO read / pulse test / counter reset) ---
+  let flowDiagnostics = $state(null); // last GPIO read: { flow_id, meter_name, gpio_pin, gpio_level, gpio_voltage, calibration_ppg }
+
+  async function checkFlowGpio(flowMeterId) {
+    if (!flowMeterId) { addLog('Please select a flow meter'); return; }
+    try {
+      const result = await apiGet(`/api/flow/${flowMeterId}/diagnostics/gpio`);
+      flowDiagnostics = { flow_id: flowMeterId, ...result.diagnostics };
+      addLog(`Flow ${flowMeterId} GPIO ${result.diagnostics?.gpio_pin}: ${result.diagnostics?.gpio_level ?? 'n/a'}`);
+    } catch (error) {
+      addLog(`Error reading flow GPIO: ${error.message}`);
+      toast.error(`Flow GPIO ${flowMeterId}: ${error.message}`);
+    }
+  }
+
+  async function pulseTestFlow(flowMeterId, duration = 10) {
+    if (!flowMeterId) { addLog('Please select a flow meter'); return; }
+    try {
+      const result = await apiPost(`/api/flow/${flowMeterId}/diagnostics/pulse-test`, { duration });
+      addLog(result.message || `Pulse test started on flow meter ${flowMeterId}`);
+    } catch (error) {
+      addLog(`Error starting pulse test: ${error.message}`);
+      toast.error(`Pulse test ${flowMeterId}: ${error.message}`);
+    }
+  }
+
+  async function resetFlowCounter(flowMeterId) {
+    if (!flowMeterId) { addLog('Please select a flow meter'); return; }
+    try {
+      const result = await apiPost(`/api/flow/${flowMeterId}/diagnostics/reset`);
+      if (flowDiagnostics?.flow_id === flowMeterId) flowDiagnostics = null;
+      addLog(result.message || `Flow meter ${flowMeterId} counter reset`);
+    } catch (error) {
+      addLog(`Error resetting flow counter: ${error.message}`);
+      toast.error(`Reset flow ${flowMeterId}: ${error.message}`);
+    }
+  }
+
   async function startEcPhMonitoring() {
     try {
       const result = await apiPost('/api/ecph/start');
@@ -337,6 +375,10 @@
         bind:flowGallons
         onStartFlow={startFlow}
         onStopFlow={stopFlow}
+        onGpioCheck={checkFlowGpio}
+        onPulseTest={pulseTestFlow}
+        onResetCounter={resetFlowCounter}
+        diagnostics={flowDiagnostics}
       />
 
       <ECPHMonitorCard
