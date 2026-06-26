@@ -305,6 +305,15 @@ def api_save_config():
     }), 501
 
 
+@app.route('/api/config/pumps', methods=['GET'])
+@api_endpoint
+def api_get_pump_config():
+    """Get pump id -> name mapping for the growers dashboard."""
+    return jsonify({
+        'pump_names': getattr(config, 'PUMP_NAMES', {})
+    })
+
+
 # =============================================================================
 # SETTINGS ENDPOINTS - User and Developer Settings
 # =============================================================================
@@ -625,6 +634,16 @@ def api_status():
     return jsonify(build_status_data())
 
 
+@app.route('/api/hardware/pumps', methods=['GET'])
+@api_endpoint
+def api_hardware_pumps():
+    """List pumps with their configured names (growers dashboard fallback)."""
+    pump_names = getattr(config, 'PUMP_NAMES', {})
+    return jsonify({
+        'pumps': [{'id': pump_id, 'name': name} for pump_id, name in pump_names.items()]
+    })
+
+
 # =============================================================================
 # SERVER-SENT EVENTS (SSE) - Real-time status streaming
 # =============================================================================
@@ -787,6 +806,7 @@ def api_dispense_pump_plural(pump_id):
     })
 
 @app.route('/api/pump/<int:pump_id>/stop', methods=['POST'])
+@app.route('/api/pumps/<int:pump_id>/stop', methods=['POST'])
 @api_endpoint
 def api_stop_pump(pump_id):
     """Stop pump"""
