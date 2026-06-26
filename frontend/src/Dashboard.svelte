@@ -4,10 +4,11 @@
   import PumpControlCard from '$lib/components/hardware/pump-control-card.svelte';
   import FlowMeterCard from '$lib/components/hardware/flow-meter-card.svelte';
   import ECPHMonitorCard from '$lib/components/hardware/ecph-monitor-card.svelte';
+  import ECPHCalibrationCard from '$lib/components/hardware/ec-ph-calibration-card.svelte';
   import TankMonitorCard from '$lib/components/hardware/tank-monitor-card.svelte';
   import SystemLogCard from '$lib/components/hardware/system-log-card.svelte';
   import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
-  import { apiPost } from '$lib/api.js';
+  import { apiGet, apiPost } from '$lib/api.js';
   import { toast } from 'svelte-sonner';
 
   // Get reactive system status from SSE store
@@ -379,6 +380,12 @@
         onPulseTest={pulseTestFlow}
         onResetCounter={resetFlowCounter}
         diagnostics={flowDiagnostics}
+      />
+
+      <ECPHCalibrationCard
+        {ecValue}
+        {phValue}
+        {ecPhMonitoring}
       />
 
       <ECPHMonitorCard
