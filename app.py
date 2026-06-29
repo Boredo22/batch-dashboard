@@ -417,8 +417,8 @@ def api_get_nutrients():
                 "Bloom A": 3,
                 "Bloom B": 4,
                 "Cake": 5,
-                "PK Synergy": 6,
-                "Runclean": 7,
+                "PK Synergy": 7,
+                "Runclean": 6,
                 "pH Down": 8
             }
         }

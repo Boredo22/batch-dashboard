@@ -84,8 +84,8 @@ PUMP_NAMES = {
     3: "Bloom A",
     4: "Bloom B",
     5: "Cake",
-    6: "PK Synergy",
-    7: "Runclean",
+    6: "Runclean",     # swapped onto the working pump (pump 7 / I2C 17 is dead)
+    7: "PK Synergy",   # parked on the non-functional pump (unused in veg/bloom)
     8: "pH Down",
 }
 

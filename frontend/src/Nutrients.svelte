@@ -39,8 +39,8 @@
     3: { nutrient: 'bloom_a', label: 'Bloom A' },
     4: { nutrient: 'bloom_b', label: 'Bloom B' },
     5: { nutrient: 'cake', label: 'Cake' },
-    6: { nutrient: 'pk_synergy', label: 'PK Synergy' },
-    7: { nutrient: 'runclean', label: 'Runclean' },
+    6: { nutrient: 'runclean', label: 'Runclean' },
+    7: { nutrient: 'pk_synergy', label: 'PK Synergy' },
     8: { nutrient: 'ph_down', label: 'pH Down' }
   };
 

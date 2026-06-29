@@ -110,8 +110,8 @@
           { id: 3, name: 'Bloom A', status: 'idle', progress: 0, target_volume: 0 },
           { id: 4, name: 'Bloom B', status: 'idle', progress: 0, target_volume: 0 },
           { id: 5, name: 'Cake', status: 'idle', progress: 0, target_volume: 0 },
-          { id: 6, name: 'PK Synergy', status: 'idle', progress: 0, target_volume: 0 },
-          { id: 7, name: 'Runclean', status: 'idle', progress: 0, target_volume: 0 },
+          { id: 6, name: 'Runclean', status: 'idle', progress: 0, target_volume: 0 },
+          { id: 7, name: 'PK Synergy', status: 'idle', progress: 0, target_volume: 0 },
           { id: 8, name: 'pH Down', status: 'idle', progress: 0, target_volume: 0 }
         ];
       }
@@ -124,8 +124,8 @@
         { id: 3, name: 'Bloom A', status: 'idle', progress: 0, target_volume: 0 },
         { id: 4, name: 'Bloom B', status: 'idle', progress: 0, target_volume: 0 },
         { id: 5, name: 'Cake', status: 'idle', progress: 0, target_volume: 0 },
-        { id: 6, name: 'PK Synergy', status: 'idle', progress: 0, target_volume: 0 },
-        { id: 7, name: 'Runclean', status: 'idle', progress: 0, target_volume: 0 },
+        { id: 6, name: 'Runclean', status: 'idle', progress: 0, target_volume: 0 },
+        { id: 7, name: 'PK Synergy', status: 'idle', progress: 0, target_volume: 0 },
         { id: 8, name: 'pH Down', status: 'idle', progress: 0, target_volume: 0 }
       ];
     }
