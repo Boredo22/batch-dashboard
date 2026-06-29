@@ -11,7 +11,8 @@
     Zap,
     BookOpen,
     Sprout,
-    Waves
+    Waves,
+    ClipboardCheck
   } from "@lucide/svelte/icons";
 
   let { systemStatus = "disconnected", currentPage = "headgrower" } = $props();
@@ -29,7 +30,8 @@
   // Engineering / diagnostics navigation
   const diagnosticItems = [
     { title: "Hardware Testing", page: "stage1", icon: Zap },
-    { title: "Job Testing", page: "stage2", icon: Activity },
+    { title: "HW Verification", page: "verify", icon: ClipboardCheck },
+    { title: "Batch Fill", page: "stage2", icon: Activity },
     { title: "Settings", page: "settings", icon: Settings }
   ];
 

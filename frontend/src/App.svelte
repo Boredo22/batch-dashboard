@@ -8,6 +8,7 @@
   import Nutrients from './Nutrients.svelte';
   import Knowledge from './Knowledge.svelte';
   import GrowCycles from './GrowCycles.svelte';
+  import HardwareVerification from './HardwareVerification.svelte';
   import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
   import { Toaster } from 'svelte-sonner';
 
@@ -56,6 +57,12 @@
           title: 'Fill Tank',
           subtitle: 'Tank filling, nutrient mixing, and distribution',
           breadcrumbs: [{ title: 'Operations', href: '#' }, { title: 'Fill Tank' }]
+        };
+      case 'verify':
+        return {
+          title: 'Hardware Verification',
+          subtitle: 'Actuate each device and record pass/fail during a manual fill',
+          breadcrumbs: [{ title: 'Diagnostics', href: '#' }, { title: 'Hardware Verification' }]
         };
       case 'settings':
         return {
@@ -109,6 +116,8 @@
         <Dashboard />
       {:else if currentPage === 'stage2'}
         <FillTank />
+      {:else if currentPage === 'verify'}
+        <HardwareVerification />
       {:else if currentPage === 'settings'}
         <Settings />
       {:else if currentPage === 'knowledge'}
