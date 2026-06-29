@@ -566,6 +566,17 @@ def api_get_grow_cycles_report():
 # API ENDPOINTS - Hardware Control (same patterns as simple_gui.py)
 # =============================================================================
 
+def _batch_job_snapshot():
+    """Live batch dosing job status for the status payload (None if no job)."""
+    try:
+        import dosing_job
+        job = dosing_job.get_current()
+        return job.snapshot() if job else None
+    except Exception as e:
+        logger.debug(f"batch job snapshot unavailable: {e}")
+        return None
+
+
 def build_status_data():
     """Build the status data structure (shared between REST and SSE endpoints)"""
     status = get_system_status()
@@ -606,6 +617,32 @@ def build_status_data():
         }
         pumps_list.append(pump_data)
 
+    # Surface LIVE flow-meter status from the controller instead of hardcoding
+    # stopped/0. main.get_system_status() already returns real per-meter data
+    # (keyed by meter id) via flow_controller.get_all_flow_status(); previously
+    # that was discarded here, which made every consumer see a meter that never
+    # ran. The fill workflow's "wait for flow to complete" therefore resolved
+    # instantly (status was never 'running'), so tanks never reached target.
+    # The controller's integer status (0=inactive, 1=active, 2=completed) is
+    # mapped to the string the frontend checks ('running' vs anything else), and
+    # both total_gallons and current_gallons are emitted so every flow card works.
+    raw_flow = status.get('flow_meters') or {}
+    flow_status_str = {0: 'stopped', 1: 'running', 2: 'completed'}
+    flow_meters_list = []
+    for fid in hardware['flow_meters']['ids']:
+        fm = raw_flow.get(fid) or raw_flow.get(str(fid)) or {}
+        gallons = fm.get('current_gallons', 0)
+        flow_meters_list.append({
+            'id': fid,
+            'name': hardware['flow_meters']['names'].get(fid, f'Flow Meter {fid}'),
+            'status': flow_status_str.get(fm.get('status', 0), 'stopped'),
+            'flow_rate': fm.get('flow_rate', 0),
+            'total_gallons': gallons,
+            'current_gallons': gallons,
+            'target_gallons': fm.get('target_gallons', 0),
+            'pulse_count': fm.get('pulse_count', 0),
+        })
+
     return {
         'success': True,
         'status': status,
@@ -615,13 +652,12 @@ def build_status_data():
         'relays': [{'id': rid, 'name': hardware['relays']['names'].get(rid, f'Relay {rid}'), 'state': status['relays'].get(str(rid), False)}
                   for rid in hardware['relays']['ids']],
         'pumps': pumps_list,
-        'flow_meters': [{'id': fid, 'name': hardware['flow_meters']['names'].get(fid, f'Flow Meter {fid}'),
-                       'status': 'stopped', 'flow_rate': 0, 'total_gallons': 0}
-                      for fid in hardware['flow_meters']['ids']],
+        'flow_meters': flow_meters_list,
         'ec_value': status.get('ec', 0),
         'ph_value': status.get('ph', 0),
         'ec_ph_monitoring': status.get('ec_ph_active', False),
-        'tank_monitors': status.get('tank_monitors', {})
+        'tank_monitors': status.get('tank_monitors', {}),
+        'batch_job': _batch_job_snapshot()
     }
 
 
@@ -1240,6 +1276,105 @@ def api_emergency_stop():
     return jsonify({
         'success': success,
         'message': "🚨 EMERGENCY STOP ACTIVATED 🚨" if success else "Emergency stop failed"
+    })
+
+
+# =============================================================================
+# BATCH DOSING JOB - Server-side closed-loop fill + EC/pH dosing
+# =============================================================================
+
+@app.route('/api/job/batch/start', methods=['POST'])
+@api_endpoint
+def api_start_batch_job():
+    """Start a closed-loop batch: fill to target, then dose EC and pH to setpoints.
+
+    Body: {tank_id, target_gallons, recipe (nutrients.json key, e.g. 'veg_formula'),
+           ec_target?, ph_target?, ec_tol?, ph_tol?}
+    """
+    import dosing_job
+
+    data = request.get_json() or {}
+
+    # --- tank ---
+    try:
+        tank_id = int(data.get('tank_id'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'tank_id required'}), 400
+    tanks = getattr(config, 'TANKS', {})
+    tank = tanks.get(tank_id)
+    if not tank:
+        return jsonify({'success': False, 'error': f'Unknown tank_id {tank_id}'}), 400
+
+    # --- volume ---
+    try:
+        target_gallons = float(data.get('target_gallons'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'target_gallons required'}), 400
+    capacity = tank.get('capacity_gallons', getattr(config, 'MAX_FLOW_GALLONS', 100))
+    max_flow = getattr(config, 'MAX_FLOW_GALLONS', 100)
+    if target_gallons < dosing_job.PRIME_GALLONS:
+        return jsonify({'success': False, 'error':
+                        f'target_gallons must be >= {dosing_job.PRIME_GALLONS:.0f} (circ-pump prime minimum)'}), 400
+    if target_gallons > min(capacity, max_flow):
+        return jsonify({'success': False, 'error':
+                        f'target_gallons exceeds limit ({min(capacity, max_flow)} gal for tank {tank_id})'}), 400
+
+    # --- recipe + pump map (from nutrients.json) ---
+    nutrients_data = {}
+    if os.path.exists('nutrients.json'):
+        with open('nutrients.json', 'r') as f:
+            nutrients_data = json.load(f)
+    recipe_key = data.get('recipe', 'veg_formula')
+    recipe = nutrients_data.get(recipe_key)
+    if not recipe:
+        return jsonify({'success': False, 'error': f'Unknown recipe "{recipe_key}"'}), 400
+    pump_ids = nutrients_data.get('pump_name_to_id', {})
+    missing = [n for n in recipe if n not in pump_ids]
+    if missing:
+        return jsonify({'success': False, 'error':
+                        f'No pump mapping for: {", ".join(missing)}'}), 400
+
+    cfg = dosing_job.BatchConfig(
+        tank_id=tank_id,
+        target_gallons=target_gallons,
+        recipe=dict(recipe),
+        pump_ids={n: int(pump_ids[n]) for n in recipe},
+        fill_relay=tank['fill_relay'],
+        mix_relays=list(tank['mix_relays']),
+        flow_meter_id=int(data.get('flow_meter_id', 1)),
+        ec_target=float(data.get('ec_target', dosing_job.DEFAULT_EC_TARGET)),
+        ph_target=float(data.get('ph_target', dosing_job.DEFAULT_PH_TARGET)),
+        ec_tol=float(data.get('ec_tol', dosing_job.DEFAULT_EC_TOL)),
+        ph_tol=float(data.get('ph_tol', dosing_job.DEFAULT_PH_TOL)),
+    )
+
+    try:
+        job = dosing_job.start_batch(cfg)
+    except RuntimeError as e:
+        return jsonify({'success': False, 'error': str(e)}), 409  # already running
+
+    logger.info(f"Batch dosing job started for tank {tank_id}: {target_gallons} gal {recipe_key}")
+    return jsonify({'success': True, 'message': 'Batch job started', 'job': job.snapshot()})
+
+
+@app.route('/api/job/batch/status', methods=['GET'])
+@api_endpoint
+def api_batch_job_status():
+    """Current batch job status (null if none has run)."""
+    import dosing_job
+    job = dosing_job.get_current()
+    return jsonify({'success': True, 'job': job.snapshot() if job else None})
+
+
+@app.route('/api/job/batch/abort', methods=['POST'])
+@api_endpoint
+def api_abort_batch_job():
+    """Abort the running batch job and shut its hardware down safely."""
+    import dosing_job
+    aborted = dosing_job.abort_current()
+    return jsonify({
+        'success': aborted,
+        'message': 'Batch job aborting' if aborted else 'No active batch job to abort'
     })
 
 
