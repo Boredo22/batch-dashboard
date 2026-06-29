@@ -554,9 +554,40 @@
 
   .log-container { height: 200px; padding: 0 16px 16px; }
 
-  @media (max-width: 1200px) {
-    .main-content { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
-    .config-panel-container, .diagnostics-container { max-height: 320px; }
+  /* Tablet landscape / small laptop: let the PAGE scroll and give panels their
+     natural height (the old version forced one column and capped panels at
+     320px, producing unusable tall-skinny scroll boxes). 2 columns: config on
+     the left, status + diagnostics stacked on the right. */
+  @media (min-width: 769px) and (max-width: 1200px) {
+    .fill-tank-page { height: auto; min-height: 100vh; }
+    .main-content {
+      grid-template-columns: minmax(250px, 320px) 1fr;
+      grid-auto-rows: min-content;
+      align-items: start;
+      overflow: visible;
+    }
+    .config-panel-container { grid-column: 1; grid-row: 1 / span 2; }
+    .status-container { grid-column: 2; grid-row: 1; }
+    .diagnostics-container { grid-column: 2; grid-row: 2; }
+    .config-panel-container,
+    .diagnostics-container,
+    .status-container { max-height: none; overflow: visible; }
+    .metrics { grid-template-columns: repeat(3, 1fr); }
+    /* keep the primary action reachable without scrolling back up */
+    .control-bar { position: sticky; bottom: 0; z-index: 10; }
+    .log-container { height: 240px; }
+  }
+
+  /* Phone / narrow tablet portrait: single scrolling column, full panels. */
+  @media (max-width: 768px) {
+    .fill-tank-page { height: auto; min-height: 100vh; }
+    .main-content { display: flex; flex-direction: column; overflow: visible; padding: 12px; gap: 12px; }
+    .config-panel-container,
+    .diagnostics-container,
+    .status-container { max-height: none; overflow: visible; }
     .metrics { grid-template-columns: 1fr 1fr; }
+    .control-bar { position: sticky; bottom: 0; z-index: 10; }
+    .control-buttons { flex-wrap: wrap; }
+    .log-container { height: 200px; }
   }
 </style>

@@ -1,4 +1,5 @@
 <script>
+  import { getContext, onMount } from "svelte";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import { Badge } from "$lib/components/ui/badge/index.js";
   import { getSystemStatus } from "$lib/stores/systemStatus.svelte.js";
@@ -35,10 +36,41 @@
     { title: "Settings", page: "settings", icon: Settings }
   ];
 
+  // Auto-collapse the sidebar to its icon rail after a few seconds of no
+  // interaction so it doesn't eat horizontal space on a tablet. Hovering it
+  // (mouse) re-expands; on touch the header hamburger re-expands.
+  const sidebar = getContext("sidebar");
+  const COLLAPSE_MS = 5000;
+  let collapseTimer = null;
+
+  function scheduleCollapse() {
+    if (!sidebar) return;
+    clearTimeout(collapseTimer);
+    collapseTimer = setTimeout(() => sidebar.closeSidebar?.(), COLLAPSE_MS);
+  }
+
+  onMount(() => {
+    scheduleCollapse();
+
+    // Expand on pointer-enter, re-arm collapse on pointer-leave (mouse/trackpad).
+    const el = document.querySelector("[data-sidebar]");
+    const onEnter = () => { clearTimeout(collapseTimer); sidebar?.openSidebar?.(); };
+    const onLeave = () => scheduleCollapse();
+    el?.addEventListener("pointerenter", onEnter);
+    el?.addEventListener("pointerleave", onLeave);
+
+    return () => {
+      clearTimeout(collapseTimer);
+      el?.removeEventListener("pointerenter", onEnter);
+      el?.removeEventListener("pointerleave", onLeave);
+    };
+  });
+
   function handleNavigation(page) {
     if (globalThis.navigateTo) {
       globalThis.navigateTo(page);
     }
+    scheduleCollapse();   // re-arm so it tucks away again after you pick a page
   }
 
   // Live hardware tallies from the shared SSE store
