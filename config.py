@@ -145,6 +145,16 @@ FLOW_METER_CALIBRATION = {
 # Flow meter settings
 FLOW_METER_INTERRUPT_EDGE = "FALLING"  # Interrupt on FALLING edge (optocoupler inverts signal: flow pulse HIGH → output LOW)
 
+# Pulse debounce window (seconds). MUST be shorter than the real inter-pulse
+# interval at max flow, or pulses get dropped — and dropping every other pulse
+# halves BOTH the displayed rate AND the gallon count, so a fill silently
+# overshoots. At 220 ppg, 6.6 gpm = ~24 pulses/s = ~41 ms spacing, so the old
+# hardcoded 50 ms window dropped half the pulses (rate read ~3.3 instead of 6.6).
+# 8 ms passes up to ~34 gpm @ 220 ppg while still rejecting sub-8 ms EMI/relay
+# glitches. To tune: keep it below 60000 / (max_gpm * ppg) milliseconds with
+# margin; raise it only if idle relay switching produces phantom pulses.
+FLOW_PULSE_DEBOUNCE_SECONDS = 0.008
+
 # =============================================================================
 # EZO EC/pH SENSOR CONFIGURATION (Direct I2C on Raspberry Pi)
 # =============================================================================

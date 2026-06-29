@@ -12,6 +12,7 @@ from config import (
     FLOW_METER_NAMES,
     FLOW_METER_CALIBRATION,
     FLOW_METER_INTERRUPT_EDGE,
+    FLOW_PULSE_DEBOUNCE_SECONDS,
     MOCK_FLOW_PULSE_INTERVAL,
     MOCK_PULSES_PER_INTERVAL,
     get_flow_meter_name,
@@ -107,10 +108,12 @@ class FlowMeterController:
             meter = self.flow_meters[meter_id]
             current_time = time.time()
 
-            # Debouncing: ignore pulses within 50ms of each other
-            # This prevents false triggers from relay EMI and mechanical bounce
-            # 50ms allows up to 20 pulses/second which is plenty for flow meters
-            if current_time - meter['last_pulse_time'] < 0.050:
+            # Debouncing: ignore pulses arriving closer together than the
+            # configured window (rejects relay EMI / mechanical bounce). This
+            # MUST stay below the real inter-pulse interval at max flow — the
+            # old 50ms value was longer than the ~41ms spacing at 6.6 gpm, so it
+            # dropped every other pulse and halved both rate and gallon count.
+            if current_time - meter['last_pulse_time'] < FLOW_PULSE_DEBOUNCE_SECONDS:
                 return
 
             meter['pulse_count'] += 1
