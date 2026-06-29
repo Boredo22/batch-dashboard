@@ -167,6 +167,24 @@
     }
   }
 
+  // Convenience actuation for the current advisory step (operator still clicks).
+  async function actuateValve(relay, on) {
+    try {
+      await apiPost(`/api/relay/${relay}/${on ? 'on' : 'off'}`);
+      toast.success(`Relay ${relay} ${on ? 'ON' : 'OFF'}`);
+    } catch (e) { toast.error(`Relay ${relay}: ${e.message}`); }
+  }
+  async function actuateCirc(relays, on) {
+    for (const r of relays) await actuateValve(r, on);
+  }
+  async function actuateDose(name, pumpId, ml) {
+    if (!pumpId) { toast.error(`No pump mapped for ${name}`); return; }
+    try {
+      await apiPost(`/api/pump/${pumpId}/dispense`, { amount: ml });
+      toast.success(`${name}: dispensing ${ml}ml`);
+    } catch (e) { toast.error(`${name}: ${e.message}`); }
+  }
+
   async function abortBatch() {
     addLog('Aborting batch...', 'warn');
     try {
@@ -273,6 +291,32 @@
             {#if job.pending_action.detail}
               <div class="advise-detail">{job.pending_action.detail}</div>
             {/if}
+
+            <!-- One-click actuation for this step (you still decide & click) -->
+            {#if job.pending_action.kind === 'valve'}
+              <div class="act-row">
+                <button class="act-btn" onclick={() => actuateValve(job.pending_action.payload.relay, job.pending_action.payload.on)}>
+                  <i class="fas fa-toggle-{job.pending_action.payload.on ? 'on' : 'off'}"></i>
+                  Relay {job.pending_action.payload.relay} {job.pending_action.payload.on ? 'ON' : 'OFF'}
+                </button>
+              </div>
+            {:else if job.pending_action.kind === 'circulation'}
+              <div class="act-row">
+                <button class="act-btn" onclick={() => actuateCirc(job.pending_action.payload.relays || [], job.pending_action.payload.on)}>
+                  <i class="fas fa-arrows-rotate"></i>
+                  {job.pending_action.payload.on ? 'Open' : 'Close'} relays {(job.pending_action.payload.relays || []).join(' & ')}
+                </button>
+              </div>
+            {:else if job.pending_action.kind === 'dose'}
+              <div class="act-row">
+                {#each Object.entries(job.pending_action.payload.doses || {}) as [name, ml]}
+                  <button class="act-btn" onclick={() => actuateDose(name, job.pending_action.payload.pumps?.[name], ml)}>
+                    <i class="fas fa-droplet"></i> {name} {ml}ml
+                  </button>
+                {/each}
+              </div>
+            {/if}
+
             <button class="advise-btn" onclick={ackAction}>
               <i class="fas fa-check"></i> Done — Advance
             </button>
@@ -427,6 +471,10 @@
   .advise-detail { color: #94a3b8; font-size: 0.85rem; margin-bottom: 12px; }
   .advise-btn { background: #2563eb; color: white; border: none; border-radius: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
   .advise-btn:hover { background: #1d4ed8; }
+
+  .act-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .act-btn { background: #1a202c; color: #e2e8f0; border: 1px solid #4a5568; border-radius: 8px; padding: 8px 14px; font-weight: 600; font-size: 0.85rem; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+  .act-btn:hover { border-color: #3b82f6; background: #222c3f; }
 
   .advisory-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #94a3b8; cursor: pointer; margin-right: 8px; }
   .advisory-toggle input { width: 16px; height: 16px; accent-color: #3b82f6; cursor: pointer; }

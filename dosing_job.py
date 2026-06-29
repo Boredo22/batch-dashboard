@@ -400,6 +400,12 @@ class BatchDosingJob:
             f"{name} {ml:.0f} ml (pump {self.cfg.pump_ids.get(name, '?')})"
             for name, ml in dose_map.items() if ml and ml > 0)
 
+    def _dose_payload(self, dose_map: Dict[str, float]) -> dict:
+        """Structured dose data so the UI can offer one-click actuation buttons."""
+        clean = {k: round(v, 1) for k, v in dose_map.items() if v and v > 0}
+        return {'doses': clean,
+                'pumps': {k: self.cfg.pump_ids.get(k) for k in clean}}
+
     def _advisory_fill_and_bulk_dose(self):
         """Advisory P0+P1: recommend fill + circulation + bulk dose; the operator
         actuates. The flow meter is run as a SENSOR so we can observe gallons."""
@@ -427,11 +433,10 @@ class BatchDosingJob:
                     f"Open the in & out solenoids (relays {', '.join(map(str, self.cfg.mix_relays))}). "
                     f"The pressure-switched circ pump runs on its own; flow exists while both are open. "
                     f"Required to inject nutrients inline.",
-                    payload={'relays': list(self.cfg.mix_relays)})
+                    payload={'relays': list(self.cfg.mix_relays), 'on': True})
                 bulk = ec_bulk_doses(self.cfg.recipe, target)
                 self._advise('dose', "Bulk dose EC nutrients (85% of recipe)",
-                             self._dose_summary(bulk),
-                             payload={'doses': {k: round(v, 1) for k, v in bulk.items()}})
+                             self._dose_summary(bulk), payload=self._dose_payload(bulk))
                 with self._lock:
                     self.ec_dosed_fraction = EC_BULK_FRACTION
             if g >= target:
@@ -525,7 +530,7 @@ class BatchDosingJob:
             clean = {k: v for k, v in dose_map.items() if v and v > 0}
             if clean:
                 self._advise('dose', "Dose nutrients", self._dose_summary(clean),
-                             payload={'doses': {k: round(v, 1) for k, v in clean.items()}})
+                             payload=self._dose_payload(clean))
             return
         self._require_circ()
         threads = []
@@ -582,7 +587,7 @@ class BatchDosingJob:
         if self.advisory:
             self._advise('circulation', "Start circulation (in + out solenoids)",
                          f"Open relays {', '.join(map(str, self.cfg.mix_relays))}.",
-                         payload={'relays': list(self.cfg.mix_relays)})
+                         payload={'relays': list(self.cfg.mix_relays), 'on': True})
             self.circ_on = True
             return
         for rid in self.cfg.mix_relays:
@@ -593,7 +598,7 @@ class BatchDosingJob:
         if self.advisory:
             self._advise('circulation', "Stop circulation (close in/out solenoids)",
                          f"Batch done — close relays {', '.join(map(str, self.cfg.mix_relays))}.",
-                         payload={'relays': list(self.cfg.mix_relays)})
+                         payload={'relays': list(self.cfg.mix_relays), 'on': False})
             self.circ_on = False
             return
         for rid in self.cfg.mix_relays:
