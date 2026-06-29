@@ -46,6 +46,7 @@
   // ============ JOB STATE (from SSE batch_job) ============
   let job = $state(null);
   let starting = $state(false);
+  let advisory = $state(false);
   let logs = $state([]);
 
   // ============ REAL-TIME DATA (from SSE, for DiagnosticsPanel) ============
@@ -140,7 +141,8 @@
       target_gallons: Number(targetVolume),
       recipe: selectedRecipe,
       ec_target: ec.target, ec_tol: ec.tol,
-      ph_target: ph.target, ph_tol: ph.tol
+      ph_target: ph.target, ph_tol: ph.tol,
+      advisory
     };
     starting = true;
     addLog(`Starting batch: tank ${selectedTank}, ${targetVolume} gal ${selectedRecipe}, EC ${ec.target.toFixed(2)}±${ec.tol.toFixed(2)}, pH ${ph.target.toFixed(2)}±${ph.tol.toFixed(2)}`, 'info');
@@ -154,6 +156,14 @@
       toast.error(`Start failed: ${e.message}`);
     } finally {
       starting = false;
+    }
+  }
+
+  async function ackAction() {
+    try {
+      await apiPost('/api/job/batch/ack');
+    } catch (e) {
+      toast.error(`Advance failed: ${e.message}`);
     }
   }
 
@@ -251,7 +261,23 @@
 
     <section class="status-container">
       <div class="batch-status">
-        <div class="bs-header"><i class="fas fa-diagram-project"></i> Batch Progress</div>
+        <div class="bs-header">
+          <i class="fas fa-diagram-project"></i> Batch Progress
+          {#if job?.advisory}<span class="advisory-tag">Advisory</span>{/if}
+        </div>
+
+        {#if job?.advisory && job.pending_action}
+          <div class="advise-card">
+            <div class="advise-head"><i class="fas fa-hand-point-right"></i> Your move — then press Advance</div>
+            <div class="advise-summary">{job.pending_action.summary}</div>
+            {#if job.pending_action.detail}
+              <div class="advise-detail">{job.pending_action.detail}</div>
+            {/if}
+            <button class="advise-btn" onclick={ackAction}>
+              <i class="fas fa-check"></i> Done — Advance
+            </button>
+          </div>
+        {/if}
 
         {#if !job}
           <div class="bs-empty">
@@ -340,8 +366,12 @@
   <div class="control-bar">
     <div class="control-buttons">
       {#if canStart}
+        <label class="advisory-toggle" title="Program never actuates — it reads sensors and tells you what to do, you make every call">
+          <input type="checkbox" bind:checked={advisory} />
+          Advisory mode (I actuate; system coaches)
+        </label>
         <button class="control-btn start" onclick={startBatch} disabled={!isConnected || starting}>
-          <i class="fas fa-play"></i> {starting ? 'Starting...' : 'Start Batch'}
+          <i class="fas fa-play"></i> {starting ? 'Starting...' : (advisory ? 'Start Advisory' : 'Start Batch')}
         </button>
       {:else}
         <button class="control-btn stop" onclick={abortBatch}>
@@ -388,6 +418,18 @@
   .batch-status { padding: 16px; }
   .bs-header { font-size: 1rem; font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
   .bs-header i { color: #3b82f6; }
+
+  .advisory-tag { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; background: #1e3a5f; color: #60a5fa; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+
+  .advise-card { background: #11203a; border: 1px solid #3b82f6; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .advise-head { color: #60a5fa; font-weight: 700; font-size: 0.8rem; text-transform: uppercase; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .advise-summary { color: #e2e8f0; font-size: 1.05rem; font-weight: 600; margin-bottom: 6px; }
+  .advise-detail { color: #94a3b8; font-size: 0.85rem; margin-bottom: 12px; }
+  .advise-btn { background: #2563eb; color: white; border: none; border-radius: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+  .advise-btn:hover { background: #1d4ed8; }
+
+  .advisory-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #94a3b8; cursor: pointer; margin-right: 8px; }
+  .advisory-toggle input { width: 16px; height: 16px; accent-color: #3b82f6; cursor: pointer; }
 
   .bs-empty { text-align: center; color: #6b7280; padding: 40px 16px; }
   .bs-empty i { font-size: 2rem; color: #4a5568; margin-bottom: 12px; }

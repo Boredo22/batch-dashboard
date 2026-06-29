@@ -186,6 +186,12 @@ class BatchConfig:
     ph_target: float = DEFAULT_PH_TARGET
     ec_tol: float = DEFAULT_EC_TOL
     ph_tol: float = DEFAULT_PH_TOL
+    # Advisory ("coach") mode: the program never actuates valves or pumps. It
+    # reads the real sensors (flow / EC / pH) and, at each step, recommends the
+    # action it WOULD take and blocks until the operator acknowledges having
+    # handled it. Because it re-reads sensors each step, it adapts to whatever
+    # the operator actually did.
+    advisory: bool = False
 
 
 class _OperatorHold(Exception):
@@ -208,15 +214,18 @@ class BatchDosingJob:
 
     def __init__(self, cfg: BatchConfig, hw=None):
         self.cfg = cfg
+        self.advisory = cfg.advisory
         self._hw = hw                 # injected hardware module (for tests); lazy otherwise
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self._ack = threading.Event()  # advisory: operator-acknowledged the recommendation
         self._aborting = False
 
         self.state = S_IDLE
         self.message = ""
         self.suggestion = ""
+        self.pending_action = None     # advisory: {kind, summary, detail, payload}
         self.volume_gallons = 0.0
         self.ec = None
         self.ph = None
@@ -247,6 +256,14 @@ class BatchDosingJob:
         """Operator/E-stop: stop everything and shut hardware down safely."""
         self._aborting = True
         self._stop.set()
+        self._ack.set()              # unblock any advisory wait so the thread can exit
+
+    def ack(self) -> bool:
+        """Advisory mode: operator confirms they've handled the recommended action."""
+        if not self.pending_action:
+            return False
+        self._ack.set()
+        return True
 
     def is_active(self) -> bool:
         return self.state not in TERMINAL_STATES
@@ -272,6 +289,8 @@ class BatchDosingJob:
                 'ph_iterations': self.ph_iter,
                 'circ_running': self.circ_on,
                 'started_at': self.started_at,
+                'advisory': self.advisory,
+                'pending_action': self.pending_action,
             }
 
     # ---- state helpers ------------------------------------------------------
@@ -284,6 +303,22 @@ class BatchDosingJob:
     def _check_abort(self):
         if self._stop.is_set():
             raise _Aborted()
+
+    def _advise(self, kind, summary, detail="", payload=None):
+        """Advisory mode: publish the recommended action and block until the
+        operator acknowledges it (or the job is aborted)."""
+        with self._lock:
+            self.pending_action = {'kind': kind, 'summary': summary,
+                                   'detail': detail, 'payload': payload or {}}
+        logger.info("ADVISE [%s] %s — %s", kind, summary, detail)
+        self._ack.clear()
+        while not self._ack.is_set():
+            if self._stop.is_set():
+                raise _Aborted()
+            self._ack.wait(0.2)
+        with self._lock:
+            self.pending_action = None
+        self._check_abort()
 
     # ---- main sequence ------------------------------------------------------
     def _run(self):
@@ -316,6 +351,8 @@ class BatchDosingJob:
 
     def _fill_and_bulk_dose(self):
         """P0+P1: prime to 20 gal (water only), then fill->target while bulk dosing."""
+        if self.advisory:
+            return self._advisory_fill_and_bulk_dose()
         self._set(S_PRIMING, f"Filling to {PRIME_GALLONS:.0f} gal prime level.")
         self._relay(self.cfg.fill_relay, True)               # open fill valve
         self._start_flow(self.cfg.target_gallons)            # one fill to final target
@@ -357,6 +394,56 @@ class BatchDosingJob:
             self._dose_batch(ec_bulk_doses(self.cfg.recipe, self.cfg.target_gallons))
         except Exception as e:                                # noqa: BLE001
             err_out.append(e)
+
+    def _dose_summary(self, dose_map: Dict[str, float]) -> str:
+        return ", ".join(
+            f"{name} {ml:.0f} ml (pump {self.cfg.pump_ids.get(name, '?')})"
+            for name, ml in dose_map.items() if ml and ml > 0)
+
+    def _advisory_fill_and_bulk_dose(self):
+        """Advisory P0+P1: recommend fill + circulation + bulk dose; the operator
+        actuates. The flow meter is run as a SENSOR so we can observe gallons."""
+        target = self.cfg.target_gallons
+        self._set(S_PRIMING, f"Advisory: fill tank {self.cfg.tank_id} to {target:.0f} gal.")
+        self._advise(
+            'valve', f"Open fresh-water fill for tank {self.cfg.tank_id}",
+            f"Bring the tank to {target:.0f} gal (fresh-water solenoid, relay {self.cfg.fill_relay}). "
+            f"Circulation stays off until {PRIME_GALLONS:.0f} gal.",
+            payload={'relay': self.cfg.fill_relay, 'on': True})
+
+        self._start_flow(target)        # sensor only: enables pulse counting
+        self._set(S_FILL_DOSE, "Advisory: observing fill; will recommend circulation + dosing at prime.")
+        advised = False
+        while True:
+            self._check_abort()
+            g = self._read_gallons()
+            with self._lock:
+                self.volume_gallons = g
+            if g >= PRIME_GALLONS and not advised:
+                advised = True
+                self.circ_on = True
+                self._advise(
+                    'circulation', "Start circulation (in + out solenoids)",
+                    f"Open the in & out solenoids (relays {', '.join(map(str, self.cfg.mix_relays))}). "
+                    f"The pressure-switched circ pump runs on its own; flow exists while both are open. "
+                    f"Required to inject nutrients inline.",
+                    payload={'relays': list(self.cfg.mix_relays)})
+                bulk = ec_bulk_doses(self.cfg.recipe, target)
+                self._advise('dose', "Bulk dose EC nutrients (85% of recipe)",
+                             self._dose_summary(bulk),
+                             payload={'doses': {k: round(v, 1) for k, v in bulk.items()}})
+                with self._lock:
+                    self.ec_dosed_fraction = EC_BULK_FRACTION
+            if g >= target:
+                break
+            time.sleep(FILL_POLL_SECONDS)
+
+        self._stop_flow()
+        self._advise('valve', f"Close fresh-water fill for tank {self.cfg.tank_id}",
+                     f"Target {target:.0f} gal reached.",
+                     payload={'relay': self.cfg.fill_relay, 'on': False})
+        with self._lock:
+            self.volume_gallons = target
 
     def _ec_trim_loop(self):
         self._set(S_EC_TRIM, "Trimming EC to target.")
@@ -434,6 +521,12 @@ class BatchDosingJob:
     # ---- hardware actions (interlocked) -------------------------------------
     def _dose_batch(self, dose_map: Dict[str, float]):
         """Dispense {name: ml} concurrently. Requires circ running (inline inject)."""
+        if self.advisory:
+            clean = {k: v for k, v in dose_map.items() if v and v > 0}
+            if clean:
+                self._advise('dose', "Dose nutrients", self._dose_summary(clean),
+                             payload={'doses': {k: round(v, 1) for k, v in clean.items()}})
+            return
         self._require_circ()
         threads = []
         for name, ml in dose_map.items():
@@ -486,11 +579,23 @@ class BatchDosingJob:
             raise RuntimeError("Circulation pump not running; cannot dose inline.")
 
     def _start_circ(self):
+        if self.advisory:
+            self._advise('circulation', "Start circulation (in + out solenoids)",
+                         f"Open relays {', '.join(map(str, self.cfg.mix_relays))}.",
+                         payload={'relays': list(self.cfg.mix_relays)})
+            self.circ_on = True
+            return
         for rid in self.cfg.mix_relays:
             self._relay(rid, True)
         self.circ_on = True
 
     def _stop_circ(self):
+        if self.advisory:
+            self._advise('circulation', "Stop circulation (close in/out solenoids)",
+                         f"Batch done — close relays {', '.join(map(str, self.cfg.mix_relays))}.",
+                         payload={'relays': list(self.cfg.mix_relays)})
+            self.circ_on = False
+            return
         for rid in self.cfg.mix_relays:
             self._relay(rid, False)
         self.circ_on = False
@@ -502,6 +607,10 @@ class BatchDosingJob:
 
     # ---- thin hardware wrappers --------------------------------------------
     def _relay(self, rid, on):
+        if self.advisory:
+            self._advise('valve', f"{'Open' if on else 'Close'} relay {rid}",
+                         payload={'relay': rid, 'on': bool(on)})
+            return
         if not self.hw.control_relay(rid, bool(on)):
             raise RuntimeError(f"Relay {rid} {'ON' if on else 'OFF'} failed")
 
@@ -527,6 +636,8 @@ class BatchDosingJob:
     # ---- shutdown paths -----------------------------------------------------
     def _hold_shutdown(self):
         """Operator hold: stop peristaltic pumps + fill water, KEEP circ running."""
+        if self.advisory:
+            return                       # program never actuated; operator owns hardware
         for pid in self.cfg.pump_ids.values():
             try:
                 self.hw.stop_pump(pid)
@@ -540,6 +651,14 @@ class BatchDosingJob:
 
     def _full_shutdown(self):
         """Terminal: stop pumps, flow, and all this tank's valves (circ included)."""
+        if self.advisory:
+            try:
+                self._stop_flow()        # flow meter is a sensor we started; stop it
+            except Exception:
+                pass
+            self.circ_on = False
+            logger.info("Advisory complete: operator should close valves / stop pumps as recommended.")
+            return
         for pid in self.cfg.pump_ids.values():
             try:
                 self.hw.stop_pump(pid)
@@ -585,3 +704,9 @@ def abort_current() -> bool:
             return False
         _current.abort()
         return True
+
+
+def ack_current() -> bool:
+    """Advisory mode: acknowledge the current recommended action."""
+    job = _current
+    return job.ack() if job else False

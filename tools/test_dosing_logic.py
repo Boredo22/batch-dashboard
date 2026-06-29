@@ -197,10 +197,59 @@ def test_target_below_prime_rejected():
     check("rejected below prime", snap["state"] == dj.S_NEEDS_OPERATOR)
 
 
+def test_advisory_mode():
+    print("advisory mode (operator acts, program coaches):")
+    dj.SETTLE_SECONDS = 0
+    dj.FILL_POLL_SECONDS = 0.0
+    dj.PUMP_ML_PER_MIN = 1e9
+    dj.PUMP_WAIT_BUFFER_SECONDS = 0.0
+
+    pump_ids = {"Veg A": 1, "Veg B": 2, "Runclean": 7, "pH Down": 8}
+    recipe = {"Veg A": 30, "Veg B": 30, "Runclean": 0.2, "pH Down": 0.5}
+    cfg = BatchConfig(tank_id=1, target_gallons=80, recipe=recipe, pump_ids=pump_ids,
+                      fill_relay=1, mix_relays=[4, 7], ec_target=2.2, ph_target=6.2,
+                      advisory=True)
+    fake = FakeHardware(pump_ids)
+
+    job = BatchDosingJob(cfg, hw=fake)
+    job.start()
+
+    seen_kinds = []
+    actuated = []           # what the program asked for; "operator" performs doses
+    last = None
+    deadline = time.time() + 20.0
+    while time.time() < deadline:
+        if job.state in dj.TERMINAL_STATES or job.state == dj.S_NEEDS_OPERATOR:
+            break
+        pa = job.pending_action
+        if pa and pa is not last:
+            last = pa
+            seen_kinds.append(pa['kind'])
+            if pa['kind'] == 'dose':
+                # Simulate the operator actually dispensing what was recommended.
+                for name, ml in pa['payload'].get('doses', {}).items():
+                    fake.dispense_pump(pump_ids[name], ml)
+                actuated.append(pa['payload'].get('doses', {}))
+            job.ack()
+        time.sleep(0.01)
+
+    snap = job.snapshot()
+    print(f"    final state={snap['state']} ec={snap['ec']} ph={snap['ph']} "
+          f"recommendations={seen_kinds.count('valve')}xvalve "
+          f"{seen_kinds.count('circulation')}xcirc {seen_kinds.count('dose')}xdose")
+    check("advisory reached COMPLETE", snap["state"] == dj.S_COMPLETE)
+    check("recommended opening/closing valves", seen_kinds.count('valve') >= 2)
+    check("recommended circulation", 'circulation' in seen_kinds)
+    check("recommended doses (incl. bulk)", seen_kinds.count('dose') >= 2)
+    check("EC converged via observed readings", snap["ec"] is not None and abs(snap["ec"] - 2.2) <= 0.05 + 1e-9)
+    check("no hardware actuated (advisory)", any(actuated))   # doses came from the "operator", not the job
+
+
 if __name__ == "__main__":
     test_pure()
     test_full_run_converges()
     test_ph_cap_holds_for_operator()
     test_target_below_prime_rejected()
+    test_advisory_mode()
     print(f"\n{PASS} passed, {FAIL} failed")
     sys.exit(1 if FAIL else 0)

@@ -1346,6 +1346,7 @@ def api_start_batch_job():
         ph_target=float(data.get('ph_target', dosing_job.DEFAULT_PH_TARGET)),
         ec_tol=float(data.get('ec_tol', dosing_job.DEFAULT_EC_TOL)),
         ph_tol=float(data.get('ph_tol', dosing_job.DEFAULT_PH_TOL)),
+        advisory=bool(data.get('advisory', False)),
     )
 
     try:
@@ -1375,6 +1376,18 @@ def api_abort_batch_job():
     return jsonify({
         'success': aborted,
         'message': 'Batch job aborting' if aborted else 'No active batch job to abort'
+    })
+
+
+@app.route('/api/job/batch/ack', methods=['POST'])
+@api_endpoint
+def api_ack_batch_job():
+    """Advisory mode: confirm the current recommended action so the job advances."""
+    import dosing_job
+    acked = dosing_job.ack_current()
+    return jsonify({
+        'success': acked,
+        'message': 'Acknowledged' if acked else 'No pending action to acknowledge'
     })
 
 
