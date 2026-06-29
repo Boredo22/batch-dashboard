@@ -208,6 +208,12 @@
   }
 
   function fmt(v, d = 2) { return (v === null || v === undefined) ? '—' : Number(v).toFixed(d); }
+  function pumpById(id) { return pumps.find(p => p.id === id) || null; }
+  function dosePct(p, ml) {
+    const target = (p?.target_volume) || ml || 0;
+    if (!target) return 0;
+    return Math.min(100, Math.round(((p?.current_volume ?? 0) / target) * 100));
+  }
   function inBand(v, target, tol) {
     if (v === null || v === undefined || target === null || target === undefined) return false;
     return Math.abs(v - target) <= (tol ?? 0.05) + 1e-9;
@@ -308,11 +314,29 @@
                 </button>
               </div>
             {:else if job.pending_action.kind === 'dose'}
-              <div class="act-row">
+              <div class="act-doses">
                 {#each Object.entries(job.pending_action.payload.doses || {}) as [name, ml]}
-                  <button class="act-btn" onclick={() => actuateDose(name, job.pending_action.payload.pumps?.[name], ml)}>
-                    <i class="fas fa-droplet"></i> {name} {ml}ml
-                  </button>
+                  {@const pid = job.pending_action.payload.pumps?.[name]}
+                  {@const p = pumpById(pid)}
+                  <div class="dose-item">
+                    <button class="act-btn" onclick={() => actuateDose(name, pid, ml)} disabled={p?.is_dispensing}>
+                      <i class="fas fa-droplet"></i> {name} {ml}ml
+                    </button>
+                    {#if p}
+                      <div class="dose-prog">
+                        <div class="dose-bar"><div class="dose-fill" class:run={p.is_dispensing} style="width:{dosePct(p, ml)}%"></div></div>
+                        <span class="dose-text" class:run={p.is_dispensing}>
+                          {#if p.is_dispensing}
+                            <i class="fas fa-spinner fa-spin"></i> {(p.current_volume ?? 0).toFixed(0)}/{(p.target_volume || ml).toFixed(0)} ml
+                          {:else if (p.current_volume ?? 0) > 0}
+                            <i class="fas fa-check"></i> done ({(p.current_volume).toFixed(0)} ml)
+                          {:else}
+                            idle
+                          {/if}
+                        </span>
+                      </div>
+                    {/if}
+                  </div>
                 {/each}
               </div>
             {/if}
@@ -474,7 +498,18 @@
 
   .act-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
   .act-btn { background: #1a202c; color: #e2e8f0; border: 1px solid #4a5568; border-radius: 8px; padding: 8px 14px; font-weight: 600; font-size: 0.85rem; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
-  .act-btn:hover { border-color: #3b82f6; background: #222c3f; }
+  .act-btn:hover:not(:disabled) { border-color: #3b82f6; background: #222c3f; }
+  .act-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .act-doses { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .dose-item { display: flex; align-items: center; gap: 10px; }
+  .dose-item .act-btn { min-width: 150px; }
+  .dose-prog { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .dose-bar { flex: 1; height: 6px; background: #0f1420; border-radius: 4px; overflow: hidden; }
+  .dose-fill { height: 100%; background: #4a5568; transition: width 0.4s ease; }
+  .dose-fill.run { background: #22c55e; }
+  .dose-text { font-size: 0.75rem; color: #6b7280; white-space: nowrap; }
+  .dose-text.run { color: #22c55e; }
 
   .advisory-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #94a3b8; cursor: pointer; margin-right: 8px; }
   .advisory-toggle input { width: 16px; height: 16px; accent-color: #3b82f6; cursor: pointer; }
