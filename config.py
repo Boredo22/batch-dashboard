@@ -193,6 +193,35 @@ TANK_MONITOR_PORTS = {
 }
 
 # =============================================================================
+# SOIL SENSOR CONFIGURATION (Wireless ESP32 over MQTT)
+# =============================================================================
+# Each grow zone gets an ESP32 with a capacitive soil-moisture probe (and
+# optional temp/EC). The boards publish JSON readings over LAN MQTT to a
+# Mosquitto broker on this Pi; SoilSensorManager subscribes and caches.
+# See SOIL_SENSORS_IMPLEMENTATION.md for the topic + payload contract.
+
+import os as _os
+
+SOIL_MQTT_HOST = _os.environ.get("SOIL_MQTT_HOST", "localhost")
+SOIL_MQTT_PORT = int(_os.environ.get("SOIL_MQTT_PORT", "1883"))
+SOIL_MQTT_USERNAME = _os.environ.get("SOIL_MQTT_USERNAME") or None
+SOIL_MQTT_PASSWORD = _os.environ.get("SOIL_MQTT_PASSWORD") or None
+
+# sensor_id -> {name, room, expected reading interval seconds}.
+# To add a sensor: add a row here AND flash a board with that SENSOR_ID.
+# expected interval drives the stale-vs-online cutoff (2x interval = stale).
+SOIL_SENSORS = {
+    1: {"name": "Flower A - Plant 1", "room": "Flower A", "interval_s": 300},
+    2: {"name": "Flower A - Plant 2", "room": "Flower A", "interval_s": 300},
+    3: {"name": "Flower A - Plant 3", "room": "Flower A", "interval_s": 300},
+    4: {"name": "Flower B - Plant 1", "room": "Flower B", "interval_s": 300},
+    5: {"name": "Flower B - Plant 2", "room": "Flower B", "interval_s": 300},
+    6: {"name": "Veg - Plant 1",      "room": "Veg",      "interval_s": 300},
+    7: {"name": "Veg - Plant 2",      "room": "Veg",      "interval_s": 300},
+    8: {"name": "Nursery - Plant 1",  "room": "Nursery",  "interval_s": 300},
+}
+
+# =============================================================================
 # LEGACY ARDUINO UNO CONFIGURATION (DEAD on the live Pi system)
 # =============================================================================
 # EC/pH is now read by the Pi over direct I2C (see EZO_*_ADDRESS above and
@@ -441,7 +470,8 @@ MOCK_SETTINGS = {
     "relays": False,        # Use real relays
     "flow_meters": False,   # Use mock flow meters
     "arduino": False,       # Use mock EC/pH sensors (legacy key name; now the EZO I2C sensor)
-    "tank_monitors": False  # Use mock per-tank pH/EC monitors
+    "tank_monitors": False, # Use mock per-tank pH/EC monitors
+    "soil_sensors": False   # Use mock wireless soil sensors (no MQTT broker needed)
 }
 
 # Test configuration

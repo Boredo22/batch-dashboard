@@ -1,6 +1,7 @@
 lgpio
 smbus2
 pyserial
+paho-mqtt
 flask
 flask-cors
 svelte

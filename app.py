@@ -28,7 +28,7 @@ from hardware.hardware_comms import (
     pause_pump, get_pump_voltage, get_current_dispensed_volume,
     get_pump_status, refresh_pump_calibrations,
     read_ec_ph_sensors, calibrate_ph, calibrate_ec, get_sensor_calibration_status,
-    get_flow_status, get_tank_monitor_readings
+    get_flow_status, get_tank_monitor_readings, get_soil_sensor_readings
 )
 
 # Import configuration constants and all settings
@@ -657,6 +657,7 @@ def build_status_data():
         'ph_value': status.get('ph', 0),
         'ec_ph_monitoring': status.get('ec_ph_active', False),
         'tank_monitors': status.get('tank_monitors', {}),
+        'soil_sensors': get_soil_sensor_readings(),
         'batch_job': _batch_job_snapshot()
     }
 

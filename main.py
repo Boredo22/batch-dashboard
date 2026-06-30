@@ -16,6 +16,7 @@ from hardware.rpi_relays import RelayController
 from hardware.rpi_flow import FlowMeterController, MockFlowMeterController
 from hardware.rpi_ezo_sensors import EZOSensorController, MockEZOSensorController  # Replaced Arduino Uno with direct I2C
 from hardware.tank_monitor import TankMonitorManager
+from hardware.soil_sensors import SoilSensorManager
 
 # Import configuration
 from config import (
@@ -30,6 +31,11 @@ from config import (
     MESSAGE_FORMATS,
     TANK_MONITOR_PORTS,
     TANK_MONITOR_BAUDRATE,
+    SOIL_MQTT_HOST,
+    SOIL_MQTT_PORT,
+    SOIL_MQTT_USERNAME,
+    SOIL_MQTT_PASSWORD,
+    SOIL_SENSORS,
     get_available_pumps,
     get_available_relays,
     get_available_flow_meters,
@@ -144,6 +150,24 @@ class FeedControlSystem:
         if self.tank_monitor_manager.get_monitor_count() > 0:
             logger.info(f"✓ {self.tank_monitor_manager.get_monitor_count()} tank monitor(s) registered")
 
+        # Initialize wireless soil sensors (MQTT subscriber)
+        self.soil_sensor_manager = SoilSensorManager(
+            broker_host=SOIL_MQTT_HOST,
+            broker_port=SOIL_MQTT_PORT,
+            username=SOIL_MQTT_USERNAME,
+            password=SOIL_MQTT_PASSWORD,
+            use_mock=MOCK_SETTINGS.get('soil_sensors', False),
+        )
+        for sid, meta in SOIL_SENSORS.items():
+            try:
+                self.soil_sensor_manager.register(
+                    sid, meta['name'], meta['room'], meta['interval_s']
+                )
+            except Exception as e:
+                logger.error(f"✗ Soil sensor {sid} register failed: {e}")
+        if self.soil_sensor_manager.get_sensor_count() > 0:
+            logger.info(f"✓ {self.soil_sensor_manager.get_sensor_count()} soil sensor(s) registered")
+
         # Timing for status updates
         self.last_status_update = 0
         self.last_pump_check = 0
@@ -178,6 +202,10 @@ class FeedControlSystem:
         if self.tank_monitor_manager.get_monitor_count() > 0:
             self.tank_monitor_manager.start_all()
 
+        # Start wireless soil sensor MQTT subscriber
+        if self.soil_sensor_manager.get_sensor_count() > 0:
+            self.soil_sensor_manager.start_all()
+
         # Print system info
         self._print_system_info()
         
@@ -210,6 +238,8 @@ class FeedControlSystem:
             self.sensor_controller.close()
         if self.tank_monitor_manager:
             self.tank_monitor_manager.stop_all()
+        if self.soil_sensor_manager:
+            self.soil_sensor_manager.stop_all()
 
         logger.info("Feed control system stopped")
     
@@ -538,6 +568,10 @@ class FeedControlSystem:
         # Get per-tank monitor readings
         if self.tank_monitor_manager and self.tank_monitor_manager.get_monitor_count() > 0:
             status['tank_monitors'] = self.tank_monitor_manager.get_readings()
+
+        # Get wireless soil sensor readings
+        if self.soil_sensor_manager and self.soil_sensor_manager.get_sensor_count() > 0:
+            status['soil_sensors'] = self.soil_sensor_manager.get_readings()
 
         return status
 

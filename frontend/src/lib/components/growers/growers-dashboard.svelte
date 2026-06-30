@@ -13,6 +13,7 @@
   import RelayControlsCard from './RelayControlsCard.svelte';
   import FlowMonitorCard from './FlowMonitorCard.svelte';
   import SensorsCard from './SensorsCard.svelte';
+  import SoilSensors from '$lib/components/hardware/SoilSensors.svelte';
   import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
   import { apiGet, apiPost } from '$lib/api.js';
   import { toast } from 'svelte-sonner';
@@ -472,6 +473,8 @@
     <FlowMonitorCard {flowMeters} />
 
     <SensorsCard />
+
+    <SoilSensors soilSensors={sseStatus.soilSensors} />
 
     <!-- Activity Log -->
     <ActivityLog {logs} onClear={clearLogs} />
