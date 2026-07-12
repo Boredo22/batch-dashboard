@@ -16,6 +16,8 @@ The system automates the day-to-day work of a commercial grow operation: filling
 
 > **Runs without hardware.** The app includes a full mock-hardware layer, so you can clone it and run the entire stack on any laptop — no Raspberry Pi or pumps required. See [Running in mock mode](#running-in-mock-mode).
 
+> 🚧 **Actively developed.** This is a living project driving a real, in-use grow operation — features are added and refined as the rig evolves. See the [Roadmap](#roadmap) for what's currently in progress.
+
 ---
 
 ## Screenshots
@@ -180,6 +182,16 @@ The REST API follows a consistent `"/api/{hardware_type}/{id}/{action}"` pattern
 | `POST` | `/api/relay/all/off` | All relays off (safety) |
 
 See [`docs/HARDWARE_COMMANDS.md`](docs/HARDWARE_COMMANDS.md) for the complete command and protocol reference.
+
+## Roadmap
+
+This project is under active development and grows alongside the physical rig it runs. Currently in progress:
+
+- **Automatic send flow** — closed-loop metered distribution of finished solution to grow rooms (the *Send Flow* panel is wired up and marked _under development_ in the UI today).
+- **Deeper soil-sensor integration** — surfacing the wireless ESP32 soil-moisture readings directly in the operations dashboard and using them to inform watering decisions.
+- Ongoing refinements to calibration, batch-dosing accuracy, and the tablet UI.
+
+Have an idea or spot a bug? Issues and suggestions are welcome.
 
 ## Safety Notice
 
