@@ -20,14 +20,13 @@ The system automates the day-to-day work of a commercial grow operation: filling
 
 ## Screenshots
 
-> _Add screenshots or a short screen-recording here to give visitors an instant feel for the UI._
->
-> Suggested shots: the Grower Dashboard, the Fill Tank operations flow, and the Stage 1 hardware-testing grid.
->
-> ```
-> docs/screenshots/dashboard.png
-> docs/screenshots/fill-tank.png
-> ```
+### Grower Dashboard
+
+The main operations view — tank status with fill/mix/send controls, the 8-channel nutrient pump bank, the full relay grid (tanks, mix valves, grow rooms), and live flow monitoring.
+
+![Grower Dashboard](docs/screenshots/dashboard.png)
+
+> _More views coming soon: the Batch Fill workflow and the Hardware Testing grid._
 
 ---
 
