@@ -37,7 +37,7 @@ The system automates the day-to-day work of a commercial grow operation: filling
 | --- | --- |
 | **Frontend** | Svelte 5 (runes), Vite, Tailwind CSS 3, [bits-ui](https://bits-ui.com/) (shadcn-style component primitives), Lucide icons |
 | **Backend** | Python 3, Flask, Flask-CORS, Server-Sent Events (SSE) for live status streaming |
-| **Hardware I/O** | `lgpio` (GPIO — relays & flow-meter pulse counting), `smbus2` (I2C — Atlas Scientific EZO dosing pumps), `pyserial` (UART — Arduino EC/pH sensor bridge) |
+| **Hardware I/O** | `lgpio` (GPIO — relays & flow-meter pulse counting), `smbus2` (I2C — Atlas Scientific EZO dosing pumps **and** EZO EC/pH sensors), `paho-mqtt` (ESP32 soil-moisture sensors), `pyserial` (UART — per-tank Arduino monitors) |
 | **Platform** | Raspberry Pi 4B (production) · any OS in mock mode |
 
 ## Architecture
@@ -52,14 +52,14 @@ A two-tier design cleanly separates the browser UI from the hardware layer, with
 │  Nutrients · Grow Cycles   │                           │   layer (hardware_comms.py) │
 └────────────────────────────┘                           └──────────────┬─────────────┘
                                                                          │
-                          ┌──────────────────────────────────────────────┼───────────────────────────┐
-                          │                          │                    │                           │
-                    I2C (smbus2)               GPIO (lgpio)         GPIO (lgpio)               UART (pyserial)
-                          │                          │                    │                           │
-                  ┌───────▼───────┐          ┌───────▼───────┐   ┌────────▼────────┐        ┌─────────▼─────────┐
-                  │ 8× EZO dosing │          │ 12× relays    │   │ 2× flow meters  │        │ Arduino EC/pH     │
-                  │    pumps      │          │ (valves/mix)  │   │ (pulse counter) │        │ sensor bridge     │
-                  └───────────────┘          └───────────────┘   └─────────────────┘        └───────────────────┘
+        ┌───────────────┬───────────────┬──────────────────┬────────────┴─────┬──────────────────┐
+        │               │               │                  │                  │                  │
+   I2C (smbus2)    I2C (smbus2)    GPIO (lgpio)       GPIO (lgpio)      MQTT (paho-mqtt)    UART (pyserial)
+        │               │               │                  │                  │                  │
+ ┌──────▼──────┐ ┌──────▼──────┐ ┌───────▼──────┐  ┌────────▼───────┐ ┌────────▼───────┐ ┌────────▼───────┐
+ │ 8× EZO      │ │ EZO EC/pH   │ │ 12× relays   │  │ 2× flow meters │ │ ESP32 soil-    │ │ per-tank EC/pH │
+ │ dosing pumps│ │ sensors     │ │ (valves/mix) │  │ (pulse counter)│ │ moisture nodes │ │ Arduino nodes  │
+ └─────────────┘ └─────────────┘ └──────────────┘  └────────────────┘ └────────────────┘ └────────────────┘
 ```
 
 All hardware commands flow through a single abstraction layer (`hardware/hardware_comms.py`) that speaks a simple, consistent wire protocol (`Start;<Type>;<Id>;<Param>;end`). Every controller has a mock counterpart, so the exact same API surface works with or without physical devices.
@@ -72,6 +72,7 @@ All hardware commands flow through a single abstraction layer (`hardware/hardwar
 - **Grow-cycle tracking** — plant-cycle records and daily watering reports.
 - **Hardware testing (Stage 1)** — direct component-level control of every relay, pump, flow meter, and the EC/pH sensor for bring-up and diagnostics.
 - **Live monitoring** — EC/pH readings and hardware status pushed to the browser over Server-Sent Events.
+- **Soil-moisture sensing** — wireless ESP32 sensor nodes report over MQTT; readings are ingested by the backend and surfaced alongside the mixing operations (firmware in `hardware/firmware/`).
 - **Pump calibration** — per-pump volume calibration with persisted calibration state.
 - **Knowledge base** — built-in growing reference material and SOPs (crop steering, nutrients, environment, lighting, IPM, operations).
 - **Safety systems** — single-instance lockfile guarding, input validation on all hardware commands, all-relays-off / emergency-stop paths.
@@ -87,14 +88,20 @@ batch-dashboard/
 ├── hardware_safety.py        # Single-instance lockfile / safety setup
 ├── requirements.txt
 │
+├── dosing_job.py             # Closed-loop batch dosing job engine
+├── grow_cycles.py            # Grow-cycle records & watering reports
+│
 ├── hardware/                 # Hardware abstraction layer
 │   ├── hardware_comms.py     # Public interface used by the API
 │   ├── rpi_pumps.py          # EZO dosing pumps over I2C
 │   ├── rpi_relays.py         # Relay bank over GPIO
 │   ├── rpi_flow.py           # Flow-meter pulse counting
-│   ├── rpi_unoComm.py        # Arduino EC/pH serial bridge
+│   ├── rpi_ezo_sensors.py    # EZO EC/pH sensors over I2C (native Pi)
+│   ├── soil_sensors.py       # ESP32 soil-moisture ingest over MQTT
+│   ├── tank_monitor.py       # Per-tank EC/pH Arduino monitors
 │   ├── mock_controllers.py   # Mock hardware for dev without a Pi
-│   └── utilities/            # Relay mapping & bring-up helpers
+│   ├── utilities/            # Relay mapping & bring-up helpers
+│   └── firmware/             # ESP32 soil-sensor firmware (Arduino sketch)
 │
 ├── frontend/                 # Svelte 5 single-page app
 │   ├── src/
@@ -105,6 +112,8 @@ batch-dashboard/
 │   ├── vite.config.js
 │   └── tailwind.config.js
 │
+├── tools/                    # Standalone diagnostics & hardware test scripts
+├── scripts/                  # Deployment: systemd service, startup, mosquitto setup
 └── docs/
     └── HARDWARE_COMMANDS.md   # Full hardware command reference
 ```
