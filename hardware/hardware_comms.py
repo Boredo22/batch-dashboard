@@ -901,6 +901,54 @@ class HardwareComms:
             }
 
     # =========================================================================
+    # TANK MONITOR - Per-tank pH/EC Arduino monitors
+    # =========================================================================
+
+    def get_tank_monitor_readings(self, tank_id: int = None) -> dict:
+        """
+        Get pH/EC readings from per-tank monitors.
+
+        Args:
+            tank_id: Specific tank ID, or None for all tanks.
+
+        Returns:
+            dict: Tank monitor readings.
+        """
+        sys = self.get_system()
+        if not sys or not hasattr(sys, 'tank_monitor_manager'):
+            return {} if tank_id is None else {'error': 'Tank monitors not available'}
+
+        try:
+            return sys.tank_monitor_manager.get_readings(tank_id)
+        except Exception as e:
+            logger.error(f"Exception getting tank monitor readings: {e}")
+            return {'error': str(e)}
+
+    # =========================================================================
+    # SOIL SENSORS - Wireless ESP32 soil probes (MQTT)
+    # =========================================================================
+
+    def get_soil_sensor_readings(self, sensor_id: int = None) -> dict:
+        """
+        Get latest readings from wireless soil sensors.
+
+        Args:
+            sensor_id: Specific sensor ID, or None for all sensors.
+
+        Returns:
+            dict: {sensor_id: reading_dict} for all, or a single reading dict.
+        """
+        sys = self.get_system()
+        if not sys or not hasattr(sys, 'soil_sensor_manager'):
+            return {} if sensor_id is None else {'error': 'Soil sensors not available'}
+
+        try:
+            return sys.soil_sensor_manager.get_readings(sensor_id)
+        except Exception as e:
+            logger.error(f"Exception getting soil sensor readings: {e}")
+            return {'error': str(e)}
+
+    # =========================================================================
     # EMERGENCY CONTROLS - Same as simple_gui.py
     # =========================================================================
     
@@ -1128,6 +1176,14 @@ def get_flow_status(flow_id: int) -> Optional[Dict[str, Any]]:
 def get_flow_controller():
     """Get flow controller instance - convenience function"""
     return get_hardware_comms().get_flow_controller()
+
+def get_tank_monitor_readings(tank_id: int = None) -> dict:
+    """Get tank monitor readings - convenience function"""
+    return get_hardware_comms().get_tank_monitor_readings(tank_id)
+
+def get_soil_sensor_readings(sensor_id: int = None) -> dict:
+    """Get wireless soil sensor readings - convenience function"""
+    return get_hardware_comms().get_soil_sensor_readings(sensor_id)
 
 def cleanup_hardware():
     """Cleanup hardware resources - convenience function"""

@@ -46,37 +46,64 @@ class InstanceLockManager:
         self.pid = os.getpid()
     
     def acquire_lock(self) -> bool:
-        """Acquire instance lock, return True if successful"""
-        if os.path.exists(self.lock_file):
+        """Acquire instance lock atomically, return True if successful.
+
+        Creating the lock file and claiming ownership is a single atomic
+        operation via O_CREAT|O_EXCL. The previous implementation did
+        exists()-check then open('w'), a TOCTOU race in which two processes
+        starting concurrently could both pass the check and both believe they
+        owned the hardware. (PID reuse after a crash is still a theoretical
+        edge case, but the dangerous concurrent-claim race is now closed.)
+        """
+        for _attempt in range(2):  # one retry, after clearing a stale lock
             try:
-                with open(self.lock_file, 'r') as f:
-                    old_pid = int(f.read().strip())
-                
-                # Check if old process is still running
-                try:
-                    os.kill(old_pid, 0)  # Signal 0 just checks if process exists
-                    print(f"Another instance (PID {old_pid}) is already running. Exiting...")
-                    return False
-                except OSError:
-                    # Process doesn't exist, remove stale lock file
-                    print(f"Removing stale lock file (PID {old_pid} not running)")
-                    os.remove(self.lock_file)
-            except (ValueError, FileNotFoundError):
-                # Invalid lock file, remove it
-                print("Removing invalid lock file")
-                try:
-                    os.remove(self.lock_file)
-                except FileNotFoundError:
-                    pass
-        
-        # Create new lock file
+                fd = os.open(self.lock_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                # A lock already exists - only retry if it turns out to be stale.
+                if self._clear_if_stale():
+                    continue
+                return False
+            except OSError as e:
+                # Parent dir missing / not writable / etc. Degrade gracefully
+                # (the old open('w')-based code returned False here too) rather
+                # than crashing startup.
+                print(f"Failed to create lock file: {e}")
+                return False
+            else:
+                with os.fdopen(fd, 'w') as f:
+                    f.write(str(self.pid))
+                print(f"Instance lock acquired (PID {self.pid})")
+                return True
+
+        print("Failed to acquire instance lock after clearing a stale lock")
+        return False
+
+    def _clear_if_stale(self) -> bool:
+        """Remove the lock file if it is stale/corrupt. Return True if removed."""
         try:
-            with open(self.lock_file, 'w') as f:
-                f.write(str(self.pid))
-            print(f"Instance lock acquired (PID {self.pid})")
+            with open(self.lock_file, 'r') as f:
+                old_pid = int(f.read().strip())
+        except (ValueError, FileNotFoundError):
+            # Corrupt contents or it vanished underneath us - treat as stale.
+            print("Removing invalid lock file")
+            try:
+                os.remove(self.lock_file)
+            except FileNotFoundError:
+                pass
             return True
-        except Exception as e:
-            print(f"Failed to create lock file: {e}")
+
+        try:
+            os.kill(old_pid, 0)  # Signal 0 just checks if the process exists
+        except OSError:
+            # Process is gone - stale lock, safe to remove.
+            print(f"Removing stale lock file (PID {old_pid} not running)")
+            try:
+                os.remove(self.lock_file)
+            except FileNotFoundError:
+                pass
+            return True
+        else:
+            print(f"Another instance (PID {old_pid}) is already running. Exiting...")
             return False
     
     def release_lock(self):

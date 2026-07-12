@@ -15,7 +15,7 @@
   let selectedPumpStr = $derived(selectedPump ? String(selectedPump) : "");
   let selectedPumpData = $derived(selectedPumpStr && selectedPumpStr !== "" ? safePumps.find(p => String(p.id) === selectedPumpStr) : null);
   let isDispensing = $derived(selectedPumpData?.status === 'dispensing');
-  let progress = $derived(() => {
+  let progress = $derived.by(() => {
     if (!selectedPumpData || !isDispensing) return 0;
     return (selectedPumpData.current_volume / selectedPumpData.target_volume) * 100;
   });

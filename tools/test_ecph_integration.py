@@ -8,8 +8,12 @@ Verifies that EZO sensors work with the full stack:
 """
 
 import sys
+import os
 import time
 import logging
+
+# Allow running from anywhere: add project root (parent of tools/) to sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Setup logging
 logging.basicConfig(

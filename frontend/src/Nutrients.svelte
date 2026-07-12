@@ -10,6 +10,8 @@
   import { Label } from '$lib/components/ui/label';
   import { Checkbox } from '$lib/components/ui/checkbox';
   import { subscribe, getSystemStatus } from '$lib/stores/systemStatus.svelte.js';
+  import { apiGet, apiPost } from '$lib/api.js';
+  import { toast } from 'svelte-sonner';
 
   // Get reactive system status from SSE store
   const sseStatus = getSystemStatus();
@@ -37,8 +39,8 @@
     3: { nutrient: 'bloom_a', label: 'Bloom A' },
     4: { nutrient: 'bloom_b', label: 'Bloom B' },
     5: { nutrient: 'cake', label: 'Cake' },
-    6: { nutrient: 'pk_synergy', label: 'PK Synergy' },
-    7: { nutrient: 'runclean', label: 'Runclean' },
+    6: { nutrient: 'runclean', label: 'Runclean' },
+    7: { nutrient: 'pk_synergy', label: 'PK Synergy' },
     8: { nutrient: 'ph_down', label: 'pH Down' }
   };
 
@@ -51,6 +53,8 @@
   let calibrationStep = $state('idle'); // idle, dispensing, measuring, saving
   let calibrationTarget = $state(10);
   let actualVolume = $state('');
+  let refreshingCalibration = $state(false); // global re-read of calibration from hardware
+  let checkingPump = $state(null);           // pump id currently being re-checked
   let statusMessage = $state('');
   let activeTab = $state('pumps');
   let lastUpdate = $state(new Date());
@@ -72,7 +76,7 @@
   let lastProcessedTimestamp = '';
 
   // Pump health summary
-  let pumpHealthSummary = $derived(() => {
+  let pumpHealthSummary = $derived.by(() => {
     const total = pumps.length || 8;
     const calibrated = pumps.filter(p => p.calibrated || p.calibration_status === 'calibrated' || p.calibration_status === 'single_point').length;
     const running = pumps.filter(p => p.status === 'running').length;
@@ -125,32 +129,23 @@
   // API functions
   async function loadPumpConfig() {
     try {
-      const response = await fetch('/api/nutrients');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.pump_assignments) {
-          pumpConfig = { ...defaultPumpConfig, ...data.pump_assignments };
-        }
+      const result = await apiGet('/api/nutrients');
+      if (result.pump_assignments) {
+        pumpConfig = { ...defaultPumpConfig, ...result.pump_assignments };
       }
     } catch (error) {
-      console.error('Failed to load pump config:', error);
+      toast.error(`Failed to load pump config: ${error.message}`);
     }
   }
 
   async function savePumpConfig() {
     try {
-      const response = await fetch('/api/nutrients', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pump_assignments: pumpConfig })
-      });
-      if (response.ok) {
-        statusMessage = 'Configuration saved';
-        setTimeout(() => statusMessage = '', 2000);
-      }
+      await apiPost('/api/nutrients', { pump_assignments: pumpConfig });
+      statusMessage = 'Configuration saved';
+      setTimeout(() => statusMessage = '', 2000);
     } catch (error) {
-      console.error('Failed to save pump config:', error);
       statusMessage = 'Failed to save configuration';
+      toast.error(`Failed to save pump config: ${error.message}`);
     }
   }
 
@@ -163,39 +158,31 @@
     logActivity('dispense', pumpId, `${amount}ml`);
 
     try {
-      const response = await fetch(`/api/pumps/${pumpId}/dispense`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to start dispense');
-      }
+      await apiPost(`/api/pumps/${pumpId}/dispense`, { amount });
     } catch (error) {
-      console.error(`Error dispensing from pump ${pumpId}:`, error);
       dispensingPumps.delete(pumpId);
       dispensingPumps = new Set(dispensingPumps);
+      toast.error(`Pump ${pumpId} dispense: ${error.message}`);
     }
   }
 
   async function stopPump(pumpId) {
     try {
-      await fetch(`/api/pumps/${pumpId}/stop`, { method: 'POST' });
+      await apiPost(`/api/pumps/${pumpId}/stop`);
       dispensingPumps.delete(pumpId);
       dispensingPumps = new Set(dispensingPumps);
     } catch (error) {
-      console.error(`Error stopping pump ${pumpId}:`, error);
+      toast.error(`Stop pump ${pumpId}: ${error.message}`);
     }
   }
 
   async function emergencyStop() {
     try {
-      await fetch('/api/emergency/stop', { method: 'POST' });
+      await apiPost('/api/emergency/stop');
       dispensingPumps.clear();
       dispensingPumps = new Set(dispensingPumps);
     } catch (error) {
-      console.error('Emergency stop failed:', error);
+      toast.error(`Emergency stop: ${error.message}`);
     }
   }
 
@@ -206,24 +193,15 @@
     actualVolume = '';
 
     try {
-      const response = await fetch(`/api/pumps/${pumpId}/dispense`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: calibrationTarget })
-      });
-
-      if (response.ok) {
-        // Wait for dispense to complete, then move to measuring
-        setTimeout(() => {
-          calibrationStep = 'measuring';
-        }, 3000);
-      } else {
-        throw new Error('Failed to start calibration dispense');
-      }
+      await apiPost(`/api/pumps/${pumpId}/dispense`, { amount: calibrationTarget });
+      // Wait for dispense to complete, then move to measuring
+      setTimeout(() => {
+        calibrationStep = 'measuring';
+      }, 3000);
     } catch (error) {
-      console.error('Calibration error:', error);
       calibrationStep = 'idle';
       calibratingPump = null;
+      toast.error(`Calibration dispense: ${error.message}`);
     }
   }
 
@@ -233,24 +211,16 @@
     calibrationStep = 'saving';
 
     try {
-      const response = await fetch(`/api/pumps/${calibratingPump}/calibrate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target_volume: calibrationTarget,
-          actual_volume: parseFloat(actualVolume)
-        })
+      await apiPost(`/api/pumps/${calibratingPump}/calibrate`, {
+        target_volume: calibrationTarget,
+        actual_volume: parseFloat(actualVolume)
       });
 
-      if (response.ok) {
-        statusMessage = `Pump ${calibratingPump} calibrated successfully`;
-        setTimeout(() => statusMessage = '', 3000);
-      } else {
-        throw new Error('Calibration failed');
-      }
+      statusMessage = `Pump ${calibratingPump} calibrated successfully`;
+      setTimeout(() => statusMessage = '', 3000);
     } catch (error) {
-      console.error('Calibration error:', error);
       statusMessage = 'Calibration failed';
+      toast.error(`Calibration: ${error.message}`);
     }
 
     calibrationStep = 'idle';
@@ -260,16 +230,11 @@
 
   async function clearCalibration(pumpId) {
     try {
-      const response = await fetch(`/api/pumps/${pumpId}/calibration/clear`, {
-        method: 'POST'
-      });
-
-      if (response.ok) {
-        statusMessage = `Pump ${pumpId} calibration cleared`;
-        setTimeout(() => statusMessage = '', 2000);
-      }
+      await apiPost(`/api/pumps/${pumpId}/calibration/clear`);
+      statusMessage = `Pump ${pumpId} calibration cleared`;
+      setTimeout(() => statusMessage = '', 2000);
     } catch (error) {
-      console.error('Clear calibration error:', error);
+      toast.error(`Clear calibration pump ${pumpId}: ${error.message}`);
     }
   }
 
@@ -277,6 +242,33 @@
     calibrationStep = 'idle';
     calibratingPump = null;
     actualVolume = '';
+  }
+
+  // Force the backend to re-read every pump's calibration from the EZO hardware
+  // and refresh its cache (which then flows back through the SSE status stream).
+  async function refreshCalibration() {
+    refreshingCalibration = true;
+    try {
+      const result = await apiPost('/api/pumps/refresh-calibration');
+      toast.success(result.message || 'Calibration status refreshed');
+    } catch (error) {
+      toast.error(`Refresh calibration: ${error.message}`);
+    } finally {
+      refreshingCalibration = false;
+    }
+  }
+
+  // Re-check a single pump's calibration live ("Cal,?") and report the result.
+  async function checkPumpCalibration(pumpId) {
+    checkingPump = pumpId;
+    try {
+      const result = await apiGet(`/api/pumps/${pumpId}/calibration/status`);
+      toast.success(`Pump ${pumpId}: ${formatCalibrationStatus(result.calibration_status)}`);
+    } catch (error) {
+      toast.error(`Calibration status pump ${pumpId}: ${error.message}`);
+    } finally {
+      checkingPump = null;
+    }
   }
 
   function updatePumpNutrient(pumpId, nutrientValue) {
@@ -305,15 +297,7 @@
     logActivity('prime', pumpId, `${primeVolume}ml`);
 
     try {
-      const response = await fetch(`/api/pumps/${pumpId}/dispense`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: primeVolume })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to prime pump');
-      }
+      await apiPost(`/api/pumps/${pumpId}/dispense`, { amount: primeVolume });
 
       // Wait for prime to complete
       setTimeout(() => {
@@ -321,9 +305,9 @@
         primingPumps = new Set(primingPumps);
       }, 3000);
     } catch (error) {
-      console.error(`Error priming pump ${pumpId}:`, error);
       primingPumps.delete(pumpId);
       primingPumps = new Set(primingPumps);
+      toast.error(`Prime pump ${pumpId}: ${error.message}`);
     }
   }
 
@@ -366,14 +350,10 @@
 
     for (const pumpId of pumpsToDispense) {
       try {
-        await fetch(`/api/pumps/${pumpId}/dispense`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amount: batchAmount })
-        });
+        await apiPost(`/api/pumps/${pumpId}/dispense`, { amount: batchAmount });
       } catch (error) {
-        console.error(`Error dispensing from pump ${pumpId}:`, error);
         dispensingPumps.delete(pumpId);
+        toast.error(`Pump ${pumpId} dispense: ${error.message}`);
       }
     }
     dispensingPumps = new Set(dispensingPumps);
@@ -403,6 +383,7 @@
       'calibrated': 'Calibrated',
       'single_point': 'Calibrated',
       'volume_calibrated': 'Calibrated',
+      'fully_calibrated': 'Calibrated',
       'uncalibrated': 'Uncalibrated',
       'unknown': 'Unknown'
     };
@@ -452,19 +433,32 @@
     <!-- Pump Health Overview -->
     <Card class="col-span-1 md:col-span-2">
       <CardHeader class="pb-2">
-        <CardTitle class="text-sm font-medium flex items-center gap-2">
-          <Activity class="h-4 w-4 text-primary" />
-          Pump Status Overview
-        </CardTitle>
+        <div class="flex items-center justify-between">
+          <CardTitle class="text-sm font-medium flex items-center gap-2">
+            <Activity class="h-4 w-4 text-primary" />
+            Pump Status Overview
+          </CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            class="h-7 gap-1.5"
+            onclick={refreshCalibration}
+            disabled={refreshingCalibration}
+            title="Re-read calibration from the pump hardware"
+          >
+            <RotateCcw class={`h-3.5 w-3.5 ${refreshingCalibration ? 'animate-spin' : ''}`} />
+            {refreshingCalibration ? 'Refreshing…' : 'Refresh'}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div class="flex items-center gap-6">
           <div class="text-center">
-            <div class="text-2xl font-bold text-foreground">{pumpHealthSummary().calibrated}/{pumpHealthSummary().total}</div>
+            <div class="text-2xl font-bold text-foreground">{pumpHealthSummary.calibrated}/{pumpHealthSummary.total}</div>
             <div class="text-xs text-muted-foreground">Calibrated</div>
           </div>
           <div class="text-center">
-            <div class="text-2xl font-bold text-green-500">{pumpHealthSummary().running}</div>
+            <div class="text-2xl font-bold text-green-500">{pumpHealthSummary.running}</div>
             <div class="text-xs text-muted-foreground">Running</div>
           </div>
           <div class="text-center">
@@ -659,7 +653,16 @@
                 <span class="text-xs text-muted-foreground">Pump {pumpId}</span>
               </div>
               <CardDescription>
-                {pump.voltage?.toFixed(1) || '0.0'}V · {pump.calibrated ? 'Calibrated' : 'Uncalibrated'}
+                {pump.voltage?.toFixed(1) || '0.0'}V ·
+                <button
+                  type="button"
+                  class="underline-offset-2 hover:underline disabled:no-underline disabled:opacity-60"
+                  onclick={() => checkPumpCalibration(pumpId)}
+                  disabled={checkingPump === pumpId}
+                  title="Re-check this pump's calibration from hardware"
+                >
+                  {checkingPump === pumpId ? 'Checking…' : (pump.calibrated ? 'Calibrated' : 'Uncalibrated')}
+                </button>
               </CardDescription>
             </CardHeader>
             <CardContent class="space-y-4">

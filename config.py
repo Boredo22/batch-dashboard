@@ -8,7 +8,10 @@ Centralized configuration for all hardware mappings, constants, and settings
 # RELAY CONFIGURATION (ULN2803A Darlington Array)
 # =============================================================================
 
-# GPIO pin mappings for relays (from relay_mapping.json)
+# GPIO pin mappings for relays. THIS is the canonical source of truth for the
+# live system. (hardware/utilities/relay_mapping.json is a snapshot produced by
+# the interactive relayMap.py tool and is currently stale - it predates relay 1;
+# do not treat it as authoritative. Re-export from here if you regenerate it.)
 # Format: {relay_id: gpio_pin}
 RELAY_GPIO_PINS = {
     1: 22,   # Tank 1 Fill,
@@ -25,16 +28,25 @@ RELAY_GPIO_PINS = {
     13: 5    # Drain
 }
 
-# Descriptive names for each relay
+# Descriptive names for each relay.
+# Kept consistent with RELAY_GPIO_PINS above (previously this map was missing
+# entries and mislabeled relay 6 as "Tank 2 Nute Dispense").
 RELAY_NAMES = {
+    1: "Tank 1 Fill",
     2: "Tank 2 Fill",
-    3: "Tank 3 Fill", 
+    3: "Tank 3 Fill",
     4: "Tank 1 Nute Dispense",
-    6: "Tank 2 Nute Dispense",
+    5: "Tank 2 Nute Dispense",
+    6: "Tank 3 Nute Dispense",
     7: "Tank 1 Dispense Send",
     8: "Tank 2 Dispense Send",
     9: "Tank 3 Dispense Send",
     10: "Room 1",
+    # 11: intentionally absent - no GPIO pin is defined for relay 11, yet TANKS
+    #     (tank 2 send_relay) and RELAY_COMBOS ("Send Tank 2") reference it. The
+    #     startup check below warns about this so it fails loudly, not silently.
+    12: "Nursery",
+    13: "Drain",
 }
 
 RELAY_COMBOS = {
@@ -55,14 +67,14 @@ RELAY_ACTIVE_HIGH = True  # GPIO HIGH = Relay ON (due to ULN2803A inversion)
 
 # EZO Pump I2C addresses
 PUMP_ADDRESSES = {
-    1: 11,    # Pump 1 at I2C address 1
-    2: 12,    # Pump 2 at I2C address 2
-    3: 13,    # Pump 3 at I2C address 3
-    4: 14,    # Pump 4 at I2C address 4
-    5: 15,    # Pump 5 at I2C address 5
-    6: 16,    # Pump 6 at I2C address 6
-    7: 17,    # Pump 7 at I2C address 7
-    8: 18,    # Pump 8 at I2C address 8
+    1: 11,    # Pump 1 at I2C address 11 (0x0B)
+    2: 12,    # Pump 2 at I2C address 12 (0x0C)
+    3: 13,    # Pump 3 at I2C address 13 (0x0D)
+    4: 14,    # Pump 4 at I2C address 14 (0x0E)
+    5: 15,    # Pump 5 at I2C address 15 (0x0F)
+    6: 16,    # Pump 6 at I2C address 16 (0x10)
+    7: 17,    # Pump 7 at I2C address 17 (0x11)
+    8: 18,    # Pump 8 at I2C address 18 (0x12)
 }
 
 # Pump names/descriptions
@@ -72,8 +84,8 @@ PUMP_NAMES = {
     3: "Bloom A",
     4: "Bloom B",
     5: "Cake",
-    6: "PK Synergy",
-    7: "Runclean",
+    6: "Runclean",     # swapped onto the working pump (pump 7 / I2C 17 is dead)
+    7: "PK Synergy",   # parked on the non-functional pump (unused in veg/bloom)
     8: "pH Down",
 }
 
@@ -133,6 +145,16 @@ FLOW_METER_CALIBRATION = {
 # Flow meter settings
 FLOW_METER_INTERRUPT_EDGE = "FALLING"  # Interrupt on FALLING edge (optocoupler inverts signal: flow pulse HIGH → output LOW)
 
+# Pulse debounce window (seconds). MUST be shorter than the real inter-pulse
+# interval at max flow, or pulses get dropped — and dropping every other pulse
+# halves BOTH the displayed rate AND the gallon count, so a fill silently
+# overshoots. At 220 ppg, 6.6 gpm = ~24 pulses/s = ~41 ms spacing, so the old
+# hardcoded 50 ms window dropped half the pulses (rate read ~3.3 instead of 6.6).
+# 8 ms passes up to ~34 gpm @ 220 ppg while still rejecting sub-8 ms EMI/relay
+# glitches. To tune: keep it below 60000 / (max_gpm * ppg) milliseconds with
+# margin; raise it only if idle relay switching produces phantom pulses.
+FLOW_PULSE_DEBOUNCE_SECONDS = 0.008
+
 # =============================================================================
 # EZO EC/pH SENSOR CONFIGURATION (Direct I2C on Raspberry Pi)
 # =============================================================================
@@ -156,10 +178,56 @@ PH_CALIBRATION_SOLUTIONS = {
 }
 
 # =============================================================================
-# LEGACY ARDUINO UNO CONFIGURATION (DEPRECATED - replaced by direct I2C)
+# TANK MONITOR CONFIGURATION (Per-tank Arduino pH/EC monitors)
 # =============================================================================
+# Each tank can have a dedicated Arduino with EZO pH/EC sensors connected
+# via USB serial. The Arduino sends JSON: {"ph":X.XX,"ec":X.XX}
 
-# Arduino Uno serial communication (DEPRECATED - keeping for reference)
+TANK_MONITOR_BAUDRATE = 9600
+
+# Map tank_id -> serial port (None = auto-detect)
+TANK_MONITOR_PORTS = {
+    1: None,  # Tank 1 - auto-detect (first Arduino found)
+    # 2: "/dev/ttyUSB1",  # Uncomment when adding Tank 2 monitor
+    # 3: "/dev/ttyUSB2",  # Uncomment when adding Tank 3 monitor
+}
+
+# =============================================================================
+# SOIL SENSOR CONFIGURATION (Wireless ESP32 over MQTT)
+# =============================================================================
+# Each grow zone gets an ESP32 with a capacitive soil-moisture probe (and
+# optional temp/EC). The boards publish JSON readings over LAN MQTT to a
+# Mosquitto broker on this Pi; SoilSensorManager subscribes and caches.
+# See SOIL_SENSORS_IMPLEMENTATION.md for the topic + payload contract.
+
+import os as _os
+
+SOIL_MQTT_HOST = _os.environ.get("SOIL_MQTT_HOST", "localhost")
+SOIL_MQTT_PORT = int(_os.environ.get("SOIL_MQTT_PORT", "1883"))
+SOIL_MQTT_USERNAME = _os.environ.get("SOIL_MQTT_USERNAME") or None
+SOIL_MQTT_PASSWORD = _os.environ.get("SOIL_MQTT_PASSWORD") or None
+
+# sensor_id -> {name, room, expected reading interval seconds}.
+# To add a sensor: add a row here AND flash a board with that SENSOR_ID.
+# expected interval drives the stale-vs-online cutoff (2x interval = stale).
+SOIL_SENSORS = {
+    1: {"name": "Flower A - Plant 1", "room": "Flower A", "interval_s": 300},
+    2: {"name": "Flower A - Plant 2", "room": "Flower A", "interval_s": 300},
+    3: {"name": "Flower A - Plant 3", "room": "Flower A", "interval_s": 300},
+    4: {"name": "Flower B - Plant 1", "room": "Flower B", "interval_s": 300},
+    5: {"name": "Flower B - Plant 2", "room": "Flower B", "interval_s": 300},
+    6: {"name": "Veg - Plant 1",      "room": "Veg",      "interval_s": 300},
+    7: {"name": "Veg - Plant 2",      "room": "Veg",      "interval_s": 300},
+    8: {"name": "Nursery - Plant 1",  "room": "Nursery",  "interval_s": 300},
+}
+
+# =============================================================================
+# LEGACY ARDUINO UNO CONFIGURATION (DEAD on the live Pi system)
+# =============================================================================
+# EC/pH is now read by the Pi over direct I2C (see EZO_*_ADDRESS above and
+# hardware/rpi_ezo_sensors.py). These constants are NOT used by app.py / main.py
+# anymore; they are retained ONLY because the frozen reference GUI simple_gui.py
+# still imports them. If/when simple_gui.py is retired, delete this whole block.
 ARDUINO_UNO_PORTS = [
     "/dev/ttyACM0",
     "/dev/ttyACM1",
@@ -333,6 +401,43 @@ def validate_flow_meter_id(meter_id):
     """Check if flow meter ID is valid"""
     return meter_id in FLOW_METER_GPIO_PINS
 
+
+def _validate_relay_references():
+    """Fail loudly on relay-config drift.
+
+    Every relay referenced by TANKS and RELAY_COMBOS must have a GPIO pin in
+    RELAY_GPIO_PINS, otherwise control_relay() silently rejects it and the
+    corresponding tank operation (e.g. "Send Tank 2", which references relay 11)
+    just does nothing. This surfaces that as a startup warning instead of a
+    silent no-op. Returns the list of missing relay IDs.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+
+    referenced = set()
+    for tank in TANKS.values():
+        if "fill_relay" in tank:
+            referenced.add(tank["fill_relay"])
+        if "send_relay" in tank:
+            referenced.add(tank["send_relay"])
+        referenced.update(tank.get("mix_relays", []))
+    for combo in RELAY_COMBOS.values():
+        referenced.update(combo)
+
+    missing = sorted(r for r in referenced if r not in RELAY_GPIO_PINS)
+    if missing:
+        log.warning(
+            "Relay config drift: relay(s) %s are referenced by TANKS/RELAY_COMBOS "
+            "but have no GPIO pin in RELAY_GPIO_PINS. Operations using them will "
+            "silently fail validation. Add the pin(s) or fix the references.",
+            missing,
+        )
+    return missing
+
+
+# Run the check at import so the warning shows up wherever config is loaded.
+_validate_relay_references()
+
 # =============================================================================
 # NUTRIENT FORMULAS - MOVED TO nutrients.json
 # =============================================================================
@@ -361,10 +466,12 @@ VERBOSE_LOGGING = False
 
 # Mock hardware settings (for testing without real hardware)
 MOCK_SETTINGS = {
-    "pumps": False,      # Use mock pumps
-    "relays": False,    # Use real relays
-    "flow_meters": False, # Use mock flow meters
-    "arduino": False     # Use mock Arduino
+    "pumps": False,         # Use mock pumps
+    "relays": False,        # Use real relays
+    "flow_meters": False,   # Use mock flow meters
+    "arduino": False,       # Use mock EC/pH sensors (legacy key name; now the EZO I2C sensor)
+    "tank_monitors": False, # Use mock per-tank pH/EC monitors
+    "soil_sensors": False   # Use mock wireless soil sensors (no MQTT broker needed)
 }
 
 # Test configuration
@@ -397,6 +504,7 @@ if __name__ == "__main__":
     
     print(f"\nSystem Settings:")
     print(f"  I2C Bus: {I2C_BUS_NUMBER}")
-    print(f"  Arduino Baudrate: {ARDUINO_UNO_BAUDRATE}")
+    print(f"  EZO pH/EC I2C: 0x{EZO_PH_ADDRESS:02X} / 0x{EZO_EC_ADDRESS:02X}")
+    print(f"  Tank Monitor Baudrate: {TANK_MONITOR_BAUDRATE}")
     print(f"  Status Interval: {STATUS_UPDATE_INTERVAL}s")
     print(f"  Debug Mode: {DEBUG_MODE}")

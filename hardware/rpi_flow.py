@@ -12,6 +12,7 @@ from config import (
     FLOW_METER_NAMES,
     FLOW_METER_CALIBRATION,
     FLOW_METER_INTERRUPT_EDGE,
+    FLOW_PULSE_DEBOUNCE_SECONDS,
     MOCK_FLOW_PULSE_INTERVAL,
     MOCK_PULSES_PER_INTERVAL,
     get_flow_meter_name,
@@ -107,10 +108,12 @@ class FlowMeterController:
             meter = self.flow_meters[meter_id]
             current_time = time.time()
 
-            # Debouncing: ignore pulses within 50ms of each other
-            # This prevents false triggers from relay EMI and mechanical bounce
-            # 50ms allows up to 20 pulses/second which is plenty for flow meters
-            if current_time - meter['last_pulse_time'] < 0.050:
+            # Debouncing: ignore pulses arriving closer together than the
+            # configured window (rejects relay EMI / mechanical bounce). This
+            # MUST stay below the real inter-pulse interval at max flow — the
+            # old 50ms value was longer than the ~41ms spacing at 6.6 gpm, so it
+            # dropped every other pulse and halved both rate and gallon count.
+            if current_time - meter['last_pulse_time'] < FLOW_PULSE_DEBOUNCE_SECONDS:
                 return
 
             meter['pulse_count'] += 1
@@ -364,17 +367,20 @@ class MockFlowMeterController(FlowMeterController):
         pass
     
     def update_mock_pulses(self):
-        """Generate mock pulses for testing"""
+        """Generate mock pulses for testing, catching up on missed intervals"""
         current_time = time.time()
-        
-        # Generate pulses at configured interval
-        if current_time - self.last_mock_time >= MOCK_FLOW_PULSE_INTERVAL:
-            self.last_mock_time = current_time
-            
-            # Add pulses to active flow meters
+        elapsed = current_time - self.last_mock_time
+
+        # Calculate how many intervals have passed since last update
+        if elapsed >= MOCK_FLOW_PULSE_INTERVAL:
+            intervals = int(elapsed / MOCK_FLOW_PULSE_INTERVAL)
+            # Advance by exact interval count to preserve fractional remainder
+            self.last_mock_time += intervals * MOCK_FLOW_PULSE_INTERVAL
+
+            # Add accumulated pulses to active flow meters
             for meter_id, meter in self.flow_meters.items():
                 if meter['status'] == 1:
-                    meter['pulse_count'] += MOCK_PULSES_PER_INTERVAL
+                    meter['pulse_count'] += MOCK_PULSES_PER_INTERVAL * intervals
     
     def update_flow_status(self, meter_id):
         """Update with mock pulse generation"""

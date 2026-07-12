@@ -1,9 +1,16 @@
+<<<<<<< HEAD
 # Python backend dependencies (Flask API + hardware layer).
 # Install with:  pip install -r requirements.txt
 #
 # Note: lgpio and smbus2 are Raspberry Pi / Linux hardware libraries.
 # On non-Pi machines the app runs in mock mode and these are optional.
 
+=======
+lgpio
+smbus2
+pyserial
+paho-mqtt
+>>>>>>> 078a1b702b63e4c0f0ce0e401b9daae43b00de3c
 flask
 flask-cors
 pyserial      # Serial comms with the Arduino (EC/pH sensor bridge)

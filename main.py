@@ -14,7 +14,9 @@ from datetime import datetime
 from hardware.rpi_pumps import EZOPumpController
 from hardware.rpi_relays import RelayController
 from hardware.rpi_flow import FlowMeterController, MockFlowMeterController
-from hardware.rpi_ezo_sensors import EZOSensorController  # Replaced Arduino Uno with direct I2C
+from hardware.rpi_ezo_sensors import EZOSensorController, MockEZOSensorController  # Replaced Arduino Uno with direct I2C
+from hardware.tank_monitor import TankMonitorManager
+from hardware.soil_sensors import SoilSensorManager
 
 # Import configuration
 from config import (
@@ -27,6 +29,13 @@ from config import (
     USE_MOCK_HARDWARE,
     MOCK_SETTINGS,
     MESSAGE_FORMATS,
+    TANK_MONITOR_PORTS,
+    TANK_MONITOR_BAUDRATE,
+    SOIL_MQTT_HOST,
+    SOIL_MQTT_PORT,
+    SOIL_MQTT_USERNAME,
+    SOIL_MQTT_PASSWORD,
+    SOIL_SENSORS,
     get_available_pumps,
     get_available_relays,
     get_available_flow_meters,
@@ -48,7 +57,7 @@ for component, level in LOG_LEVELS.items():
     component_logger.setLevel(getattr(logging, level))
 
 class FeedControlSystem:
-    def __init__(self, uno_port=None, use_mock_flow=None):
+    def __init__(self, use_mock_flow=None):
         """Initialize the complete feed control system"""
         self.running = False
         self.command_queue = queue.Queue()
@@ -58,27 +67,37 @@ class FeedControlSystem:
         # Use config for mock settings
         if use_mock_flow is None:
             use_mock_flow = MOCK_SETTINGS.get('flow_meters', False)
-        
+
+        # Shared I2C bus lock. The pump controller and the EC/pH sensor
+        # controller open separate smbus2 handles on the SAME physical bus
+        # (/dev/i2c-1) and are driven from different threads (the command
+        # worker and the sensor monitoring thread). Serialize every bus
+        # transaction through this one lock so a sensor read can never
+        # interleave between a pump's write and its read-back.
+        self._i2c_lock = threading.Lock()
+
         # Initialize controllers
         logger.info("Initializing feed control system with config.py...")
         
         try:
             # Initialize pump controller
             if MOCK_SETTINGS.get('pumps', False):
-                logger.info("Using mock pump controller")
-                self.pump_controller = None  # Would implement mock pump controller
+                from hardware.mock_controllers import MockPumpController
+                self.pump_controller = MockPumpController()
+                logger.info("✓ Mock pump controller initialized")
             else:
-                self.pump_controller = EZOPumpController()
+                self.pump_controller = EZOPumpController(i2c_lock=self._i2c_lock)
                 logger.info("✓ EZO pump controller initialized")
         except Exception as e:
             logger.error(f"✗ Pump controller failed: {e}")
             self.pump_controller = None
-        
+
         try:
             # Initialize relay controller
             if MOCK_SETTINGS.get('relays', False):
-                logger.info("Using mock relay controller")
-                self.relay_controller = None  # Would implement mock relay controller
+                from hardware.mock_controllers import MockRelayController
+                self.relay_controller = MockRelayController()
+                logger.info("✓ Mock relay controller initialized")
             else:
                 self.relay_controller = RelayController()
                 logger.info("✓ Relay controller initialized")
@@ -102,9 +121,10 @@ class FeedControlSystem:
             # Initialize EZO EC/pH sensor controller (replaces Arduino Uno)
             if MOCK_SETTINGS.get('ecph', False) or MOCK_SETTINGS.get('arduino', False):
                 logger.info("Using mock EC/pH sensors")
-                self.sensor_controller = None  # Would implement mock sensor controller
+                self.sensor_controller = MockEZOSensorController()
+                self.sensor_controller.connect()
             else:
-                self.sensor_controller = EZOSensorController()
+                self.sensor_controller = EZOSensorController(i2c_lock=self._i2c_lock)
                 if self.sensor_controller.connect():
                     logger.info(f"✓ EZO pH/EC sensors initialized via I2C")
                 else:
@@ -113,7 +133,41 @@ class FeedControlSystem:
         except Exception as e:
             logger.error(f"✗ EZO pH/EC sensor controller failed: {e}")
             self.sensor_controller = None
-        
+
+        # Initialize per-tank pH/EC monitors (Arduino via USB serial)
+        self.tank_monitor_manager = TankMonitorManager()
+        use_mock_monitors = MOCK_SETTINGS.get('tank_monitors', False)
+        for tank_id, port in TANK_MONITOR_PORTS.items():
+            try:
+                self.tank_monitor_manager.add_monitor(
+                    tank_id, port=port,
+                    baudrate=TANK_MONITOR_BAUDRATE,
+                    use_mock=use_mock_monitors
+                )
+            except Exception as e:
+                logger.error(f"✗ Tank {tank_id} monitor failed: {e}")
+
+        if self.tank_monitor_manager.get_monitor_count() > 0:
+            logger.info(f"✓ {self.tank_monitor_manager.get_monitor_count()} tank monitor(s) registered")
+
+        # Initialize wireless soil sensors (MQTT subscriber)
+        self.soil_sensor_manager = SoilSensorManager(
+            broker_host=SOIL_MQTT_HOST,
+            broker_port=SOIL_MQTT_PORT,
+            username=SOIL_MQTT_USERNAME,
+            password=SOIL_MQTT_PASSWORD,
+            use_mock=MOCK_SETTINGS.get('soil_sensors', False),
+        )
+        for sid, meta in SOIL_SENSORS.items():
+            try:
+                self.soil_sensor_manager.register(
+                    sid, meta['name'], meta['room'], meta['interval_s']
+                )
+            except Exception as e:
+                logger.error(f"✗ Soil sensor {sid} register failed: {e}")
+        if self.soil_sensor_manager.get_sensor_count() > 0:
+            logger.info(f"✓ {self.soil_sensor_manager.get_sensor_count()} soil sensor(s) registered")
+
         # Timing for status updates
         self.last_status_update = 0
         self.last_pump_check = 0
@@ -136,14 +190,22 @@ class FeedControlSystem:
             return
         
         self.running = True
-        
+
         # Start worker thread
         self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
         self.worker_thread.start()
-        
+
         # EC/pH sensors are always available via I2C (no need to start monitoring explicitly)
         # Sensors can be read on-demand when needed
-        
+
+        # Start per-tank monitors
+        if self.tank_monitor_manager.get_monitor_count() > 0:
+            self.tank_monitor_manager.start_all()
+
+        # Start wireless soil sensor MQTT subscriber
+        if self.soil_sensor_manager.get_sensor_count() > 0:
+            self.soil_sensor_manager.start_all()
+
         # Print system info
         self._print_system_info()
         
@@ -174,7 +236,11 @@ class FeedControlSystem:
             self.flow_controller.cleanup()
         if self.sensor_controller:
             self.sensor_controller.close()
-        
+        if self.tank_monitor_manager:
+            self.tank_monitor_manager.stop_all()
+        if self.soil_sensor_manager:
+            self.soil_sensor_manager.stop_all()
+
         logger.info("Feed control system stopped")
     
     def _worker_loop(self):
@@ -413,7 +479,7 @@ class FeedControlSystem:
         self.send_message(f"- EZO Pumps: {len(pumps)} units (I2C)")
         self.send_message(f"- Control Relays: {len(relays)} units (GPIO)")
         self.send_message(f"- Flow Meters: {len(flow_meters)} units (GPIO interrupts)")
-        self.send_message("- EC/pH Sensors: Arduino Uno (Serial)")
+        self.send_message("- EC/pH Sensors: Atlas EZO pH/EC (direct I2C)")
         self.send_message("")
         self.send_message("System Status:")
         
@@ -498,7 +564,15 @@ class FeedControlSystem:
             status['ec_ph_active'] = self.sensor_controller.monitoring_active
             status['ec'] = readings.get('ec')
             status['ph'] = readings.get('ph')
-        
+
+        # Get per-tank monitor readings
+        if self.tank_monitor_manager and self.tank_monitor_manager.get_monitor_count() > 0:
+            status['tank_monitors'] = self.tank_monitor_manager.get_readings()
+
+        # Get wireless soil sensor readings
+        if self.soil_sensor_manager and self.soil_sensor_manager.get_sensor_count() > 0:
+            status['soil_sensors'] = self.soil_sensor_manager.get_readings()
+
         return status
 
 
@@ -521,14 +595,9 @@ def main():
     
     # Check command line arguments
     use_mock_flow = "--mock-flow" in sys.argv
-    uno_port = None
-    
-    for i, arg in enumerate(sys.argv):
-        if arg == "--uno-port" and i + 1 < len(sys.argv):
-            uno_port = sys.argv[i + 1]
-    
+
     # Create and start system
-    system = FeedControlSystem(uno_port=uno_port, use_mock_flow=use_mock_flow)
+    system = FeedControlSystem(use_mock_flow=use_mock_flow)
     system.start()
     
     # Interactive command loop

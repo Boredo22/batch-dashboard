@@ -37,7 +37,9 @@ let systemData = $state({
   flow_meters: [],
   ec_value: 0,
   ph_value: 0,
-  ec_ph_monitoring: false
+  ec_ph_monitoring: false,
+  tank_monitors: {},
+  soil_sensors: {}
 });
 
 // Subscriber count to manage connection lifecycle
@@ -230,6 +232,8 @@ export function getSystemStatus() {
     get ecValue() { return systemData.ec_value || 0; },
     get phValue() { return systemData.ph_value || 0; },
     get ecPhMonitoring() { return systemData.ec_ph_monitoring || false; },
+    get tankMonitors() { return systemData.tank_monitors || {}; },
+    get soilSensors() { return systemData.soil_sensors || {}; },
     get timestamp() { return systemData.timestamp || ''; },
     get hardware() { return systemData.hardware || {}; },
     get isConnected() { return connectionStatus === 'connected'; }

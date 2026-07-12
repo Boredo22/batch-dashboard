@@ -31,9 +31,9 @@
     flex-direction: column;
     width: var(--sidebar-width);
     height: 100vh;
-    border-right: 1px solid var(--sidebar-border);
-    background: var(--sidebar-background);
-    color: var(--sidebar-foreground);
+    border-right: 1px solid hsl(var(--sidebar-border));
+    background: hsl(var(--sidebar-background));
+    color: hsl(var(--sidebar-foreground));
     transition: width 0.2s ease, transform 0.2s ease;
   }
 
@@ -58,7 +58,7 @@
 
   .sidebar[data-side='right'] {
     border-right: none;
-    border-left: 1px solid var(--sidebar-border);
+    border-left: 1px solid hsl(var(--sidebar-border));
   }
 
   .sidebar[data-side='right'].mobile {
@@ -72,7 +72,7 @@
   }
 
   .sidebar[data-variant='floating'] {
-    border: 1px solid var(--sidebar-border);
+    border: 1px solid hsl(var(--sidebar-border));
     border-radius: 0.5rem;
     margin: 0.5rem;
     height: calc(100vh - 1rem);
@@ -85,30 +85,7 @@
 
   .sidebar[data-variant='inset'] {
     border-radius: 0.5rem;
-    background: hsl(222.2 84% 4.9% / 0.8);
+    background: hsl(var(--sidebar-background) / 0.85);
     backdrop-filter: blur(8px);
-  }
-
-  /* Scrollbar styling for dark theme */
-  .sidebar :global(*) {
-    scrollbar-width: thin;
-    scrollbar-color: hsl(217.2 32.6% 17.5%) transparent;
-  }
-
-  .sidebar :global(*::-webkit-scrollbar) {
-    width: 0.5rem;
-  }
-
-  .sidebar :global(*::-webkit-scrollbar-track) {
-    background: transparent;
-  }
-
-  .sidebar :global(*::-webkit-scrollbar-thumb) {
-    background: hsl(217.2 32.6% 17.5%);
-    border-radius: 0.25rem;
-  }
-
-  .sidebar :global(*::-webkit-scrollbar-thumb:hover) {
-    background: hsl(217.2 32.6% 25%);
   }
 </style>

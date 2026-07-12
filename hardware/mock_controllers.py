@@ -189,6 +189,32 @@ class MockPumpController:
                 self.stop_dispense(pump_id)
         logger.info("All mock pumps stopped")
     
+    def check_voltage_polling_needed(self):
+        """Mock voltage polling - no-op for mock controller"""
+        pass
+
+    def calibrate_pump(self, pump_id, actual_volume_ml):
+        """Mock pump calibration"""
+        from config import validate_pump_id
+        if not validate_pump_id(pump_id):
+            return False
+        self.pump_info[pump_id]['calibrated'] = True
+        return True
+
+    def get_calibration_status(self, pump_id):
+        """Get cached calibration status"""
+        if pump_id in self.pump_info:
+            return 1 if self.pump_info[pump_id]['calibrated'] else 0
+        return 0
+
+    def is_calibrated(self, pump_id):
+        """Check if pump is calibrated"""
+        return self.get_calibration_status(pump_id) > 0
+
+    def _check_all_calibrations(self):
+        """Mock check all calibrations - no-op"""
+        pass
+
     def close(self):
         """Mock cleanup"""
         logger.info("Mock pump controller closed")

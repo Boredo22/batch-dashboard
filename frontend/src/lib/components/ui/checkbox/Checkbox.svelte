@@ -28,17 +28,16 @@
 <CheckboxPrimitive.Root
 	class={rootClass}
 	bind:checked
+	{indeterminate}
 	{disabled}
 	onCheckedChange={handleCheckedChange}
 	{...restProps}
 >
-	<CheckboxPrimitive.Indicator
-		class="flex items-center justify-center text-current"
-	>
-		{#if indeterminate}
+	{#snippet children({ checked: isChecked, indeterminate: isIndeterminate })}
+		{#if isIndeterminate}
 			<Minus class="h-3.5 w-3.5" />
-		{:else}
+		{:else if isChecked}
 			<Check class="h-3.5 w-3.5" />
 		{/if}
-	</CheckboxPrimitive.Indicator>
+	{/snippet}
 </CheckboxPrimitive.Root>

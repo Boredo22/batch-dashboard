@@ -13,23 +13,29 @@ The system controls physical hardware (pumps, relays, flow meters, EC/pH sensors
 ### Key Components
 
 **Backend (Python)**:
-- `app.py` - Flask REST API server with comprehensive endpoints for all hardware control
-- `main.py` - Core feed control system with proven hardware communication patterns
+- `app.py` - Flask REST API server with comprehensive endpoints for all hardware control; route handlers use the `@api_endpoint` decorator (defined near the top of the file) for the standard try/except JSON error envelope
+- `main.py` - Core feed control system (`FeedControlSystem`) with proven hardware communication patterns; owns the shared I2C lock
 - `hardware/hardware_comms.py` - Hardware abstraction layer using exact patterns from working `simple_gui.py`
-- `hardware/rpi_*.py` - Hardware-specific controllers for Raspberry Pi GPIO control
-- `config.py` - Centralized system configuration with all hardware mappings and settings
+- `hardware/rpi_pumps.py`, `hardware/rpi_relays.py`, `hardware/rpi_flow.py` - Hardware-specific controllers for Raspberry Pi (I2C pumps, GPIO relays, flow meters)
+- `hardware/rpi_ezo_sensors.py` - EC/pH via direct I2C from Atlas Scientific EZO circuits (`EZOSensorController`, plus `MockEZOSensorController` for mock mode)
+- `hardware/tank_monitor.py` - per-tank Arduino "tank monitors" over USB serial (separate from EC/pH)
+- `grow_cycles.py` - pure, testable grow-cycle report logic (stage detection, recipe selection, EC/pH targets, dose scaling); `build_reports()` backs `/api/grow-cycles/report`
+- `config.py` - Centralized system configuration with all hardware mappings and settings; validates relay references at import and warns if a relay is referenced but has no GPIO pin
 
 **Frontend (Svelte 5)**:
-- `frontend/src/App.svelte` - Main application with navigation between three pages
+- `frontend/src/App.svelte` - Main application with client-side routing (via `globalThis.navigateTo`); mounts the svelte-sonner `Toaster`
 - `frontend/src/Dashboard.svelte` - Stage 1 hardware testing interface
-- `frontend/src/Stage2Testing.svelte` - Stage 2 job process testing interface
+- `frontend/src/FillTank.svelte` - Stage 2 job process interface (fill/mix/send), with components under `frontend/src/components/filltank/`
 - `frontend/src/Settings.svelte` - System configuration management
-- `frontend/src/components/` - Modular UI components for each hardware type
+- `frontend/src/HeadGrower.svelte`, `Nutrients.svelte`, `GrowCycles.svelte`, `Knowledge.svelte` - additional operational pages
+- `frontend/src/lib/api.js` - shared API client (`apiGet`, `apiPost`, `ApiError`, 15s timeout); all backend calls go through it
+- `frontend/src/lib/stores/systemStatus.svelte.js` - SSE store (single EventSource + polling fallback) for live hardware status
+- `frontend/src/lib/components/` - modern component library (`growers/`, `hardware/`, `layout/`, `ui/`)
 - `frontend/src/main.js` - Single entry point for the Svelte application
 
 **Hardware Control System**:
 - `FeedControlSystem` class in `main.py` - Core system with proven command processing
-- Direct hardware controllers for pumps, relays, flow meters, and Arduino communication
+- Direct hardware controllers for pumps, relays, flow meters; EC/pH via direct I2C EZO circuits; per-tank Arduino tank monitors over USB serial
 - Uses exact same command protocols as the working `simple_gui.py` implementation
 
 ## Development Commands
@@ -114,12 +120,17 @@ The system supports both real hardware and mock mode for development without phy
 - Use `$props()` for component props destructuring
 
 **Component Creation**: When adding new Svelte pages/components:
-1. Create a single `.svelte` file in appropriate directory (`frontend/src/` for pages or `frontend/src/components/` for reusable components)
+1. Create a single `.svelte` file in appropriate directory (`frontend/src/` for pages or `frontend/src/lib/components/` for reusable components). Note: `frontend/src/components/` now only holds the `filltank/` subdir used by `FillTank.svelte`.
 2. Import and use the component in the relevant parent component or page
 3. No need to update build configuration - Vite handles imports automatically
 4. Flask serves the built frontend as static files
 
-See `SVELTE_REFERENCE.md` for complete syntax guide.
+## Conventions
+
+- **Backend calls from the frontend**: use the shared client in `$lib/api.js` (`apiGet`/`apiPost`). Do not use raw `fetch()` in pages. Errors surface as svelte-sonner toasts.
+- **Live hardware status**: subscribe to the SSE store in `$lib/stores/systemStatus.svelte.js`.
+- **New Flask route handlers**: wrap them with the `@api_endpoint` decorator in `app.py` instead of repeating try/except.
+- **Grow-cycle logic**: lives in `grow_cycles.py` (pure/testable); call `build_reports()` rather than embedding logic in handlers.
 
 ## Hardware Communication Protocols (PROVEN WORKING)
 
@@ -180,6 +191,7 @@ success = system.send_command(command)
 - Note: "220" is calibration parameter (pulses per gallon)
 
 ### EC/pH Control
+EC/pH is read via **direct I2C** from Atlas Scientific EZO circuits (EZO pH at `0x63`, EZO EC at `0x64`), implemented in `hardware/rpi_ezo_sensors.py` (`EZOSensorController`; `MockEZOSensorController` for mock mode). This is NOT the legacy Arduino/serial path. The `Start;EcPh;ON/OFF;end` commands below remain only as the frozen `simple_gui.py` reference protocol.
 ```python
 # Start EC/pH monitoring (exact pattern from simple_gui.py:1167)
 command = "Start;EcPh;ON;end"

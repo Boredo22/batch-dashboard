@@ -49,7 +49,8 @@
 		height: 100%;
 		width: 100%;
 		flex: 1;
-		background-color: hsl(var(--primary));
+		background-image: linear-gradient(90deg, hsl(199 89% 48%), hsl(187 92% 50%));
+		box-shadow: 0 0 12px hsl(189 94% 43% / 0.35);
 		transition: transform 0.3s ease-in-out;
 		border-radius: inherit;
 	}

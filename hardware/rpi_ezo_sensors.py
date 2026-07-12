@@ -13,7 +13,16 @@ import logging
 import sys
 import threading
 from pathlib import Path
-from smbus2 import SMBus
+import platform
+
+try:
+    from smbus2 import SMBus
+except ImportError:
+    if platform.system() == 'Windows':
+        print("Running on Windows - using mock smbus2 for EZO sensors")
+        from .mock_hardware_libs import MockSMBus as SMBus
+    else:
+        raise
 
 # Add parent directory to path for config import
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -38,12 +47,20 @@ class EZOSensorController:
     Compatible with existing FeedControlSystem patterns
     """
 
-    def __init__(self):
+    def __init__(self, i2c_lock=None):
+        """
+        Args:
+            i2c_lock: Shared threading.Lock serializing access to the physical
+                I2C bus. Pass the same lock used by the pump controller so the
+                monitoring thread's reads never interleave with a pump
+                transaction. Falls back to a private lock if not supplied.
+        """
         self.bus = None
         self.connected = False
         self.monitoring_active = False
         self.monitoring_thread = None
         self.monitoring_interval = 5.0  # Read sensors every 5 seconds
+        self._i2c_lock = i2c_lock or threading.Lock()
 
         self.latest_readings = {
             'ph': None,
@@ -103,25 +120,30 @@ class EZOSensorController:
             return None
 
         try:
-            # Send command - DIRECT I2C WRITE (no register address)
-            # Convert command string to bytes
-            command_bytes = [ord(c) for c in command]
+            # Hold the shared bus lock for the whole write->wait->read
+            # transaction so a pump command on the same physical bus cannot
+            # interleave between this sensor's write and its read-back.
+            with self._i2c_lock:
+                # Send command - DIRECT I2C WRITE (no register address)
+                # Convert command string to bytes
+                command_bytes = [ord(c) for c in command]
 
-            # EZO protocol: First byte goes to "register" position, rest as data
-            # This is how smbus2 handles direct I2C writes
-            if len(command_bytes) == 1:
-                self.bus.write_byte(address, command_bytes[0])
-            else:
-                self.bus.write_i2c_block_data(address, command_bytes[0], command_bytes[1:])
+                # EZO protocol: First byte goes to "register" position, rest as data
+                # This is how smbus2 handles direct I2C writes
+                if len(command_bytes) == 1:
+                    self.bus.write_byte(address, command_bytes[0])
+                else:
+                    self.bus.write_i2c_block_data(address, command_bytes[0], command_bytes[1:])
 
-            logger.debug(f"EZO 0x{address:02X} <- '{command}'")
+                logger.debug(f"EZO 0x{address:02X} <- '{command}'")
 
-            # Wait for processing (EZO chips need time to process)
-            time.sleep(response_time)
+                # Wait for processing (EZO chips need time to process)
+                time.sleep(response_time)
 
-            # Read response - DIRECT I2C READ
-            # EZO returns up to 31 bytes: [response_code, data...]
-            response_data = self.bus.read_i2c_block_data(address, 0x00, 31)
+                # Read response - DIRECT I2C READ
+                # EZO returns up to 31 bytes: [response_code, data...]
+                response_data = self.bus.read_i2c_block_data(address, 0x00, 31)
+
             response_code = response_data[0]
 
             if response_code == 1:  # Success
@@ -418,6 +440,65 @@ class EZOSensorController:
                 'info': ec_info,
                 'calibration': self.get_ec_calibration_status()
             }
+        }
+
+
+class MockEZOSensorController(EZOSensorController):
+    """
+    Mock EC/pH sensor controller for development without I2C hardware.
+
+    Mirrors EZOSensorController's public interface but performs no I2C; readings
+    are simulated with slight variation around realistic baselines so the UI and
+    monitoring loop behave the same as with real sensors. Replaces the old
+    MockSensorController that lived in the now-removed rpi_sensors.py.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._base_ph = 6.2          # pH
+        self._base_ec = 1.4          # mS/cm
+        self._ph_cal_points = 3      # report as 3-point calibrated
+        self._ec_cal_state = 2       # report as two-point calibrated
+
+    def connect(self):
+        # No bus, no config writes - just mark connected.
+        self.connected = True
+        logger.info("✓ Mock EZO pH/EC sensors initialized (no hardware)")
+        return True
+
+    def close(self):
+        if self.monitoring_active:
+            self.stop_monitoring()
+        self.connected = False
+
+    def _send_command(self, address, command, response_time=0.9):
+        # Generic success so inherited calibration methods report success.
+        return "OK"
+
+    def read_ph(self):
+        import random
+        value = round(self._base_ph + random.uniform(-0.1, 0.1), 2)
+        self.latest_readings['ph'] = value
+        self.latest_readings['last_update'] = time.time()
+        return value
+
+    def read_ec(self):
+        import random
+        value = round(self._base_ec + random.uniform(-0.05, 0.05), 3)
+        self.latest_readings['ec'] = value
+        self.latest_readings['last_update'] = time.time()
+        return value
+
+    def get_ph_calibration_status(self):
+        return self._ph_cal_points
+
+    def get_ec_calibration_status(self):
+        return self._ec_cal_state
+
+    def get_sensor_info(self):
+        return {
+            'ph': {'info': 'Mock pH EZO', 'calibration': self._ph_cal_points},
+            'ec': {'info': 'Mock EC EZO', 'calibration': self._ec_cal_state},
         }
 
 

@@ -1,5 +1,7 @@
 <script>
   import { onMount } from 'svelte';
+  import { apiGet, apiPost } from '$lib/api.js';
+  import { toast } from 'svelte-sonner';
   import { TabsRoot as Tabs, TabsContent, TabsList, TabsTrigger } from "$lib/components/ui/tabs/index.js";
   import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
@@ -25,7 +27,9 @@
     FlaskConical,
     Gauge,
     Waves,
-    Zap
+    Zap,
+    Sprout,
+    CalendarDays
   } from "@lucide/svelte/icons";
 
   // ==================== STATE ====================
@@ -71,6 +75,14 @@
       max_pump_volume_ml: 2500.0,
       min_pump_volume_ml: 0.5,
       max_flow_gallons: 100
+    },
+    growDefaults: {
+      veg_days: 28,
+      flower_days: 50,
+      flush_days: 14,
+      flower_veg_nute_days: 21,
+      feedings_per_day: 2,
+      default_watering_volume: 50
     }
   });
 
@@ -123,46 +135,66 @@
     loading = true;
     loadError = '';
     try {
-      const [userResponse, devResponse, nutrientsResponse] = await Promise.all([
-        fetch('/api/settings/user'),
-        fetch('/api/settings/developer'),
-        fetch('/api/nutrients')
+      const [userData, devData, nutrientsData] = await Promise.all([
+        apiGet('/api/settings/user'),
+        apiGet('/api/settings/developer'),
+        apiGet('/api/nutrients')
       ]);
 
-      if (userResponse.ok) {
-        const userData = await userResponse.json();
-        userSettings = { ...userSettings, ...userData };
-        // Initialize rooms if not present
-        if (!userSettings.rooms || Object.keys(userSettings.rooms).length === 0) {
-          userSettings.rooms = {
-            1: { name: "Grow Room 1", relay: 10 }
-          };
-        }
-        // Initialize flow meter calibration
-        if (!userSettings.flowMeters) {
-          userSettings.flowMeters = { calibration: { 1: 220, 2: 220 } };
-        }
-        // Initialize EC/pH defaults
-        if (!userSettings.ecphDefaults) {
-          userSettings.ecphDefaults = {
-            ec: { min: 1.0, max: 2.0 },
-            ph: { min: 5.5, max: 6.5 }
-          };
-        }
+      userSettings = { ...userSettings, ...userData };
+      // Initialize rooms if not present
+      if (!userSettings.rooms || Object.keys(userSettings.rooms).length === 0) {
+        userSettings.rooms = {
+          1: { name: "Grow Room 1", relay: 10 }
+        };
+      }
+      // Initialize flow meter calibration
+      if (!userSettings.flowMeters) {
+        userSettings.flowMeters = { calibration: { 1: 220, 2: 220 } };
+      }
+      // Initialize EC/pH defaults
+      if (!userSettings.ecphDefaults) {
+        userSettings.ecphDefaults = {
+          ec: { min: 1.0, max: 2.0 },
+          ph: { min: 5.5, max: 6.5 }
+        };
+      }
+      // Initialize grow cycle defaults
+      if (!userSettings.growDefaults) {
+        userSettings.growDefaults = {
+          veg_days: 28,
+          flower_days: 50,
+          flush_days: 14,
+          flower_veg_nute_days: 21,
+          feedings_per_day: 2,
+          default_watering_volume: 50
+        };
       }
 
-      if (devResponse.ok) {
-        const devData = await devResponse.json();
-        devSettings = { ...devSettings, ...devData };
+      // Deep merge to preserve nested defaults (backend keys may differ)
+      for (const [key, value] of Object.entries(devData)) {
+        if (typeof value === 'object' && value !== null && !Array.isArray(value) && devSettings[key]) {
+          devSettings[key] = { ...devSettings[key], ...value };
+        } else {
+          devSettings[key] = value;
+        }
+      }
+      // Map backend mock keys to frontend expected keys
+      if (devData.mock) {
+        const m = devData.mock;
+        devSettings.mock = {
+          mock_mode: m.mock_mode ?? false,
+          mock_pumps: m.mock_pumps ?? m.pumps ?? false,
+          mock_relays: m.mock_relays ?? m.relays ?? false,
+          mock_flow_meters: m.mock_flow_meters ?? m.flow_meters ?? false,
+          mock_ecph: m.mock_ecph ?? m.ecph ?? false
+        };
       }
 
-      if (nutrientsResponse.ok) {
-        const nutrientsData = await nutrientsResponse.json();
-        nutrientsConfig = { ...nutrientsConfig, ...nutrientsData };
-      }
+      nutrientsConfig = { ...nutrientsConfig, ...nutrientsData };
     } catch (error) {
-      console.error('Error loading settings:', error);
       loadError = 'Unable to connect to backend. Make sure the server is running.';
+      toast.error(`Load settings: ${error.message}`);
     } finally {
       loading = false;
     }
@@ -172,32 +204,17 @@
     saving = true;
     saveMessage = '';
     try {
-      const [userResponse, devResponse, nutrientsResponse] = await Promise.all([
-        fetch('/api/settings/user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(userSettings)
-        }),
-        fetch('/api/settings/developer', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(devSettings)
-        }),
-        fetch('/api/nutrients', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(nutrientsConfig)
-        })
+      await Promise.all([
+        apiPost('/api/settings/user', userSettings),
+        apiPost('/api/settings/developer', devSettings),
+        apiPost('/api/nutrients', nutrientsConfig)
       ]);
 
-      if (userResponse.ok && devResponse.ok && nutrientsResponse.ok) {
-        saveMessage = 'Settings saved successfully!';
-      } else {
-        saveMessage = 'Error saving some settings. Please try again.';
-      }
+      saveMessage = 'Settings saved successfully!';
+      toast.success('Settings saved successfully!');
     } catch (error) {
-      console.error('Error saving settings:', error);
       saveMessage = 'Error connecting to server. Please check connection.';
+      toast.error(`Save settings: ${error.message}`);
     } finally {
       saving = false;
       setTimeout(() => saveMessage = '', 4000);
@@ -207,22 +224,17 @@
   async function loadSystemStatus() {
     statusLoading = true;
     try {
-      const response = await fetch('/api/system/status');
-      if (response.ok) {
-        const data = await response.json();
-        systemStatus = {
-          connected: true,
-          relays: data.relays || [],
-          pumps: data.pumps || [],
-          flowMeters: data.flow_meters || [],
-          ecph: data.ecph || { ec: 0, ph: 0, monitoring: false }
-        };
-      } else {
-        systemStatus.connected = false;
-      }
+      const result = await apiGet('/api/system/status');
+      systemStatus = {
+        connected: true,
+        relays: result.relays || [],
+        pumps: result.pumps || [],
+        flowMeters: result.flow_meters || [],
+        ecph: result.ecph || { ec: 0, ph: 0, monitoring: false }
+      };
     } catch (error) {
-      console.error('Error loading system status:', error);
       systemStatus.connected = false;
+      toast.error(`System status: ${error.message}`);
     } finally {
       statusLoading = false;
     }
@@ -326,7 +338,7 @@
   }
 
   function deleteRecipe(recipeName) {
-    if (['veg_formula', 'bloom_formula'].includes(recipeName)) {
+    if (['veg_formula', 'bloom_formula', 'flush_formula'].includes(recipeName)) {
       alert('Cannot delete default recipes');
       return;
     }
@@ -581,6 +593,87 @@
           </CardContent>
         </Card>
 
+        <!-- Grow Cycle Defaults -->
+        <Card>
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">
+              <Sprout class="size-5" />
+              Grow Cycle Defaults
+            </CardTitle>
+            <CardDescription>Default schedule and feeding settings for new grow cycles</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="grid gap-4 sm:grid-cols-3">
+              <div class="space-y-2">
+                <Label>Veg Days</Label>
+                <Input type="number" bind:value={userSettings.growDefaults.veg_days} min="0" />
+              </div>
+              <div class="space-y-2">
+                <Label>Flower Days</Label>
+                <Input type="number" bind:value={userSettings.growDefaults.flower_days} min="0" />
+              </div>
+              <div class="space-y-2">
+                <Label>Flush Days</Label>
+                <Input type="number" bind:value={userSettings.growDefaults.flush_days} min="0" />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div>
+              <h4 class="text-sm font-medium mb-1">Flower Nutrient Schedule</h4>
+              <p class="text-xs text-muted-foreground mb-3">During flower, veg nutes are used for the first transition period before switching to bloom</p>
+              <div class="grid gap-4 sm:grid-cols-3">
+                <div class="space-y-2">
+                  <Label>Veg Nutes in Flower (days)</Label>
+                  <Input type="number" bind:value={userSettings.growDefaults.flower_veg_nute_days} min="0" />
+                  <p class="text-xs text-muted-foreground">First N days of flower use veg formula</p>
+                </div>
+                <div class="space-y-2">
+                  <Label>Feedings Per Day</Label>
+                  <Input type="number" bind:value={userSettings.growDefaults.feedings_per_day} min="1" max="6" />
+                </div>
+                <div class="space-y-2">
+                  <Label>Default Volume (gal)</Label>
+                  <Input type="number" bind:value={userSettings.growDefaults.default_watering_volume} min="1" />
+                  <p class="text-xs text-muted-foreground">Per feeding, not daily total</p>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div class="p-3 rounded-lg bg-muted/50 text-sm">
+              <div class="flex items-center gap-2 mb-2">
+                <CalendarDays class="size-4 text-muted-foreground" />
+                <span class="font-medium">Schedule Overview</span>
+              </div>
+              <div class="grid grid-cols-3 gap-2 text-xs">
+                <div class="p-2 rounded bg-green-500/10 text-center">
+                  <div class="font-medium text-green-600">Veg</div>
+                  <div>{userSettings.growDefaults.veg_days} days</div>
+                </div>
+                <div class="p-2 rounded bg-purple-500/10 text-center">
+                  <div class="font-medium text-purple-600">Flower</div>
+                  <div>{userSettings.growDefaults.flower_days} days</div>
+                  <div class="text-[10px] text-muted-foreground mt-0.5">
+                    {userSettings.growDefaults.flower_veg_nute_days}d veg nutes &rarr; {Math.max(0, userSettings.growDefaults.flower_days - userSettings.growDefaults.flower_veg_nute_days)}d bloom nutes
+                  </div>
+                </div>
+                <div class="p-2 rounded bg-blue-500/10 text-center">
+                  <div class="font-medium text-blue-600">Flush</div>
+                  <div>{userSettings.growDefaults.flush_days} days</div>
+                  <div class="text-[10px] text-muted-foreground mt-0.5">Cake only</div>
+                </div>
+              </div>
+              <div class="text-center mt-2 text-muted-foreground">
+                Total: {userSettings.growDefaults.veg_days + userSettings.growDefaults.flower_days + userSettings.growDefaults.flush_days} days
+                ({Math.round((userSettings.growDefaults.veg_days + userSettings.growDefaults.flower_days + userSettings.growDefaults.flush_days) / 7)} weeks)
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <!-- Flow Meter Calibration -->
         <Card>
           <CardHeader>
@@ -788,7 +881,7 @@
                     <div class="flex items-center justify-between">
                       <CardTitle class="text-base">{formatRecipeName(recipeName)}</CardTitle>
                       <div class="flex items-center gap-2">
-                        {#if !['veg_formula', 'bloom_formula'].includes(recipeName)}
+                        {#if !['veg_formula', 'bloom_formula', 'flush_formula'].includes(recipeName)}
                           <Button
                             variant="ghost"
                             size="sm"
@@ -941,7 +1034,7 @@
                 </p>
               </div>
               <Switch
-                checked={devSettings.mock.mock_mode}
+                checked={devSettings.mock.mock_mode ?? false}
                 onCheckedChange={(checked) => devSettings.mock.mock_mode = checked}
               />
             </div>
@@ -952,28 +1045,28 @@
               <div class="flex items-center justify-between p-3 rounded-lg border">
                 <Label>Mock Pumps</Label>
                 <Switch
-                  checked={devSettings.mock.mock_pumps}
+                  checked={devSettings.mock.mock_pumps ?? false}
                   onCheckedChange={(checked) => devSettings.mock.mock_pumps = checked}
                 />
               </div>
               <div class="flex items-center justify-between p-3 rounded-lg border">
                 <Label>Mock Relays</Label>
                 <Switch
-                  checked={devSettings.mock.mock_relays}
+                  checked={devSettings.mock.mock_relays ?? false}
                   onCheckedChange={(checked) => devSettings.mock.mock_relays = checked}
                 />
               </div>
               <div class="flex items-center justify-between p-3 rounded-lg border">
                 <Label>Mock Flow Meters</Label>
                 <Switch
-                  checked={devSettings.mock.mock_flow_meters}
+                  checked={devSettings.mock.mock_flow_meters ?? false}
                   onCheckedChange={(checked) => devSettings.mock.mock_flow_meters = checked}
                 />
               </div>
               <div class="flex items-center justify-between p-3 rounded-lg border">
                 <Label>Mock EC/pH</Label>
                 <Switch
-                  checked={devSettings.mock.mock_ecph}
+                  checked={devSettings.mock.mock_ecph ?? false}
                   onCheckedChange={(checked) => devSettings.mock.mock_ecph = checked}
                 />
               </div>
@@ -1067,7 +1160,7 @@
                   <p class="text-xs text-muted-foreground">Enable detailed debug info</p>
                 </div>
                 <Switch
-                  checked={devSettings.debug.debug_mode}
+                  checked={devSettings.debug.debug_mode ?? false}
                   onCheckedChange={(checked) => devSettings.debug.debug_mode = checked}
                 />
               </div>
@@ -1077,7 +1170,7 @@
                   <p class="text-xs text-muted-foreground">Log all hardware comms</p>
                 </div>
                 <Switch
-                  checked={devSettings.debug.verbose_logging}
+                  checked={devSettings.debug.verbose_logging ?? false}
                   onCheckedChange={(checked) => devSettings.debug.verbose_logging = checked}
                 />
               </div>
