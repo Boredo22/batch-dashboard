@@ -18,10 +18,22 @@
     "vite": "^5.4.19"
   },
   "main": "svelte.config.js",
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": [
+    "svelte",
+    "vite",
+    "tailwindcss",
+    "hydroponics",
+    "raspberry-pi",
+    "hardware-control",
+    "dashboard"
+  ],
+  "author": "Boredo22",
+  "license": "MIT",
+  "description": "Svelte 5 frontend for the Nutrient Mixing System — a web dashboard for controlling hydroponic mixing hardware (pumps, relays, flow meters, EC/pH sensors) on a Raspberry Pi.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Boredo22/batch-dashboard.git"
+  },
   "dependencies": {
     "@lucide/svelte": "^0.543.0",
     "bits-ui": "^2.9.6",

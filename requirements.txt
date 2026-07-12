@@ -1,7 +1,11 @@
-lgpio
-smbus2
-pyserial
+# Python backend dependencies (Flask API + hardware layer).
+# Install with:  pip install -r requirements.txt
+#
+# Note: lgpio and smbus2 are Raspberry Pi / Linux hardware libraries.
+# On non-Pi machines the app runs in mock mode and these are optional.
+
 flask
 flask-cors
-svelte
-vite
+pyserial      # Serial comms with the Arduino (EC/pH sensor bridge)
+smbus2        # I2C comms with the EZO peristaltic pumps
+lgpio         # Raspberry Pi GPIO (relays, flow-meter pulse counting)

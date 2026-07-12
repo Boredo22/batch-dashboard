@@ -213,7 +213,7 @@ system.emergency_stop()
 
 ## Complete Command Reference
 
-See `HARDWARE_COMMANDS.md` for the comprehensive command reference including:
+See `docs/HARDWARE_COMMANDS.md` for the comprehensive command reference including:
 - All Stage 1 individual hardware commands
 - All Stage 2 job process command sequences  
 - Hardware mapping and configuration
