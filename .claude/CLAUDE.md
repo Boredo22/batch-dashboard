@@ -15,10 +15,12 @@ The system controls physical hardware (pumps, relays, flow meters, EC/pH sensors
 **Backend (Python)**:
 - `app.py` - Flask REST API server with comprehensive endpoints for all hardware control; route handlers use the `@api_endpoint` decorator (defined near the top of the file) for the standard try/except JSON error envelope
 - `main.py` - Core feed control system (`FeedControlSystem`) with proven hardware communication patterns; owns the shared I2C lock
-- `hardware/hardware_comms.py` - Hardware abstraction layer using exact patterns from working `simple_gui.py`
+- `hardware/hardware_comms.py` - Hardware abstraction layer; the single public interface the API uses for all hardware control
 - `hardware/rpi_pumps.py`, `hardware/rpi_relays.py`, `hardware/rpi_flow.py` - Hardware-specific controllers for Raspberry Pi (I2C pumps, GPIO relays, flow meters)
 - `hardware/rpi_ezo_sensors.py` - EC/pH via direct I2C from Atlas Scientific EZO circuits (`EZOSensorController`, plus `MockEZOSensorController` for mock mode)
 - `hardware/tank_monitor.py` - per-tank Arduino "tank monitors" over USB serial (separate from EC/pH)
+- `hardware/soil_sensors.py` - ESP32 soil-moisture sensor nodes ingested over MQTT (`paho-mqtt`); firmware in `hardware/firmware/soil_sensor_esp32/`
+- `dosing_job.py` - closed-loop batch dosing job engine (fill → dose → mix → send)
 - `grow_cycles.py` - pure, testable grow-cycle report logic (stage detection, recipe selection, EC/pH targets, dose scaling); `build_reports()` backs `/api/grow-cycles/report`
 - `config.py` - Centralized system configuration with all hardware mappings and settings; validates relay references at import and warns if a relay is referenced but has no GPIO pin
 
@@ -35,8 +37,8 @@ The system controls physical hardware (pumps, relays, flow meters, EC/pH sensors
 
 **Hardware Control System**:
 - `FeedControlSystem` class in `main.py` - Core system with proven command processing
-- Direct hardware controllers for pumps, relays, flow meters; EC/pH via direct I2C EZO circuits; per-tank Arduino tank monitors over USB serial
-- Uses exact same command protocols as the working `simple_gui.py` implementation
+- Direct hardware controllers for pumps, relays, flow meters; EC/pH via direct I2C EZO circuits; per-tank Arduino tank monitors over USB serial; ESP32 soil sensors over MQTT
+- All controllers speak a consistent wire protocol (`Start;<Type>;<Id>;<Param>;end`), and every controller has a mock counterpart for hardware-free development
 
 ## Development Commands
 
@@ -53,7 +55,6 @@ npm run watch        # Build and watch for changes
 ```bash
 python app.py        # Start Flask REST API server on port 5000
 python main.py       # Start standalone feed control system with CLI
-python simple_gui.py # Original working GUI (reference implementation)
 ```
 
 ### Full Stack Development
@@ -86,7 +87,7 @@ The system supports both real hardware and mock mode for development without phy
 - Direct fetch calls from Svelte components to Flask API endpoints
 - Real-time status updates through periodic polling
 
-**Hardware Abstraction**: All hardware control goes through `hardware_comms.py` which provides a consistent interface using proven working patterns from `simple_gui.py`.
+**Hardware Abstraction**: All hardware control goes through `hardware_comms.py` which provides a consistent interface to every hardware controller (each with a mock counterpart for development without a Pi).
 
 **Multi-Stage Testing Architecture**:
 - **Stage 1**: Individual hardware component testing (relays, pumps, flow meters, EC/pH)
@@ -134,7 +135,7 @@ The system supports both real hardware and mock mode for development without phy
 
 ## Hardware Communication Protocols (PROVEN WORKING)
 
-These protocols are extracted from `simple_gui.py` and are proven to work correctly with the Pi4B hardware. **All future hardware communication must follow these exact patterns.**
+These are the proven command protocols hardcoded in the hardware controllers and known to work correctly with the Pi4B hardware. **All future hardware communication must follow these exact patterns.** (They originated in an earlier `simple_gui.py` reference implementation, since removed — the controllers under `hardware/` are now the source of truth.)
 
 ### Command Structure
 All hardware commands use this exact format:
@@ -144,7 +145,7 @@ All hardware commands use this exact format:
 
 ### Relay Control
 ```python
-# Single relay control (exact pattern from simple_gui.py:1063)
+# Single relay control (canonical relay protocol)
 state_str = "ON" if state else "OFF"
 command = f"Start;Relay;{relay_id};{state_str};end"
 success = system.send_command(command)
@@ -159,11 +160,11 @@ command = "Start;Relay;0;OFF;end"
 
 ### Pump Control
 ```python  
-# Pump dispensing (exact pattern from simple_gui.py:1095)
+# Pump dispensing (canonical dispense protocol)
 command = f"Start;Dispense;{pump_id};{amount};end"
 success = system.send_command(command)
 
-# Pump stop (exact pattern from simple_gui.py:1113)
+# Pump stop
 command = f"Start;Pump;{pump_id};X;end"
 success = system.send_command(command)
 ```
@@ -175,11 +176,11 @@ success = system.send_command(command)
 
 ### Flow Meter Control
 ```python
-# Start flow monitoring (exact pattern from simple_gui.py:1139)
+# Start flow monitoring (canonical flow protocol)
 command = f"Start;StartFlow;{flow_id};{gallons};220;end"
 success = system.send_command(command)
 
-# Stop flow monitoring (exact pattern from simple_gui.py:1155)  
+# Stop flow monitoring
 command = f"Start;StartFlow;{flow_id};0;end"
 success = system.send_command(command)
 ```
@@ -191,20 +192,20 @@ success = system.send_command(command)
 - Note: "220" is calibration parameter (pulses per gallon)
 
 ### EC/pH Control
-EC/pH is read via **direct I2C** from Atlas Scientific EZO circuits (EZO pH at `0x63`, EZO EC at `0x64`), implemented in `hardware/rpi_ezo_sensors.py` (`EZOSensorController`; `MockEZOSensorController` for mock mode). This is NOT the legacy Arduino/serial path. The `Start;EcPh;ON/OFF;end` commands below remain only as the frozen `simple_gui.py` reference protocol.
+EC/pH is read via **direct I2C** from Atlas Scientific EZO circuits (EZO pH at `0x63`, EZO EC at `0x64`), implemented in `hardware/rpi_ezo_sensors.py` (`EZOSensorController`; `MockEZOSensorController` for mock mode). This is NOT the legacy Arduino/serial path. The `Start;EcPh;ON/OFF;end` commands below remain only as the frozen legacy reference protocol.
 ```python
-# Start EC/pH monitoring (exact pattern from simple_gui.py:1167)
+# Start EC/pH monitoring
 command = "Start;EcPh;ON;end"
 success = system.send_command(command)
 
-# Stop EC/pH monitoring (exact pattern from simple_gui.py:1178)
+# Stop EC/pH monitoring
 command = "Start;EcPh;OFF;end"
 success = system.send_command(command)
 ```
 
 ### System Initialization (CRITICAL)
 ```python
-# Exact pattern from simple_gui.py:895-896
+# Canonical system initialization
 use_mock_flow = MOCK_SETTINGS.get('flow_meters', False)
 system = FeedControlSystem(use_mock_flow=use_mock_flow)
 system.start()
@@ -212,7 +213,7 @@ system.start()
 
 ### Emergency Stop
 ```python
-# Emergency stop all operations (exact pattern from simple_gui.py:1210)
+# Emergency stop all operations
 system.emergency_stop()
 ```
 
